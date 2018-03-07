@@ -58,6 +58,92 @@ query()
     #echo $REPLY
 }
 
+function file_line_remove
+# $1 filename
+# $2 remove regexp
+{
+    local FILE="$1"
+    local TEMP_FILE="/tmp/`basename "$FILE"`.tmp"
+    local REGEXP="$2"
+    if test -r "$FILE"
+    then
+        cat "$FILE" > "$TEMP_FILE"
+        if diff "$FILE" "$TEMP_FILE" > /dev/null 2> /dev/null
+        then
+            cat "$TEMP_FILE" 2> /dev/null | "$GREP" -v "$REGEXP" > "$FILE" 2> /dev/null
+            /bin/rm -f "$TEMP_FILE"
+        else
+            /bin/rm -f "$TEMP_FILE"
+            echo_error "$FILE line \"$REGEXP\" remove fail" 99
+        fi
+    fi
+}
+
+function file_line_add
+# $1 filename
+# $2 add this line
+# $3 add after this regexp line
+{
+    local FILE="$1"
+    local TEMP_FILE="/tmp/`basename "$FILE"`.tmp"
+    local LINE="$2"
+    local REGEXP="$3"
+    if test -z "$REGEXP"
+    then
+        echo "$LINE" >> "$FILE"
+    else
+        cat "$FILE" > "$TEMP_FILE"
+        cat "$TEMP_FILE" | "$AWK" '/'"$REGEXP"'/ { print $0; print "'"$LINE"'"; next } { print; }' > "$FILE"
+        if test -s "$FILE"
+        then
+            /bin/rm -f "$TEMP_FILE"
+        else
+            cat "$TEMP_FILE" > "$FILE"
+            /bin/rm -f "$TEMP_FILE"
+            echo_error "$FILE add \"$LINE\" fail" 99
+        fi
+    fi
+}
+
+function file_line_add1
+# $1 filename
+# $2 add this line
+# $3 add after this regexp line
+{
+    local FILE="$1"
+    local LINE="$2"
+    local REGEXP="$3"
+
+    if ! "$GREP" -q -F "$LINE" "$FILE"
+    then
+        file_line_add "$FILE" "$LINE" "$REGEXP"
+    fi
+}
+
+function set_config_option
+# $1 filename
+# $2 option
+# $3 new value
+{
+    local CONFIG_FILE="$1"
+    local CONFIG_TEMP_FILE="/tmp/`basename "$CONFIG_FILE"`.tmp"
+    local OPTION="$2"
+    local VALUE="$3"
+    if test -e "$CONFIG_FILE"
+    then
+        cat "$CONFIG_FILE" > "$CONFIG_TEMP_FILE"
+        cat "$CONFIG_TEMP_FILE" | "$AWK" '/^'$OPTION'=/ { print "'"$OPTION"'=\"'"$VALUE"'\""; next } { print }' > "$CONFIG_FILE"
+        if test -s "$CONFIG_FILE"
+        then
+            /bin/rm -f "$CONFIG_TEMP_FILE"
+        else
+            cat "$CONFIG_TEMP_FILE" > "$CONFIG_FILE"
+            /bin/rm -f "$CONFIG_TEMP_FILE"
+            echo_error "file $CONFIG_FILE new configuration \"$OPTION=\"$VALUE\"\" change fail" 99
+        fi
+    fi
+}
+
 # echo $TERM
 # ok xterm/rxvt/konsole/linux
 # no dumb/sun
@@ -65,10 +151,12 @@ query()
 if test "`uname`" = "SunOS"
 then
     AWK="/usr/bin/nawk"
+    GREP="/usr/xpg4/bin/grep"
 fi
 if test "`uname`" = "Linux"
 then
     AWK="/bin/awk"
+    GREP="/bin/grep"
 fi
 
 if test "`echo "$TERM" | cut -c 1-5`" = "xterm" -o "$TERM" = "rxvt" -o "$TERM" = "konsole" -o "$TERM" = "linux"
@@ -119,6 +207,12 @@ echo_debug()
             echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_DEBUG_PREFIX}$*"
         fi
     fi
+}
+
+function echo_debug_var
+{
+    local VAR_NAME="$1"
+    echo_debug "$VAR_NAME=${!VAR_NAME}"
 }
 
 echo_error()
@@ -175,10 +269,10 @@ then
     ECHO_ERROR_PREFIX="error: "
 fi
 
-if test -z "$OPTION_PREFIX"
-then
-    OPTION_PREFIX="yes"
-fi
+#if test -z "$OPTION_PREFIX"
+#then
+#    OPTION_PREFIX="yes"
+#fi
 
 if test "$OPTION_PREFIX" = "yes"
 then

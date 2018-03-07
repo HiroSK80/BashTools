@@ -50,7 +50,7 @@ query()
             OK=`echo "$REPLY" | awk '/'$REGEXP'/ { print "ok"; exit } { print "no" }'`
             if test "$OK" = "no"
             then
-                echo "        ERROR: $ERROR"
+                echo "        Error: $ERROR"
             fi
         done
     fi
@@ -259,20 +259,32 @@ echo_debug()
 
 function echo_debug_var
 {
-    local VAR_NAME="$1"
-    echo_debug "$VAR_NAME=${!VAR_NAME}"
+    local VAR_LIST=""
+    while test $# -gt 0
+    do
+        local VAR_NAME="$1"
+        test -n "$VAR_LIST" && VAR_LIST="$VAR_LIST "
+        VAR_LIST="${VAR_LIST}${VAR_NAME}=${!VAR_NAME}"
+    done
+    echo_debug "$VAR_LIST"
 }
 
 echo_error()
 {
     if test "$OPTION_COLOR" = "yes"
     then
-        echo -e "$COLOR_RED${ECHO_PREFIX}${ECHO_UNAME}$*$COLOR_RESET"
+        echo -e "$COLOR_RED${ECHO_PREFIX}${ECHO_UNAME}$@$COLOR_RESET"
     else
-        echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_ERROR_PREFIX}$*"
+        echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_ERROR_PREFIX}$@"
     fi
 }
 
+
+function echo_error_exit
+{
+    echo_error "$1"
+    exit "$2"
+}
 
 while test $# -gt 0
 do

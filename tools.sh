@@ -74,9 +74,9 @@ echo_step()
     
     if test "$OPTION_COLOR" = "yes"
     then
-        echo -e "\E[1m${OPTION_PREFIX}${ECHO_UNAME}$*\033[0m"
+        echo -e "\E[1m${ECHO_PREFIX}${ECHO_UNAME}$*\033[0m"
     else
-        echo "${OPTION_PREFIX}${ECHO_UNAME}$*"
+        echo "${ECHO_PREFIX}${ECHO_UNAME}$*"
     fi
 }
 
@@ -84,20 +84,32 @@ echo_info()
 {
     if test "$OPTION_COLOR" = "yes"
     then
-        echo -e "\E[1m\E[33m${OPTION_PREFIX}${ECHO_UNAME}$*\033[0m"
+        echo -e "\E[1m\E[33m${ECHO_PREFIX}${ECHO_UNAME}$*\033[0m"
     else
-        echo "${OPTION_PREFIX}${ECHO_UNAME}error: $*"
+        echo "${ECHO_PREFIX}${ECHO_UNAME}$*"
     fi
 }
 
+echo_debug()
+{
+    if test "$OPTION_DEBUG" = "yes"
+    then
+        if test "$OPTION_COLOR" = "yes"
+        then
+            echo -e "\E[1m\E[36m${ECHO_PREFIX}${ECHO_UNAME}$*\033[0m"
+        else
+            echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_DEBUG_PREFIX}$*"
+        fi
+    fi
+}
 
 echo_error()
 {
     if test "$OPTION_COLOR" = "yes"
     then
-        echo -e "\E[1m\E[31m${OPTION_PREFIX}${ECHO_UNAME}$*\033[0m"
+        echo -e "\E[1m\E[31m${ECHO_PREFIX}${ECHO_UNAME}$*\033[0m"
     else
-        echo "${OPTION_PREFIX}${ECHO_UNAME}error: $*"
+        echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_ERROR_PREFIX}$*"
     fi
 }
 
@@ -105,9 +117,12 @@ echo_error()
 while test $# -gt 0
 do
     case "$1" in
+      "-debug")
+        OPTION_DEBUG="yes"
+        ;;
       "-prefix")
         shift
-        OPTION_PREFIX="$1"
+        OPTION_PREFIX="yes"
         ;;
       "-color")
         shift
@@ -132,9 +147,24 @@ do
     shift
 done
 
+if test -z "$ECHO_DEBUG_PREFIX"
+then
+    ECHO_DEBUG_PREFIX="@@@ "
+fi
+
+if test -z "$ECHO_ERROR_PREFIX"
+then
+    ECHO_ERROR_PREFIX="error: "
+fi
+
 if test -z "$OPTION_PREFIX"
 then
-    OPTION_PREFIX="### "
+    OPTION_PREFIX="yes"
+fi
+
+if test "$OPTION_PREFIX" = "yes"
+then
+    ECHO_PREFIX="### "
 fi
 
 if test "$OPTION_COLOR" != "yes" -a "$OPTION_COLOR" != "no"

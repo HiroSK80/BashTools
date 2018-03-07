@@ -24,8 +24,16 @@ function query
 {
     local QUESTION="$1"
     local ERROR="$2"
-    local REGEXP="$3"
-    local DEFAULT="$4"
+    if test "${3:0:1}" = "#"
+    then
+        local TEST_FUNCTION="${3:1}"
+        local TEST_REGEXP=".*"
+    else
+        local TEST_FUNCTION=""
+        local TEST_REGEXP="$3"
+    fi
+    test -z "$TEST_REGEXP" && TEST_REGEXP=".*"
+    DEFAULT="$4"
     export REPLY=""
     export QUERY_REPLY=""
 
@@ -38,16 +46,29 @@ function query
 
     if test "`uname`" = "SunOS"
     then
-        if test -z "$REGEXP"
-        then
-            REGEXP=".*"
-        fi
-        if test -z "$DEFAULT"
-        then
-            REPLY=`ckstr -Q -r "$REGEXP" -p "$QUERY" -e "$ERROR"`
-        else
-            REPLY=`ckstr -Q -r "$REGEXP" -p "$QUERY" -e "$ERROR" -d "$DEFAULT"`
-        fi
+        OK="no"
+        until test "$OK" = "ok"
+        do
+            if test -z "$DEFAULT"
+            then
+                REPLY=`ckstr -Q -r "$TEST_REGEXP" -p "$QUERY" -e "$ERROR"`
+            else
+                REPLY=`ckstr -Q -r "$TEST_REGEXP" -p "$QUERY" -e "$ERROR" -d "$DEFAULT"`
+            fi
+
+            if test "$TEST_FUNCTION" = "PING"
+            then
+                ping -c 2 "$REPLY" > /dev/null 2>&1
+                test $? -eq 0 && OK="ok"
+
+                if test "$OK" = "no"
+                then
+                    echo "        Error: $ERROR"
+                fi
+            else
+                OK="ok"
+            fi
+        done
     fi
 
     if test "`uname`" = "Linux"
@@ -55,13 +76,19 @@ function query
         OK="no"
         until test "$OK" = "ok"
         do
-            read -p "$QUERY [?] "
+            read -e -p "$QUERY [?] "
             if test -z "$REPLY"
             then
                 REPLY="$DEFAULT"
             fi
 
-            OK=`echo "$REPLY" | "$AWK" '/'$REGEXP'/ { print "ok"; exit } { print "no" }'`
+            if test "$TEST_FUNCTION" = "PING"
+            then
+                ping -c 2 "$REPLY" > /dev/null 2>&1
+                test $? -eq 0 && OK="ok"
+            else
+                OK="`echo "$REPLY" | awk '/'$TEST_REGEXP'/ { print "ok"; exit } { print "no" }'`"
+            fi
             if test "$OK" = "no"
             then
                 echo "        Error: $ERROR"
@@ -437,10 +464,11 @@ function get_ip_ping
 
 function get_ip
 {
-    test -z "$1" && echo "127.0.0.1" && return 0
+    local HOST="$1"
+    test -z "$HOST" && HOST="`hostname`"
 
-    local GET_IP="`get_ip_arp "$1"`"
-    test -z "$GET_IP" && GET_IP="`get_ip_ping "$1"`"
+    local GET_IP="`get_ip_arp "$HOST"`"
+    test -z "$GET_IP" && GET_IP="`get_ip_ping "$HOST"`"
     echo "$GET_IP"
 }
 
@@ -463,6 +491,219 @@ function is_localhost
 function get_id
 {
     id | "$AWK" 'BEGIN { FS="[()]"; } { print $2; }'
+}
+
+function ssh_scanid
+# $1 @user scan to user
+# $2 scan hosts
+# ssh_scanid @root host `get_ip host`
+{
+    local SCAN_HOSTS=""
+    local SCAN_USER=""
+    local SCAN_USER_HOME=""
+    local SCAN_USER_HOME_SSH=""
+    local SCAN_USER_HOME_SSH_HOSTS=""
+    local PARAM
+    for PARAM in "$@"
+    do
+        test "${PARAM:0:1}" = "@" && SCAN_USER="${PARAM:1}" && continue
+        SCAN_HOSTS="$SCAN_HOSTS $PARAM"
+    done
+    SCAN_HOSTS="${SCAN_HOSTS:1}"
+
+    test -z "$SCAN_USER" && SCAN_USER_HOME=~ || SCAN_USER_HOME="`eval echo "~$SCAN_USER"`"
+    SCAN_USER_HOME_SSH="$SCAN_USER_HOME/.ssh"
+    SCAN_USER_HOME_SSH_HOSTS="$SCAN_USER_HOME/.ssh/known_hosts"
+
+    test -d $SCAN_USER_HOME_SSH || mkdir $SCAN_USER_HOME_SSH
+    chown --reference=$SCAN_USER_HOME $SCAN_USER_HOME_SSH
+    touch $SCAN_USER_HOME_SSH_HOSTS
+    chown --reference=$SCAN_USER_HOME $SCAN_USER_HOME_SSH_HOSTS
+
+    #echo "Scan host ids $SCAN_HOSTS to $SCAN_USER_HOME_SSH_HOSTS"
+    ssh-keyscan $SCAN_HOSTS >> "$SCAN_USER_HOME_SSH_HOSTS" 2> /dev/null
+    cp "$SCAN_USER_HOME_SSH_HOSTS" "${SCAN_USER_HOME_SSH_HOSTS}_orig"
+    cat "${SCAN_USER_HOME_SSH_HOSTS}_orig" | sort -u > "$SCAN_USER_HOME_SSH_HOSTS"
+    rm -f "${SCAN_USER_HOME_SSH_HOSTS}_orig"
+}
+
+function ssh_scanremoteid
+# ssh_scanremoteid %root              user@local@host
+#                  ^ use key from     ^^^ connect to host with user, scan to local user
+{
+    local USEID_USER=""
+    local USEID_FILE=""
+    local DESTINATIONS=""
+    local PARAM
+    for PARAM in "$@"
+    do
+        test "${PARAM:0:1}" = "%" && USEID_USER="${PARAM:1}" && continue
+        DESTINATIONS="$DESTINATIONS $PARAM"
+    done
+    DESTINATIONS="${DESTINATIONS:1}"
+
+    test -z "$USEID_USER" && USEID_HOME=~/".ssh" || USEID_HOME="`eval echo "~$USEID_USER/.ssh"`"
+    for TEST_FILE in "$USEID_HOME/id_rsa" "$USEID_HOME/id_dsa"
+    do
+        test -f "$TEST_FILE" && USEID_FILE="$TEST_FILE" && break
+    done
+    test -z "$USEID_FILE" && return 2
+
+    local DESTINATION
+    for DESTINATION in $DESTINATIONS
+    do
+        local DEST_HOST="${DESTINATION##*@}"
+        local DEST_USER="${DESTINATION%@*}"
+        local DEST_LOCAL_USER="${DESTINATION%@*}"
+        local DEST_USER="${DEST_USER%@*}"
+        local DEST_LOCAL_USER="${DEST_LOCAL_USER#*@}"
+        #echo "Use $USEID_FILE and scan via $DEST_USER @ $DEST_HOST to user $DEST_LOCAL_USER"
+        ssh -i $USEID_FILE $DEST_USER@$DEST_HOST "
+            umask 077
+            DEST_HOME=~$DEST_LOCAL_USER
+            DEST_HOME_SSH=~$DEST_LOCAL_USER/.ssh
+            DEST_HOME_SSH_HOSTS=~$DEST_LOCAL_USER/.ssh/known_hosts
+            test -d \$DEST_HOME_SSH || mkdir \$DEST_HOME_SSH
+            chown --reference=\$DEST_HOME \$DEST_HOME_SSH
+            touch \$DEST_HOME_SSH_HOSTS
+            chown --reference=\$DEST_HOME \$DEST_HOME_SSH_HOSTS
+            ssh-keyscan `hostname` `hostname --fqdn` `hostname --short` `get_ip` >> \$DEST_HOME_SSH_HOSTS 2> /dev/null
+            test -x /sbin/restorecon && /sbin/restorecon \$DEST_HOME_SSH \$DEST_HOME_SSH_HOSTS >/dev/null 2>&1 || true
+            cp \$DEST_HOME_SSH_HOSTS \${DEST_HOME_SSH_HOSTS}_orig
+            cat \${DEST_HOME_SSH_HOSTS}_orig | sort -u > \$DEST_HOME_SSH_HOSTS
+            rm -f \${DEST_HOME_SSH_HOSTS}_orig
+            " || return 1
+    done
+}
+
+function ssh_exportid
+# ssh_exportid %root              @nmsadm             user@local@host
+#              ^ use key from     ^^ copy key from    ^^^ connect to host with user, copy to local user
+{
+    local USEID_USER=""
+    local USEID_FILE=""
+    local COPYID_USER=""
+    local COPYID_FILE=""
+    local DESTINATIONS=""
+    local PARAM
+    for PARAM in "$@"
+    do
+        test "${PARAM:0:1}" = "%" && USEID_USER="${PARAM:1}" && continue
+        test "${PARAM:0:1}" = "@" && COPYID_USER="${PARAM:1}" && continue
+        DESTINATIONS="$DESTINATIONS $PARAM"
+    done
+    DESTINATIONS="${DESTINATIONS:1}"
+
+    test -z "$COPYID_USER" && COPYID_HOME=~/".ssh" || COPYID_HOME="`eval echo "~$COPYID_USER/.ssh"`"
+    for TEST_FILE in "$COPYID_HOME/id_rsa" "$COPYID_HOME/id_dsa"
+    do
+        test -f "$TEST_FILE" && COPYID_FILE="$TEST_FILE" && break
+    done
+    test -z "$COPYID_FILE" && return 2
+
+    test -z "$USEID_USER" && USEID_HOME=~/".ssh" || USEID_HOME="`eval echo "~$USEID_USER/.ssh"`"
+    for TEST_FILE in "$USEID_HOME/id_rsa" "$USEID_HOME/id_dsa"
+    do
+        test -f "$TEST_FILE" && USEID_FILE="$TEST_FILE" && break
+    done
+    test -z "$USEID_FILE" && return 2
+
+    local DESTINATION
+    for DESTINATION in $DESTINATIONS
+    do
+        local DEST_HOST="${DESTINATION##*@}"
+        local DEST_USER="${DESTINATION%@*}"
+        local DEST_LOCAL_USER="${DESTINATION%@*}"
+        local DEST_USER="${DEST_USER%@*}"
+        local DEST_LOCAL_USER="${DEST_LOCAL_USER#*@}"
+        #echo "Use $USEID_FILE and copy ${COPYID_FILE}.pub via $DEST_USER @ $DEST_HOST to user $DEST_LOCAL_USER"
+        cat "${COPYID_FILE}.pub" | ssh -i $USEID_FILE $DEST_USER@$DEST_HOST "
+            umask 077
+            DEST_HOME=~$DEST_LOCAL_USER
+            DEST_HOME_SSH=~$DEST_LOCAL_USER/.ssh
+            DEST_HOME_SSH_KEYS=~$DEST_LOCAL_USER/.ssh/authorized_keys
+            test -d \$DEST_HOME_SSH || mkdir \$DEST_HOME_SSH
+            chown --reference=\$DEST_HOME \$DEST_HOME_SSH
+            touch \$DEST_HOME_SSH_KEYS
+            chown --reference=\$DEST_HOME \$DEST_HOME_SSH_KEYS
+            cat >> \$DEST_HOME_SSH_KEYS
+            test -x /sbin/restorecon && /sbin/restorecon \$DEST_HOME_SSH \$DEST_HOME_SSH_KEYS >/dev/null 2>&1 || true
+            cp \$DEST_HOME_SSH_KEYS \${DEST_HOME_SSH_KEYS}_orig
+            cat \${DEST_HOME_SSH_KEYS}_orig | sort -u > \$DEST_HOME_SSH_KEYS
+            rm -f \${DEST_HOME_SSH_KEYS}_orig
+            " || return 1
+    done
+}
+
+function ssh_importid
+# ssh_importid %root              @nmsadm             user@local@host
+#              ^ use key from     ^^ copy key to      ^^^ connect to host with user, copy from local user
+#    "ssh_importid %current @current user@user@host" is equal to "ssh_importid user@host"
+{
+    local USEID_USER=""
+    local USEID_FILE=""
+    local COPYID_USER=""
+    local COPYID_FILE=""
+    local DESTINATIONS=""
+    local PARAM
+    for PARAM in "$@"
+    do
+        test "${PARAM:0:1}" = "%" && USEID_USER="${PARAM:1}" && continue
+        test "${PARAM:0:1}" = "@" && COPYID_USER="${PARAM:1}" && continue
+        DESTINATIONS="$DESTINATIONS $PARAM"
+    done
+    DESTINATIONS="${DESTINATIONS:1}"
+
+    test -z "$USEID_USER" && USEID_HOME=~/".ssh" || USEID_HOME="`eval echo "~$USEID_USER/.ssh"`"
+    for TEST_FILE in "$USEID_HOME/id_rsa" "$USEID_HOME/id_dsa"
+    do
+        test -f "$TEST_FILE" && USEID_FILE="$TEST_FILE" && break
+    done
+    test -z "$USEID_FILE" && return 2
+
+    local DESTINATION
+    for DESTINATION in $DESTINATIONS
+    do
+        local DEST_HOST="${DESTINATION##*@}"
+        local DEST_USER="${DESTINATION%@*}"
+        local DEST_USER="${DEST_USER%@*}"
+        local DEST_LOCAL_USER="${DESTINATION%@*}"
+        local DEST_LOCAL_USER="${DEST_LOCAL_USER#*@}"
+        local DESTID_FILE=""
+
+        #echo "Use $USEID_FILE and copy id via $DEST_USER @ $DEST_HOST to user $DEST_LOCAL_USER"
+
+        test -z "$COPYID_USER" && COPYID_HOME=~ || COPYID_HOME="`eval echo "~$COPYID_USER"`"
+        COPYID_HOME_SSH="$COPYID_HOME/.ssh"
+        COPYID_HOME_SSH_KEYS="$COPYID_HOME_SSH/authorized_keys"
+
+        test -z "$DEST_LOCAL_USER" && DEST_HOME="~" || DEST_HOME="~$DEST_LOCAL_USER"
+        DEST_HOME_SSH="$DEST_HOME/.ssh"
+
+        test -d $COPYID_HOME_SSH || mkdir $COPYID_HOME_SSH
+        chown --reference=$COPYID_HOME $COPYID_HOME_SSH
+        touch $COPYID_HOME_SSH_KEYS
+        chown --reference=$COPYID_HOME $COPYID_HOME_SSH_KEYS
+
+        for TEST_FILE in "$DEST_HOME_SSH/id_rsa.pub" "$DEST_HOME_SSH/id_dsa.pub"
+        do
+            ssh -i $USEID_FILE $DEST_USER@$DEST_HOST "test -f $TEST_FILE"
+            test $? -eq 0 && DESTID_FILE="$TEST_FILE" && break
+        done
+        test -z "$DESTID_FILE" && return 2
+
+        scp -i $USEID_FILE $DEST_USER@$DEST_HOST:$DESTID_FILE $COPYID_HOME_SSH/id_import.pub > /dev/null 2>&1
+        if test $? -eq 0
+        then
+            cat $COPYID_HOME_SSH/id_import.pub >> $COPYID_HOME_SSH_KEYS
+            rm -f $COPYID_HOME_SSH/id_import.pub
+            cp $COPYID_HOME_SSH_KEYS ${COPYID_HOME_SSH_KEYS}_orig
+            cat ${COPYID_HOME_SSH_KEYS}_orig | sort -u > $COPYID_HOME_SSH_KEYS
+            rm -f ${COPYID_HOME_SSH_KEYS}_orig
+        else
+            return 1
+        fi
+    done
 }
 
 function call_command
@@ -777,11 +1018,19 @@ export -f lr_file_line_add1
 
 export -f set_config_option
 
+export -f check_ssh
+export -f check_internet
+
 export -f get_ip_arp
 export -f get_ip_ping
 export -f get_ip
 export -f is_localhost
 export -f get_id
+
+export -f ssh_scanid
+export -f ssh_scanremoteid
+export -f ssh_exportid
+export -f ssh_importid
 
 export CALL_COMMAND_DEFAULT_USER=""
 export -f call_command

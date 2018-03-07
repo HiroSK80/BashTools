@@ -134,7 +134,7 @@ function set_config_option
     if test -e "$CONFIG_FILE"
     then
         cat "$CONFIG_FILE" > "$CONFIG_TEMP_FILE"
-        cat "$CONFIG_TEMP_FILE" | "$AWK" '/^'$OPTION'=/ { print "'"$OPTION"'=\"'"$VALUE"'\""; next } { print }' > "$CONFIG_FILE"
+        cat "$CONFIG_TEMP_FILE" | "$AWK" 'BEGIN { found=0; } /^'$OPTION'=/ { print "'"$OPTION"'=\"'"$VALUE"'\""; found=1; next; } { print; } END { if (found == 0) print "'"$OPTION"'=\"'"$VALUE"'\""; }' > "$CONFIG_FILE"
         if test -s "$CONFIG_FILE"
         then
             /bin/rm -f "$CONFIG_TEMP_FILE"
@@ -143,6 +143,8 @@ function set_config_option
             /bin/rm -f "$CONFIG_TEMP_FILE"
             echo_error "file $CONFIG_FILE new configuration \"$OPTION=\"$VALUE\"\" change fail" 99
         fi
+    else
+        echo "$OPTION=\"$VALUE\"" > "$CONFIG_FILE"
     fi
 }
 

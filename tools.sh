@@ -114,7 +114,7 @@ function file_line_add1
     local LINE="$2"
     local REGEXP="$3"
 
-    if ! "$GREP" -q -F "$LINE" "$FILE"
+    if ! "$GREP" --quiet --line-regexp --fixed-strings "$LINE" "$FILE"
     then
         file_line_add "$FILE" "$LINE" "$REGEXP"
     fi

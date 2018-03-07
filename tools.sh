@@ -7,12 +7,27 @@
 # -color yes|no
 # -uname yes|no
 
-query()
+export INCLUDE_TOOLS="yes"
+
+if test "`uname`" = "SunOS"
+then
+    export AWK="/usr/bin/nawk"
+    export GREP="/usr/xpg4/bin/grep"
+fi
+if test "`uname`" = "Linux"
+then
+    export AWK="/bin/awk"
+    export GREP="/bin/grep"
+fi
+
+function query
 {
-    QUESTION="$1"
-    ERROR="$2"
-    REGEXP="$3"
-    DEFAULT="$4"
+    local QUESTION="$1"
+    local ERROR="$2"
+    local REGEXP="$3"
+    local DEFAULT="$4"
+    export REPLY=""
+    export QUERY_REPLY=""
 
     if test -z "$DEFAULT"
     then
@@ -46,7 +61,7 @@ query()
                 REPLY="$DEFAULT"
             fi
 
-            OK=`echo "$REPLY" | awk '/'$REGEXP'/ { print "ok"; exit } { print "no" }'`
+            OK=`echo "$REPLY" | "$AWK" '/'$REGEXP'/ { print "ok"; exit } { print "no" }'`
             if test "$OK" = "no"
             then
                 echo "        Error: $ERROR"
@@ -54,7 +69,32 @@ query()
         done
     fi
 
+    export REPLY
+    export QUERY_REPLY="$REPLY"
     #echo $REPLY
+}
+
+function get_remote_file
+# $1 ssh connect: user@host
+# $2 remote file
+{
+    local REMOTE_SSH="$1"
+    local REMOTE_FILE="$2"
+    LOCAL_TEMP_FILE="/tmp/`basename "$REMOTE_FILE"`.$SIMUL_PID"
+    rm -f "$LOCAL_TEMP_FILE"
+    scp -q "$REMOTE_SSH":"$REMOTE_FILE" "$LOCAL_TEMP_FILE" || return 1
+    #echo "$LOCAL_TEMP_FILE"
+}
+
+function put_remote_file
+# $1 ssh connect: user@host
+# $2 remote file
+{
+    local REMOTE_SSH="$1"
+    local REMOTE_FILE="$2"
+    LOCAL_TEMP_FILE="/tmp/`basename "$REMOTE_FILE"`.$SIMUL_PID"
+    scp -q "$LOCAL_TEMP_FILE" "$REMOTE_SSH":"$REMOTE_FILE" || return 1
+    rm -f "$LOCAL_TEMP_FILE"
 }
 
 function file_line_remove
@@ -84,7 +124,7 @@ function file_line_add
 # $3 add after this regexp line
 {
     local FILE="$1"
-    local TEMP_FILE="/tmp/`basename "$FILE"`.tmp"
+    local TEMP_FILE="/tmp/`basename "$FILE"`.tmp.$$"
     local LINE="$2"
     local REGEXP="$3"
 
@@ -95,7 +135,7 @@ function file_line_add
         echo "$LINE" >> "$FILE"
     else
         cat "$FILE" > "$TEMP_FILE"
-        cat "$TEMP_FILE" | awk 'BEGIN { p=0; } /'"$REGEXP"'/ { print $0; p=1; print "'"$LINE"'"; next } { print; } END { if (p==0) print "'"$LINE"'"; }' > "$FILE"
+        cat "$TEMP_FILE" | "$AWK" 'BEGIN { p=0; } /'"$REGEXP"'/ { print $0; p=1; print "'"$LINE"'"; next } { print; } END { if (p==0) print "'"$LINE"'"; }' > "$FILE"
         if test -s "$FILE"
         then
             /bin/rm -f "$TEMP_FILE"
@@ -119,6 +159,52 @@ function file_line_add1
     if ! "$GREP" --quiet --line-regexp --fixed-strings "$LINE" "$FILE"
     then
         file_line_add "$FILE" "$LINE" "$REGEXP"
+    fi
+}
+
+function lr_file_line_add
+# $1 ssh connect: user@host
+# $* as for file_line_add1 function
+{
+    local REMOTE_SSH="$1"
+    shift
+
+    local FILE="$1"
+    local LINE="$2"
+    local REGEXP="$3"
+    
+    if is_localhost "`echo "$REMOTE_SSH" | sed 's/^.*@//'`"
+    then
+        file_line_add1 "$FILE" "$LINE" "$REGEXP"
+    else
+        get_remote_file "$REMOTE_SSH" "$FILE"
+        #ls -la "$LOCAL_TEMP_FILE"
+        file_line_add "$FILE" "$LINE" "$REGEXP"
+        #ls -la "$LOCAL_TEMP_FILE"
+        put_remote_file "$REMOTE_SSH" "$FILE"
+    fi
+}
+
+function lr_file_line_add1
+# $1 ssh connect: user@host
+# $* as for file_line_add1 function
+{
+    local REMOTE_SSH="$1"
+    shift
+
+    local FILE="$1"
+    local LINE="$2"
+    local REGEXP="$3"
+    
+    if is_localhost "`echo "$REMOTE_SSH" | sed 's/^.*@//'`"
+    then
+        file_line_add1 "$FILE" "$LINE" "$REGEXP"
+    else
+        get_remote_file "$REMOTE_SSH" "$FILE"
+        #ls -la "$LOCAL_TEMP_FILE"
+        file_line_add1 "$LOCAL_TEMP_FILE" "$LINE" "$REGEXP"
+        #ls -la "$LOCAL_TEMP_FILE"
+        put_remote_file "$REMOTE_SSH" "$FILE"
     fi
 }
 
@@ -150,10 +236,10 @@ function set_config_option
 
 function get_ip_arp
 {
-    local GET_IP_ARP="`arp "$1" 2> /dev/null | $AWK 'BEGIN { FS="[()]"; } { print $2; }'`"
+    local GET_IP_ARP="`arp "$1" 2> /dev/null | "$AWK" 'BEGIN { FS="[()]"; } { print $2; }'`"
     if test "`uname`" = "Linux" -a -z "$GET_IP_ARP"
     then
-        GET_IP_ARP="`arp -n "$1" | awk '/ether/ { print $1; }'`"
+        GET_IP_ARP="`arp -n "$1" | "$AWK" '/ether/ { print $1; }'`"
     fi
     echo "$GET_IP_ARP"
 }
@@ -162,11 +248,11 @@ function get_ip_ping
 {
     if test "`uname`" = "SunOS"
     then
-        ping -s "$1" 1 1 | grep "bytes from" | $AWK 'BEGIN { FS="[()]"; } { print $2; }'
+        ping -s "$1" 1 1 | grep "bytes from" | "$AWK" 'BEGIN { FS="[()]"; } { print $2; }'
     fi
     if test "`uname`" = "Linux"
     then
-        ping -q -c 1 -t 1 "$1" | grep PING | $AWK 'BEGIN { FS="[()]"; } { print $2; }'
+        ping -q -c 1 -t 1 "$1" | grep PING | "$AWK" 'BEGIN { FS="[()]"; } { print $2; }'
     fi
 }
 
@@ -193,42 +279,38 @@ function is_localhost
 
 function get_id
 {
-    id | $AWK 'BEGIN { FS="[()]"; } { print $2; }'
+    id | "$AWK" 'BEGIN { FS="[()]"; } { print $2; }'
+}
+
+function kill_tree_childs
+{
+    local TOPMOST="$1"
+    local CHECK_PID=$2
+    CHILD_PIDS="`ps -o pid --no-headers --ppid ${CHECK_PID}`"
+    for CHILD_PID in $CHILD_PIDS
+    do
+        kill_tree_childs "yes" "$CHILD_PID"
+    done
+    if test "$TOPMOST" = "yes" -a "$CHECK_PID" != "$$"
+    then
+        kill -9 "$CHECK_PID" 2>/dev/null
+    fi
+}
+
+function kill_tree
+{
+    KILL_LIST=""
+    for I in $*
+    do
+        kill_tree_childs "yes" $I
+    done
 }
 
 # echo $TERM
 # ok xterm/rxvt/konsole/linux
 # no dumb/sun
 
-if test "`uname`" = "SunOS"
-then
-    AWK="/usr/bin/nawk"
-    GREP="/usr/xpg4/bin/grep"
-fi
-if test "`uname`" = "Linux"
-then
-    AWK="/bin/awk"
-    GREP="/bin/grep"
-fi
-
-if test "`echo "$TERM" | cut -c 1-5`" = "xterm" -o "$TERM" = "rxvt" -o "$TERM" = "konsole" -o "$TERM" = "linux"
-then
-    COLOR_RESET="\033[0m"
-    COLOR_RED="\E[1m\E[31m"
-    COLOR_GREEN="\E[1m\E[32m"
-    COLOR_WHITE="\E[1m"
-    COLOR_YELLOW="\E[1m\E[33m"
-    COLOR_CYAN="\E[1m\E[36m"
-else
-    COLOR_RESET=""
-    COLOR_RED=""
-    COLOR_GREEN=""
-    COLOR_WHITE=""
-    COLOR_YELLOW=""
-    COLOR_CYAN=""
-fi
-
-echo_step()
+function echo_step
 {
     if test "$OPTION_COLOR" = "yes"
     then
@@ -238,7 +320,7 @@ echo_step()
     fi
 }
 
-echo_info()
+function echo_info
 {
     if test "$OPTION_COLOR" = "yes"
     then
@@ -248,7 +330,7 @@ echo_info()
     fi
 }
 
-echo_debug()
+function echo_debug
 {
     if test "$OPTION_DEBUG" = "yes"
     then
@@ -274,7 +356,7 @@ function echo_debug_var
     echo_debug "$VAR_LIST"
 }
 
-echo_error()
+function echo_error
 {
     if test "$OPTION_COLOR" = "yes"
     then
@@ -283,7 +365,6 @@ echo_error()
         echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_ERROR_PREFIX}$@"
     fi
 }
-
 
 function echo_error_exit
 {
@@ -356,9 +437,55 @@ then
     #echo "Color is $OPTION_COLOR"
 fi
 
+if test "$OPTION_COLOR" = "yes"
+then
+    COLOR_RESET="\033[0m"
+    COLOR_RED="\E[1m\E[31m"
+    COLOR_GREEN="\E[1m\E[32m"
+    COLOR_WHITE="\E[1m"
+    COLOR_YELLOW="\E[1m\E[33m"
+    COLOR_CYAN="\E[1m\E[36m"
+else
+    COLOR_RESET=""
+    COLOR_RED=""
+    COLOR_GREEN=""
+    COLOR_WHITE=""
+    COLOR_YELLOW=""
+    COLOR_CYAN=""
+fi
+
 if test "$OPTION_UNAME" = "yes"
 then
     ECHO_UNAME="`uname -n`: "
 else
     ECHO_UNAME=""
 fi
+
+export -f query
+
+export -f get_remote_file
+export -f put_remote_file
+
+export -f file_line_remove
+export -f file_line_add
+export -f file_line_add1
+export -f lr_file_line_add
+export -f lr_file_line_add1
+
+export -f set_config_option
+
+export -f get_ip_arp
+export -f get_ip_ping
+export -f get_ip
+export -f is_localhost
+export -f get_id
+
+export -f kill_tree_childs
+export -f kill_tree
+
+export -f echo_step
+export -f echo_info
+export -f echo_debug
+export -f echo_debug_var
+export -f echo_error
+export -f echo_error_exit

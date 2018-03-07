@@ -58,6 +58,10 @@ query()
     #echo $REPLY
 }
 
+# echo $TERM
+# ok xterm/rxvt/konsole/linux
+# no dumb/sun
+
 if test "`uname`" = "SunOS"
 then
     AWK="/usr/bin/nawk"
@@ -67,14 +71,28 @@ then
     AWK="/bin/awk"
 fi
 
+if test "`echo "$TERM" | cut -c 1-5`" = "xterm" -o "$TERM" = "rxvt" -o "$TERM" = "konsole" -o "$TERM" = "linux"
+then
+    COLOR_RESET="\033[0m"
+    COLOR_RED="\E[1m\E[31m"
+    COLOR_GREEN="\E[1m\E[32m"
+    COLOR_WHITE="\E[1m"
+    COLOR_YELLOW="\E[1m\E[33m"
+    COLOR_CYAN="\E[1m\E[36m"
+else
+    COLOR_RESET=""
+    COLOR_RED=""
+    COLOR_GREEN=""
+    COLOR_WHITE=""
+    COLOR_YELLOW=""
+    COLOR_CYAN=""
+fi
+
 echo_step()
 {
-    # ok xterm/rxvt
-    # no dumb/sun
-    
     if test "$OPTION_COLOR" = "yes"
     then
-        echo -e "\E[1m${ECHO_PREFIX}${ECHO_UNAME}$*\033[0m"
+        echo -e "${COLOR_WHITE}${ECHO_PREFIX}${ECHO_UNAME}$*${COLOR_RESET}"
     else
         echo "${ECHO_PREFIX}${ECHO_UNAME}$*"
     fi
@@ -84,7 +102,7 @@ echo_info()
 {
     if test "$OPTION_COLOR" = "yes"
     then
-        echo -e "\E[1m\E[33m${ECHO_PREFIX}${ECHO_UNAME}$*\033[0m"
+        echo -e "${COLOR_YELLOW}${ECHO_PREFIX}${ECHO_UNAME}$*${COLOR_RESET}"
     else
         echo "${ECHO_PREFIX}${ECHO_UNAME}$*"
     fi
@@ -96,7 +114,7 @@ echo_debug()
     then
         if test "$OPTION_COLOR" = "yes"
         then
-            echo -e "\E[1m\E[36m${ECHO_PREFIX}${ECHO_UNAME}$*\033[0m"
+            echo -e "${COLOR_CYAN}${ECHO_PREFIX}${ECHO_UNAME}$*${COLOR_RESET}"
         else
             echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_DEBUG_PREFIX}$*"
         fi
@@ -107,7 +125,7 @@ echo_error()
 {
     if test "$OPTION_COLOR" = "yes"
     then
-        echo -e "\E[1m\E[31m${ECHO_PREFIX}${ECHO_UNAME}$*\033[0m"
+        echo -e "$COLOR_RED${ECHO_PREFIX}${ECHO_UNAME}$*$COLOR_RESET"
     else
         echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_ERROR_PREFIX}$*"
     fi
@@ -170,7 +188,7 @@ fi
 if test "$OPTION_COLOR" != "yes" -a "$OPTION_COLOR" != "no"
 then
     #echo "Color is \"$OPTION_COLOR\"; setting..."
-    if test "`echo "$TERM" | cut -c 1-5`" = "xterm" -o "$TERM" = "rxvt" -o "$TERM" = "konsole"
+    if test "`echo "$TERM" | cut -c 1-5`" = "xterm" -o "$TERM" = "rxvt" -o "$TERM" = "konsole" -o "$TERM" = "linux"
     then
         OPTION_COLOR="yes"
     else

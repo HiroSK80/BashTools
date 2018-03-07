@@ -144,6 +144,54 @@ function set_config_option
     fi
 }
 
+function get_ip_arp
+{
+    local GET_IP_ARP="`arp "$1" 2> /dev/null | $AWK 'BEGIN { FS="[()]"; } { print $2; }'`"
+    if test "`uname`" = "Linux" -a -z "$GET_IP_ARP"
+    then
+        GET_IP_ARP="`arp -n "$1" | awk '/ether/ { print $1; }'`"
+    fi
+    echo "$GET_IP_ARP"
+}
+
+function get_ip_ping
+{
+    if test "`uname`" = "SunOS"
+    then
+        ping -s "$1" 1 1 | grep "bytes from" | $AWK 'BEGIN { FS="[()]"; } { print $2; }'
+    fi
+    if test "`uname`" = "Linux"
+    then
+        ping -q -c 1 -t 1 "$1" | grep PING | $AWK 'BEGIN { FS="[()]"; } { print $2; }'
+    fi
+}
+
+function get_ip
+{
+    local GET_IP="`get_ip_arp $1`"
+    test -z "$GET_IP" && GET_IP="`get_ip_ping $1`"
+    echo "$GET_IP"
+}
+
+function is_localhost
+{
+    UNAME_N="`uname -n`"
+    UNAME_IP="`get_ip $UNAME_N`"
+    REMOTE_IP="`get_ip $1`"
+
+    if test -z "$1" -o "$1" = "localhost" -o "$1" = "127.0.0.1" -o "$1" = "$UNAME_N" -o "$REMOTE_IP" = "$UNAME_IP"
+    then
+        return 0
+    fi
+
+    return 1
+}
+
+function get_id
+{
+    id | $AWK 'BEGIN { FS="[()]"; } { print $2; }'
+}
+
 # echo $TERM
 # ok xterm/rxvt/konsole/linux
 # no dumb/sun

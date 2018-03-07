@@ -40,7 +40,6 @@ query()
         OK="no"
         until test "$OK" = "ok"
         do
-            echo
             read -p "$QUERY [?] "
             if test -z "$REPLY"
             then
@@ -88,12 +87,15 @@ function file_line_add
     local TEMP_FILE="/tmp/`basename "$FILE"`.tmp"
     local LINE="$2"
     local REGEXP="$3"
+
+    test -e "$FILE" || touch "$FILE"
+
     if test -z "$REGEXP"
     then
         echo "$LINE" >> "$FILE"
     else
         cat "$FILE" > "$TEMP_FILE"
-        cat "$TEMP_FILE" | "$AWK" '/'"$REGEXP"'/ { print $0; print "'"$LINE"'"; next } { print; }' > "$FILE"
+        cat "$TEMP_FILE" | awk 'BEGIN { p=0; } /'"$REGEXP"'/ { print $0; p=1; print "'"$LINE"'"; next } { print; } END { if (p==0) print "'"$LINE"'"; }' > "$FILE"
         if test -s "$FILE"
         then
             /bin/rm -f "$TEMP_FILE"

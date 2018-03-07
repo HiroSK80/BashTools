@@ -265,6 +265,7 @@ function echo_debug_var
     while test $# -gt 0
     do
         local VAR_NAME="$1"
+        shift
         test -n "$VAR_LIST" && VAR_LIST="$VAR_LIST "
         VAR_LIST="${VAR_LIST}${VAR_NAME}=${!VAR_NAME}"
     done

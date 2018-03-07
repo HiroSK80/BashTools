@@ -264,21 +264,31 @@ function file_line_remove
 function file_line_add
 # $1 filename
 # $2 add this line
-# $3 add after this regexp line
+# $3 add after this regexp line (or if not found put at end of file)
+# $4 replace this line (or if not found add after $3)
 {
     local FILE="$1"
     local TEMP_FILE="/tmp/`basename "$FILE"`.tmp.$$"
     local LINE="$2"
-    local REGEXP="$3"
+    local REGEXP_AFTER="$3"
+    local REGEXP_REPLACE="$4"
 
     test -e "$FILE" || touch "$FILE"
 
-    if test -z "$REGEXP"
+    if test -z "$REGEXP_AFTER$REGEXP_REPLACE"
     then
         echo "$LINE" >> "$FILE"
     else
         cat "$FILE" > "$TEMP_FILE"
-        cat "$TEMP_FILE" | "$AWK" 'BEGIN { p=0; } /'"$REGEXP"'/ { print $0; p=1; print "'"$LINE"'"; next } { print; } END { if (p==0) print "'"$LINE"'"; }' > "$FILE"
+        if test -n "$REGEXP_REPLACE" && `cat "$TEMP_FILE" | "$AWK" '/'"$REGEXP_REPLACE"'/ { exit 0; }'`
+        then
+            cat "$TEMP_FILE" | "$AWK" 'BEGIN { p=0; } /'"$REGEXP_REPLACE"'/ { p=1; print "'"$LINE"'"; next } { print; } END { if (p==0) print "'"$LINE"'"; }' > "$FILE"
+        elif test -n "$REGEXP_AFTER" && `cat "$TEMP_FILE" | "$AWK" '/'"$REGEXP_AFTER"'/ { exit 0; }'`
+        then
+            cat "$TEMP_FILE" | "$AWK" 'BEGIN { p=0; } /'"$REGEXP_AFTER"'/ { print $0; p=1; print "'"$LINE"'"; next } { print; } END { if (p==0) print "'"$LINE"'"; }' > "$FILE"
+        else
+            cat "$TEMP_FILE" | "$AWK" '{ print; } END { print "'"$LINE"'"; }' > "$FILE"
+        fi
         if test -s "$FILE"
         then
             /bin/rm -f "$TEMP_FILE"
@@ -290,19 +300,26 @@ function file_line_add
     fi
 }
 
-function file_line_add1
+function file_line_set
 # $1 filename
-# $2 add this line
-# $3 add after this regexp line
+# $2 add this line (and check before if there is not present)
+# $3 add after this regexp line (or if not found put at end of file)
+# $4 replace this line (or if not found add after $3)
 {
     local FILE="$1"
     local LINE="$2"
-    local REGEXP="$3"
+    local REGEXP_AFTER="$3"
+    local REGEXP_REPLACE="$4"
 
-    if ! "$GREP" --quiet --line-regexp --fixed-strings "$LINE" "$FILE"
+    if ! "$GREP" --quiet --line-regexp --fixed-strings -- "$LINE" "$FILE"
     then
-        file_line_add "$FILE" "$LINE" "$REGEXP"
+        file_line_add "$FILE" "$LINE" "$REGEXP_AFTER" "$REGEXP_REPLACE"
     fi
+}
+
+function file_line_add1
+{
+    file_line_set "$1" "$2" "$3" "$4"
 }
 
 function lr_file_line_add
@@ -375,6 +392,25 @@ function set_config_option
     else
         echo "$OPTION=\"$VALUE\"" > "$CONFIG_FILE"
     fi
+}
+
+function check_ssh
+# $1 [user@]hostname
+# $2 check via local username
+{
+    if test -z "$2"
+    then
+        ssh -q -o "BatchMode=yes" -o "ConnectTimeout=5" "$1" "exit" 2> /dev/null
+    else
+        su - "$2" "ssh -q -o \"BatchMode=yes\" -o \"ConnectTimeout=5\" \"$1\" \"exit\" 2> /dev/null"
+    fi
+    return $?
+}
+
+function check_internet
+{
+    curl --output /dev/null --silent "www.centos.org"
+    return $?
 }
 
 function get_ip_arp

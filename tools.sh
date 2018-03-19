@@ -6,9 +6,9 @@
 #       . "$TOOLS_FILE" --debug-right
 
 # options:
-# -prefix <prefix_string>
-# -color yes|no
-# -uname yes|no
+# --prefix
+# --color yes|no
+# --uname yes|no
 
 export TOOLS_LOADED="yes"
 
@@ -1559,6 +1559,158 @@ function history_store
     history -s "$1"
 }
 
+
+function colors_init
+{
+    # set colors to current terminal
+    #echo_debug "Initial color usage is set to $OPTION_COLOR and using $OPTION_COLORS colors"
+
+    # init color numbers
+    test_integer "$OPTION_COLORS" || OPTION_COLORS="2"
+
+    # init color usage if is not set
+    if ! test_yes "$OPTION_COLOR" -a ! test_no "$OPTION_COLOR"
+    then
+        if test "`echo "$TERM" | cut -c 1-5`" = "xterm" -o "$TERM" = "rxvt" -o "$TERM" = "konsole" -o "$TERM" = "linux" -o "$TERM" = "putty"
+        then
+            OPTION_COLOR="yes"
+            OPTION_COLORS="256"
+            test "$TERM" = "linux" && OPTION_COLORS="8"
+        else
+            OPTION_COLOR="no"
+            OPTION_COLORS="2"
+        fi
+        #echo "Color is $OPTION_COLOR"
+    fi
+
+    # init color names
+    if test_yes "$OPTION_COLOR"
+    then
+        # color definitions
+        COLOR_RESET="\033[0m"
+
+        COLOR_BLACK="\033[30m"
+        COLOR_RED="\033[31m"
+        COLOR_GREEN="\033[32m"
+        COLOR_YELLOW="\033[33m"
+        COLOR_BLUE="\033[34m"
+        COLOR_MAGENTA="\033[35m"
+        COLOR_CYAN="\033[36m"
+        COLOR_GRAY="\033[37m"
+        COLOR_LIGHT_GRAY="\033[37m"
+
+        if test $OPTION_COLORS -gt 8
+        then
+            COLOR_DARK_GRAY="\033[90m"
+            COLOR_LIGHT_RED="\033[91m"
+            COLOR_LIGHT_GREEN="\033[92m"
+            COLOR_LIGHT_YELLOW="\033[93m"
+            COLOR_LIGHT_BLUE="\033[94m"
+            COLOR_LIGHT_MAGENTA="\033[95m"
+            COLOR_LIGHT_CYAN="\033[96m"
+            COLOR_WHITE="\033[97m"
+
+            COLOR_ORANGE="\033[38;5;208m"
+            COLOR_CHARCOAL="\033[38;5;236m"
+        else
+            COLOR_DARK_GRAY="$COLOR_GRAY"
+            COLOR_LIGHT_RED="$COLOR_RED"
+            COLOR_LIGHT_GREEN="$COLOR_GREEN"
+            COLOR_LIGHT_YELLOW="$COLOR_YELLOW"
+            COLOR_LIGHT_BLUE="$COLOR_BLUE"
+            COLOR_LIGHT_MAGENTA="$COLOR_MAGENTA"
+            COLOR_LIGHT_CYAN="$COLOR_CYAN"
+            COLOR_WHITE="$COLOR_LIGHT_GRAY"
+
+            COLOR_ORANGE="$COLOR_RED"
+            COLOR_CHARCOAL="$COLOR_GRAY"
+        fi
+
+        # definitions for readline / awk / prompt
+        COLOR_RESET_E="\001${COLOR_RESET}\002"
+
+        COLOR_BLACK_E="\001${COLOR_BLACK}\002"
+        COLOR_RED_E="\001${COLOR_RED}\002"
+        COLOR_GREEN_E="\001${COLOR_GREEN}\002"
+        COLOR_YELLOW_E="\001${COLOR_YELLOW}\002"
+        COLOR_BLUE_E="\001${COLOR_BLUE}\002"
+        COLOR_MAGENTA_E="\001${COLOR_MAGENTA}\002"
+        COLOR_CYAN_E="\001${COLOR_CYAN}\002"
+        COLOR_GRAY_E="\001${COLOR_GRAY}\002"
+        COLOR_LIGHT_GRAY_E="\001${COLOR_LIGHT_GRAY}\002"
+
+        COLOR_DARK_GRAY_E="\001${COLOR_DARK_GRAY}\002"
+        COLOR_LIGHT_RED_E="\001${COLOR_LIGHT_RED}\002"
+        COLOR_LIGHT_GREEN_E="\001${COLOR_LIGHT_GREEN}\002"
+        COLOR_LIGHT_YELLOW_E="\001${COLOR_LIGHT_YELLOW}\002"
+        COLOR_LIGHT_BLUE_E="\001${COLOR_LIGHT_BLUE}\002"
+        COLOR_LIGHT_MAGENTA_E="\001${COLOR_LIGHT_MAGENTA}\002"
+        COLOR_LIGHT_CYAN_E="\001${COLOR_LIGHT_CYAN}\002"
+        COLOR_WHITE_E="\001${COLOR_WHITE}\002"
+
+        COLOR_ORANGE_E="\001${COLOR_ORANGE}\002"
+        COLOR_CHARCOAL_E="\001${COLOR_CHARCOAL}\002"
+    else
+        COLOR_RESET=""
+
+        COLOR_BLACK=""
+        COLOR_RED=""
+        COLOR_GREEN=""
+        COLOR_YELLOW=""
+        COLOR_BLUE=""
+        COLOR_MAGENTA=""
+        COLOR_CYAN=""
+        COLOR_GRAY=""
+        COLOR_LIGHT_GRAY=""
+
+        COLOR_DARK_GRAY=""
+        COLOR_LIGHT_RED=""
+        COLOR_LIGHT_GREEN=""
+        COLOR_LIGHT_YELLOW=""
+        COLOR_LIGHT_BLUE=""
+        COLOR_LIGHT_MAGENTA=""
+        COLOR_LIGHT_CYAN=""
+        COLOR_WHITE=""
+
+        COLOR_ORANGE=""
+        COLOR_CHARCOAL=""
+
+        COLOR_RESET_E=""
+
+        COLOR_BLACK_E=""
+        COLOR_RED_E=""
+        COLOR_GREEN_E=""
+        COLOR_YELLOW_E=""
+        COLOR_BLUE_E=""
+        COLOR_MAGENTA_E=""
+        COLOR_CYAN_E=""
+        COLOR_GRAY_E=""
+        COLOR_LIGHT_GRAY_E=""
+
+        COLOR_DARK_GRAY_E=""
+        COLOR_LIGHT_RED_E=""
+        COLOR_LIGHT_GREEN_E=""
+        COLOR_LIGHT_YELLOW_E=""
+        COLOR_LIGHT_BLUE_E=""
+        COLOR_LIGHT_MAGENTA_E=""
+        COLOR_LIGHT_CYAN_E=""
+        COLOR_WHITE_E=""
+
+        COLOR_ORANGE_E=""
+        COLOR_CHARCOAL_E=""
+    fi
+
+    # colors for echo_*
+    COLOR_INFO="$COLOR_LIGHT_YELLOW"
+    COLOR_STEP="$COLOR_WHITE"
+    COLOR_SUBSTEP="$COLOR_WHITE"
+    test $OPTION_COLORS -gt 8 && COLOR_DEBUG="$COLOR_CHARCOAL" || COLOR_DEBUG="$COLOR_BLUE"
+    COLOR_ERROR="$COLOR_LIGHT_RED"
+    COLOR_WARNING="$COLOR_CYAN"
+
+    #echo "Color usage is now set to $OPTION_COLOR and using $OPTION_COLORS colors"
+}
+
 ### tools exports
 
 export REDIRECT_DEBUG=/dev/stderr
@@ -1587,6 +1739,7 @@ export COLOR_YELLOW COLOR_YELLOW_E
 export COLOR_BLUE COLOR_BLUE_E
 export COLOR_MAGENTA COLOR_MAGENTA_E
 export COLOR_CYAN COLOR_CYAN_E
+export COLOR_GRAY COLOR_GRAY_E
 export COLOR_LIGHT_GRAY COLOR_LIGHT_GRAY_E
 
 export COLOR_DARK_GRAY COLOR_DARK_GRAY_E
@@ -1599,6 +1752,7 @@ export COLOR_LIGHT_CYAN COLOR_LIGHT_CYAN_E
 export COLOR_WHITE COLOR_WHITE_E
 
 export COLOR_ORANGE COLOR_ORANGE_E
+export COLOR_CHARCOAL COLOR_CHARCOAL_E
 
 export COLOR_INFO
 export COLOR_STEP
@@ -1732,12 +1886,15 @@ export -f history_init
 export -f history_restore
 export -f history_store
 
+export -f colors_init
+
+
 ### tools init
 
 while test $# -gt 0
 do
     check_arg_init
-    check_arg_switch "d|debug" "OPTION_DEBUG|yes" "$@" && set_debug right
+    check_arg_switch "d|debug" "OPTION_DEBUG|yes,$OPTION_DEBUG" "$@" && set_debug right
     check_arg_switch "|debug-right" "OPTION_DEBUG|right,$OPTION_DEBUG" "$@"
     check_arg_switch "|debug-function" "OPTION_DEBUG|function,$OPTION_DEBUG" "$@"
     check_arg_switch "p|prefix" "OPTION_PREFIX|yes" "$@"
@@ -1754,116 +1911,8 @@ do
     echo_error "Unknown argument: $1" 1
 done
 
-#if test -z "$ECHO_PREFIX_DEBUG"
-#then
-#    ECHO_PREFIX_DEBUG="@@@ "
-#fi
-
-#if test -z "$ECHO_PREFIX_ERROR"
-#then
-#    ECHO_PREFIX_ERROR="error: "
-#fi
-
-#if test -z "$OPTION_PREFIX"
-#then
-#    OPTION_PREFIX="yes"
-#fi
-
-test_yes "$OPTION_PREFIX" && ECHO_PREFIX="### "
-
+# set echo prefix or uname prefix
+test_yes "$OPTION_PREFIX" && ECHO_PREFIX="### " || ECHO_PREFIX=""
 test_yes "$OPTION_UNAME" && ECHO_UNAME="`uname -n`: " || ECHO_UNAME=""
 
-#echo "Color is \"$OPTION_COLOR - $OPTION_COLORS\"; setting..."
-test_integer "$OPTION_COLORS" || OPTION_COLORS="2"
-if ! test_yes "$OPTION_COLOR" -a ! test_no "$OPTION_COLOR"
-then
-    if test "`echo "$TERM" | cut -c 1-5`" = "xterm" -o "$TERM" = "rxvt" -o "$TERM" = "konsole" -o "$TERM" = "linux" -o "$TERM" = "putty"
-    then
-        OPTION_COLOR="yes"
-        OPTION_COLORS="256"
-        test "$TERM" = "linux" && OPTION_COLORS="8"
-    else
-        OPTION_COLOR="no"
-        OPTION_COLORS="2"
-    fi
-    #echo "Color is $OPTION_COLOR"
-fi
-
-if test_yes "$OPTION_COLOR"
-then
-    # color definitions
-    COLOR_RESET="\033[0m"
-
-    COLOR_BLACK="\033[30m"
-    COLOR_RED="\033[31m"
-    COLOR_GREEN="\033[32m"
-    COLOR_YELLOW="\033[33m"
-    COLOR_BLUE="\033[34m"
-    COLOR_MAGENTA="\033[35m"
-    COLOR_CYAN="\033[36m"
-    COLOR_GRAY="\033[37m"
-    COLOR_LIGHT_GRAY="\033[37m"
-
-    if test $OPTION_COLORS -gt 8
-    then
-        COLOR_DARK_GRAY="\033[90m"
-        COLOR_LIGHT_RED="\033[91m"
-        COLOR_LIGHT_GREEN="\033[92m"
-        COLOR_LIGHT_YELLOW="\033[93m"
-        COLOR_LIGHT_BLUE="\033[94m"
-        COLOR_LIGHT_MAGENTA="\033[95m"
-        COLOR_LIGHT_CYAN="\033[96m"
-        COLOR_WHITE="\033[97m"
-
-        COLOR_ORANGE="\033[38;5;208m"
-        COLOR_CHARCOAL="\033[38;5;236m"
-    else
-        COLOR_DARK_GRAY="$COLOR_GRAY"
-        COLOR_LIGHT_RED="$COLOR_RED"
-        COLOR_LIGHT_GREEN="$COLOR_GREEN"
-        COLOR_LIGHT_YELLOW="$COLOR_YELLOW"
-        COLOR_LIGHT_BLUE="$COLOR_BLUE"
-        COLOR_LIGHT_MAGENTA="$COLOR_MAGENTA"
-        COLOR_LIGHT_CYAN="$COLOR_CYAN"
-        COLOR_WHITE="$COLOR_LIGHT_GRAY"
-
-        COLOR_ORANGE="$COLOR_RED"
-        COLOR_CHARCOAL="$COLOR_GRAY"
-    fi
-
-    COLOR_INFO="$COLOR_LIGHT_YELLOW"
-    COLOR_STEP="$COLOR_WHITE"
-    COLOR_SUBSTEP="$COLOR_WHITE"
-    test $OPTION_COLORS -gt 8 && COLOR_DEBUG="$COLOR_CHARCOAL" || COLOR_DEBUG="$COLOR_BLUE"
-    COLOR_ERROR="$COLOR_LIGHT_RED"
-    COLOR_WARNING="$COLOR_CYAN"
-
-    # definitions for readline / awk / prompt
-    COLOR_RESET_E="\001${COLOR_RESET}\002"
-
-    COLOR_BLACK_E="\001${COLOR_BLACK}\002"
-    COLOR_RED_E="\001${COLOR_RED}\002"
-    COLOR_GREEN_E="\001${COLOR_GREEN}\002"
-    COLOR_YELLOW_E="\001${COLOR_YELLOW}\002"
-    COLOR_BLUE_E="\001${COLOR_BLUE}\002"
-    COLOR_MAGENTA_E="\001${COLOR_MAGENTA}\002"
-    COLOR_CYAN_E="\001${COLOR_CYAN}\002"
-    COLOR_LIGHT_GRAY="\001${COLOR_LIGHT_GRAY}\002"
-
-    COLOR_DARK_GRAY_E="\001${COLOR_DARK_GRAY}\002"
-    COLOR_LIGHT_RED_E="\001${COLOR_LIGHT_RED}\002"
-    COLOR_LIGHT_GREEN_E="\001${COLOR_LIGHT_GREEN}\002"
-    COLOR_LIGHT_YELLOW_E="\001${COLOR_LIGHT_YELLOW}\002"
-    COLOR_LIGHT_BLUE_E="\001${COLOR_LIGHT_BLUE}\002"
-    COLOR_LIGHT_MAGENTA_E="\001${COLOR_LIGHT_MAGENTA}\002"
-    COLOR_LIGHT_CYAN_E="\001${COLOR_LIGHT_CYAN}\002"
-    COLOR_WHITE_E="\001${COLOR_WHITE}\002"
-
-    COLOR_ORANGE_E="\001${COLOR_ORANGE}\002"
-
-    COLOR_CHARCOAL_E="\001${COLOR_CHARCOAL}\002"
-    COLOR_DEBUG_E="$COLOR_X_E"
-else
-    COLOR_RESET=""
-    COLOR_DEBUG=""
-fi
+colors_init

@@ -1581,7 +1581,7 @@ function echo_warning
 ### history
 
 function history_init
-# $1 history file
+# [$1] history file
 {
     shopt -u histappend
     test -z "$1" && export HISTFILE="$TOOLS_DIR/tools.history" || export HISTFILE="$1"
@@ -1786,17 +1786,19 @@ function tools_init
         check_arg_init
         check_arg_tools "$@"
         check_arg_shift && shift $CHECK_ARG_SHIFT && continue
-        if test -z "$TOOLS_FILE" -o -f "$1"
+        if test -z "$TOOLS_FILE" -a -f "$1"
         then
             test -f "$1" && TOOLS_FILE="$1"
-            TOOLS_NAME="`basename $TOOLS_FILE`"
-            TOOLS_DIR="`dirname $TOOLS_FILE`"
             shift && continue
         fi
         shift
         test_no OPTION_IGNORE_UNKNOWN && echo_error "Unknown argument for tools: $1" 1
         shift
     done
+
+    TOOLS_FILE="`readlink --canonicalize "$TOOLS_FILE"`"
+    TOOLS_NAME="`basename "$TOOLS_FILE"`"
+    TOOLS_DIR="`dirname "$TOOLS_FILE"`"
 }
 
 ### tools exports
@@ -1978,6 +1980,7 @@ export -f echo_error_function
 export -f echo_error_exit
 export -f echo_warning
 
+# needed TOOLS_FILE / TOOLS_DIR initialized in case history_init without log file name specified
 export -f history_init
 export -f history_restore
 export -f history_store

@@ -1193,36 +1193,59 @@ function call_command
 
 function get_pids
 {
-    ps -ef | $GREP --invert-match $$ | $AWK --assign=p="$1" --assign=s="$$" '$3==s { next; } $0~p { print $2; }'
+    ps -e -o pid,ppid,cmd | $AWK --assign=p="$1" --assign=s="$$" '$1==s||$2==s||/tools_get_pids_tag/ { next; } $0~p { print $1; }';
 }
 
-function kill_tree_childs
+function kill_tree_verbose
 {
-    local TOPMOST="$1"
-    local CHECK_PID=$2
-    CHILD_PIDS="`ps -o pid --no-headers --ppid ${CHECK_PID}`"
-    for CHILD_PID in $CHILD_PIDS
+    local SPACE="$1"
+    shift
+    test_yes KILL_ECHO && echo_line "${SPACE}Killing tree from parent PIDs: $*"
+    local CHECK_PID
+    for CHECK_PID in $*
     do
-        kill_tree_childs "yes" "$CHILD_PID"
-    done
-    if test_yes TOPMOST && test "$CHECK_PID" != "$$"
-    then
-        local FOUND_PID="`ps -ef | $AWK --assign p="$CHECK_PID" '$2==p { print "yes"; }'`"
-        if test_yes KILL_ECHO
+        CHILD_PIDS="`ps -o pid --no-headers --ppid ${CHECK_PID}`"
+        if test -n "$CHILD_PIDS"
         then
-            test_yes FOUND_PID \
-                && ps -ef | $AWK --assign p="$CHECK_PID" '$2==p { print "PID " p " killed: " $0; }' | echo_output \
-                || echo_line "PID $CHECK_PID already killed" | echo_output
+            echo_line "${SPACE}Found child PIDs from $CHECK_PID: "$CHILD_PIDS
+            kill_tree_verbose "$SPACE  " $CHILD_PIDS
+        else
+            echo_line "${SPACE}No child PIDs from $CHECK_PID" 
         fi
-        kill -9 "$CHECK_PID" 2>/dev/null
-    fi
+        echo_line "${SPACE}Killing PID: $CHECK_PID"
+        if test "$CHECK_PID" != "$$"
+        then
+            if test_yes KILL_ECHO
+            then
+                local PID_INFO="`ps -f --no-heading $CHECK_PID`"
+                test -n "$PID_INFO" && echo_line "${SPACE}  PID $CHECK_PID killed:     <$PID_INFO>" || echo_line "  PID $CHECK_PID already killed"
+            fi
+            kill -9 "$CHECK_PID" 2>/dev/null
+        else
+            echo_line "${SPACE}  PID $CHECK_PID skipping as its me"
+        fi
+    done
 }
 
 function kill_tree
 {
-    for I in $*
+    #echo_line "Kill tree: $*"
+    local CHECK_PID
+    for CHECK_PID in $*
     do
-        kill_tree_childs "yes" $I
+        CHILD_PIDS="`ps -o pid --no-headers --ppid ${CHECK_PID}`"
+        test -n "$CHILD_PIDS" && kill_tree $CHILD_PIDS
+        if test "$CHECK_PID" != "$$"
+        then
+            if test_yes KILL_ECHO
+            then
+                local PID_INFO="`ps -f --no-heading $CHECK_PID`"
+                test -n "$PID_INFO" && echo_line "PID $CHECK_PID killed:     <$PID_INFO>" || echo_line "PID $CHECK_PID already killed"
+            fi
+            kill -9 "$CHECK_PID" 2>/dev/null
+        else
+            echo_line "PID $CHECK_PID skipping killing itself"
+        fi
     done
 }
 
@@ -1231,8 +1254,9 @@ function kill_tree_name
 # $2 exclude PIDs
 {
     local PID_LIST="`get_pids "$1"`"
-    test -n "$2" && PID_LIST="`command echo "$PID_LIST" | $GREP --invert-match $2`"
-    kill_tree $PID_LIST
+    test_yes KILL_ECHO && echo_line "PIDs for name `echo_quote "$1"`: "$PID_LIST
+    test -n "$2" && PID_LIST="`command echo "$PID_LIST" | $GREP --invert-match "$2"`"
+    test -n "$PID_LIST" && kill_tree $PID_LIST
 }
 
 
@@ -2651,8 +2675,8 @@ declare -x CALL_COMMAND_DEFAULT_USER=""
 declare -x -f call_command
 
 declare -x -f get_pids
-declare -x    KILL_ECHO="no"
-declare -x -f kill_tree_childs
+declare -x    KILL_ECHO="yes"
+declare -x -f kill_tree_verbose
 declare -x -f kill_tree
 declare -x -f kill_tree_name
 

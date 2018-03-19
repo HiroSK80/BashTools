@@ -340,6 +340,8 @@ function prepare_file
         mv "$FILE" "$FILE-1"
     fi
 
+    test_yes "$EMPTY" && $RM "$FILE"
+
     if test ! -w "$FILE"
     then
         mkdir -p "`dirname $FILE`"
@@ -347,9 +349,6 @@ function prepare_file
         chmod ug+w "$FILE" 2> /dev/null
     fi
     test -w "$FILE" || echo_error_function "prepare_file" "Can't create and prepare file for writting: $FILE" 1
-
-    test_yes "$EMPTY" && command echo > "$FILE"
-    
     test -n "$PREPARE_FILE_USER" && chgrp "$PREPARE_FILE_USER" "$FILE" 2> /dev/null
     test -n "$PREPARE_FILE_GROUP" && chown "$PREPARE_FILE_GROUP" "$FILE" 2> /dev/null
 }
@@ -414,7 +413,7 @@ function file_line_add
 
     if test -z "$REGEXP_AFTER$REGEXP_REPLACE"
     then
-        command echo "$LINE" >> "$FILE"
+        echo "$LINE" >> "$FILE"
     else
         cat "$FILE" > "$TEMP_FILE"
         if test -n "$REGEXP_REPLACE" && `cat "$TEMP_FILE" | $AWK 'BEGIN { f=1; } /'"$REGEXP_REPLACE"'/ { f=0; } END { exit f; }'`
@@ -473,7 +472,7 @@ function lr_file_line_add
     local LINE="$2"
     local REGEXP="$3"
     
-    if is_localhost "`command echo "$REMOTE_SSH" | sed 's/^.*@//'`"
+    if is_localhost "`echo "$REMOTE_SSH" | sed 's/^.*@//'`"
     then
         file_line_add1 "$FILE" "$LINE" "$REGEXP"
     else
@@ -496,7 +495,7 @@ function lr_file_line_add1
     local LINE="$2"
     local REGEXP="$3"
     
-    if is_localhost "`command echo "$REMOTE_SSH" | sed 's/^.*@//'`"
+    if is_localhost "`echo "$REMOTE_SSH" | sed 's/^.*@//'`"
     then
         file_line_add1 "$FILE" "$LINE" "$REGEXP"
     else
@@ -530,7 +529,7 @@ function file_config_set
             echo_error "file $CONFIG_FILE new configuration \"$OPTION=\"$VALUE\"\" change fail" 99
         fi
     else
-        command echo "$OPTION=\"$VALUE\"" > "$CONFIG_FILE"
+        echo "$OPTION=\"$VALUE\"" > "$CONFIG_FILE"
     fi
 }
 
@@ -590,7 +589,7 @@ function get_ip_arp
     then
         GET_IP_ARP="`arp -n "$1" | $AWK '/ether/ { print $1; }'`"
     fi
-    command echo "$GET_IP_ARP"
+    echo "$GET_IP_ARP"
 }
 
 function get_ip_ping
@@ -606,7 +605,7 @@ function get_ip
 
     local GET_IP="`get_ip_arp "$HOST"`"
     test -z "$GET_IP" && GET_IP="`get_ip_ping "$HOST"`"
-    command echo "$GET_IP"
+    echo "$GET_IP"
 }
 
 function is_localhost
@@ -655,7 +654,7 @@ function ssh_scanid
     touch $SCAN_USER_HOME_SSH_HOSTS
     chown --reference=$SCAN_USER_HOME $SCAN_USER_HOME_SSH_HOSTS
 
-    echo_debug "Scan host ids $SCAN_HOSTS to $SCAN_USER_HOME_SSH_HOSTS"
+    echo_debug INFO "Scan host ids $SCAN_HOSTS to $SCAN_USER_HOME_SSH_HOSTS"
     for SCAN_HOST in $SCAN_HOSTS
     do
         ssh-keyscan $SCAN_HOST >> "$SCAN_USER_HOME_SSH_HOSTS" 2> /dev/null
@@ -695,7 +694,7 @@ function ssh_scanremoteid
         local DEST_LOCAL_USER="${DESTINATION%@*}"
         local DEST_USER="${DEST_USER%@*}"
         local DEST_LOCAL_USER="${DEST_LOCAL_USER#*@}"
-        echo_debug "Use $USEID_FILE and scan via $DEST_USER @ $DEST_HOST to user $DEST_LOCAL_USER"
+        echo_debug INFO "Use $USEID_FILE and scan via $DEST_USER @ $DEST_HOST to user $DEST_LOCAL_USER"
         ssh -i $USEID_FILE $DEST_USER@$DEST_HOST "
             umask 077
             DEST_HOME=~$DEST_LOCAL_USER
@@ -757,7 +756,7 @@ function ssh_exportid
         local DEST_LOCAL_USER="${DESTINATION%@*}"
         local DEST_USER="${DEST_USER%@*}"
         local DEST_LOCAL_USER="${DEST_LOCAL_USER#*@}"
-        echo_debug "Use $USEID_FILE and copy ${COPYID_FILE}.pub via $DEST_USER @ $DEST_HOST to user $DEST_LOCAL_USER"
+        echo_debug INFO "Use $USEID_FILE and copy ${COPYID_FILE}.pub via $DEST_USER @ $DEST_HOST to user $DEST_LOCAL_USER"
         cat "${COPYID_FILE}.pub" | ssh -i $USEID_FILE $DEST_USER@$DEST_HOST "
             umask 077
             DEST_HOME=~$DEST_LOCAL_USER
@@ -824,7 +823,7 @@ function ssh_importid
         touch $COPYID_HOME_SSH_KEYS
         chown --reference=$COPYID_HOME $COPYID_HOME_SSH_KEYS
 
-        echo_debug "Use $USEID_FILE and copy id via $DEST_USER @ $DEST_HOST from user $DEST_LOCAL_USER to $COPYID_USER"
+        echo_debug INFO "Use $USEID_FILE and copy id via $DEST_USER @ $DEST_HOST from user $DEST_LOCAL_USER to $COPYID_USER"
 
         for TEST_FILE in "$DEST_HOME_SSH/id_rsa.pub" "$DEST_HOME_SSH/id_dsa.pub"
         do
@@ -876,7 +875,7 @@ function call_command
     local EXIT_CODE
     if is_localhost "$HOST"
     then
-        test_yes "$LOCAL_DEBUG" && echo_debug "$COMMAND_STRING"
+        test_yes "$LOCAL_DEBUG" && echo_debug 1 "$COMMAND_STRING"
         test "$LOCAL_DEBUG" = "right" && echo_debug_right "$COMMAND_STRING"
         if test_no "$USER_SET" -o "`get_id`" = "$USER"
         then
@@ -890,7 +889,7 @@ function call_command
     else
         USER_SSH=""
         test -n "$USER" && USER_SSH="$USER@"
-        test_yes "$LOCAL_DEBUG" && echo_debug "ssh $TOPT \"$USER_SSH$HOST\" \"$COMMAND_STRING\""
+        test_yes "$LOCAL_DEBUG" && echo_debug 1 "ssh $TOPT \"$USER_SSH$HOST\" \"$COMMAND_STRING\""
         test "$LOCAL_DEBUG" = "right" && echo_debug_right "ssh $TOPT \"$USER_SSH$HOST\" \"$COMMAND_STRING\""
         ssh $TOPT -o "GSSAPIAuthentication no" -o "BatchMode yes" "$USER_SSH$HOST" "$@"
         EXIT_CODE=$?
@@ -921,7 +920,7 @@ function kill_tree_childs
         then
             test_yes FOUND_PID \
                 && ps -ef | $AWK --assign p="$CHECK_PID" '$2==p { print "PID " p " killed: " $0; }' | echo_output \
-                || echo_line "PID $CHECK_PID already killed" | echo_output
+                || echo "PID $CHECK_PID already killed" | echo_output
         fi
         kill -9 "$CHECK_PID" 2>/dev/null
     fi
@@ -940,7 +939,7 @@ function kill_tree_name
 # $2 exclude PIDs
 {
     local PID_LIST="`get_pids "$1"`"
-    test -n "$2" && PID_LIST="`command echo "$PID_LIST" | $GREP --invert-match $2`"
+    test -n "$2" && PID_LIST="`echo "$PID_LIST" | $GREP --invert-match $2`"
     kill_tree $PID_LIST
 }
 
@@ -958,24 +957,7 @@ function fd_find_free
     do
         fd_check $FILE_FD || break
     done
-    command echo $FILE_FD
-}
-
-declare -A PERF_DATA
-#PERF_DATA["default"]=0
-function perf_start
-{
-    local PERF_VAR="${1:-default}"
-    PERF_DATA[$PERF_VAR]="`date "+%s.%N"`"
-    echo_line "Performance started on date `date +"%Y-%m-%d %H:%M:%S"` time: ${PERF_DATA[$PERF_VAR]}"
-}
-
-function perf_end
-{
-    local PERF_VAR="${1:-default}"
-    local PERF_DATA_NOW="`date "+%s.%N"`"
-    echo_line "Performance ended on date `date +"%Y-%m-%d %H:%M:%S"` time: $PERF_DATA_NOW elapsed: `command echo | $AWK "{ print $PERF_DATA_NOW - ${PERF_DATA[$PERF_VAR]}; }"`s"
-    PERF_DATA[$PERF_VAR]=0
+    echo $FILE_FD
 }
 
 function set_yes
@@ -1122,7 +1104,7 @@ function test_cmd
         shift
     fi
 
-    command echo "$CMD" | $GREP --extended-regexp --quiet "$1"
+    echo "$CMD" | $GREP --extended-regexp --quiet "$1"
     return $?
 }
 
@@ -1240,7 +1222,7 @@ function log_init
         test "${1:0:1}" = "/" && LOG_FILE="$1" || LOG_TITLE="${1:-$LOG_TITLE}"
         shift
     done
-    test -z "$LOG_FILE" && LOG_FILE="`command echo "$0" | sed --regexp-extended --expression='s:(|\.|\.sh)$:.log:'`"
+    test -z "$LOG_FILE" && LOG_FILE="`echo "$0" | sed --regexp-extended --expression='s:(|\.|\.sh)$:.log:'`"
 
     prepare_file "$LOG_FILE"
     command echo "$LOG_SECTION" >> "$LOG_FILE"
@@ -1405,12 +1387,12 @@ function echo_quote
             if test "$QUOTE" = "D"
             then
                 ARG="${ARG//\"/\\\\\"}"
-                command echo -e "$SPACE\"$ARG\"\c"
+                echo -e "$SPACE\"$ARG\"\c"
             else
-                command echo -e "$SPACE'$ARG'\c"
+                echo -e "$SPACE'$ARG'\c"
             fi
         else
-            command echo -e "$SPACE$ARG\c"
+            echo -e "$SPACE$ARG\c"
         fi
         SPACE=" "
     done
@@ -1486,8 +1468,8 @@ function echo_step
     echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}${STEP_NUMBER_STR}$@"
 
     test_integer "$STEP_NUMBER" && let STEP_NUMBER++ && let $STEP_VARIABLE=$STEP_NUMBER
-    test_str "$STEP_NUMBER" "^[a-z]$" && export $STEP_VARIABLE="`command echo "$STEP_NUMBER" | tr "a-z" "b-z_"`"
-    test_str "$STEP_NUMBER" "^[A-Z]$" && export $STEP_VARIABLE="`command echo "$STEP_NUMBER" | tr "A-Z" "B-Z_"`"
+    test_str "$STEP_NUMBER" "^[a-z]$" && export $STEP_VARIABLE="`echo "$STEP_NUMBER" | tr "a-z" "b-z_"`"
+    test_str "$STEP_NUMBER" "^[A-Z]$" && export $STEP_VARIABLE="`echo "$STEP_NUMBER" | tr "A-Z" "B-Z_"`"
     return 0
 }
 
@@ -1506,8 +1488,12 @@ function echo_substep
 
 function set_debug
 {
-    local OPTION="${1:-yes}"
-    command echo "$OPTION_DEBUG" | $GREP --quiet --word-regexp "$OPTION" || OPTION_DEBUG="$OPTION,$OPTION_DEBUG"
+    test $# = 0 && local OPTIONS="yes" || local OPTIONS="$@"
+    local OPTION
+    for OPTION in $OPTIONS
+    do
+        echo "$OPTION_DEBUG" | $GREP --quiet --word-regexp "$OPTION" || OPTION_DEBUG="$OPTION,$OPTION_DEBUG"
+    done
 }
 
 function unset_debug
@@ -1519,21 +1505,78 @@ function unset_debug
 function check_debug
 {
     local OPTION="${1:-yes}"
-    command echo "$OPTION_DEBUG" | $GREP --quiet --word-regexp "$OPTION"
+    echo "$OPTION_DEBUG" | $GREP --quiet --word-regexp "$OPTION"
+}
+
+function parse_debug_level
+{
+#OPTION_DEBUGS[ALL]=100
+#OPTION_DEBUGS[TRACE]=90
+#OPTION_DEBUGS[DEBUG]=80
+#OPTION_DEBUGS[INFO]=50
+#OPTION_DEBUGS[WARN]=30
+#OPTION_DEBUGS[ERROR]=20
+#OPTION_DEBUGS[FATAL]=10
+#OPTION_DEBUGS[OFF]=0
+    if test -z "$1"
+    then
+        echo ""
+        return 0
+    elif test_integer "$1"
+    then
+        local S
+        for S in ${!OPTION_DEBUGS[@]}
+        do
+            test "$1" = "${OPTION_DEBUGS[$S]}" && echo "$1 $S" && return 0
+        done
+        echo "$1"
+    else
+        local I="${OPTION_DEBUGS[$1]}"
+        test_integer "$I" || echo_error_function "parse_debug_level" "Unknown error level \"$1\""
+        echo "$I $1"
+    fi
+}
+
+function set_debug_level
+{
+    local LEVEL=( `parse_debug_level "$1"` )
+    OPTION_DEBUG_LEVEL=${LEVEL[0]}
+    OPTION_DEBUG_LEVEL_STR="${LEVEL[1]}"
+}
+
+function set_debug_level_default
+# default level for echo_debug without parameter
+{
+    local LEVEL=( `parse_debug_level "$1"` )
+    OPTION_DEBUG_LEVEL_DEFAULT=${LEVEL[0]}
+    OPTION_DEBUG_LEVEL_DEFAULT_STR="${LEVEL[1]}"
 }
 
 function echo_debug
 {
     if check_debug
     then
-        if test_yes "$OPTION_COLOR"
+        if test $# -ge 2
         then
-            command echo -e "${COLOR_DEBUG}${ECHO_PREFIX}${ECHO_UNAME}$@${COLOR_RESET}" > "${REDIRECT_DEBUG}"
+            local LEVEL_A=( `parse_debug_level "$1"` )
+            local LEVEL=${LEVEL_A[0]}
+            test -n "${LEVEL_A[1]}" && ECHO_DEBUG_LEVEL="[${LEVEL_A[1]}] "
+            shift
         else
-            command echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@" > "${REDIRECT_DEBUG}"
+            local LEVEL=$OPTION_DEBUG_LEVEL_DEFAULT
+            test -n "$OPTION_DEBUG_LEVEL_DEFAULT_STR" && ECHO_DEBUG_LEVEL="[$OPTION_DEBUG_LEVEL_DEFAULT_STR] " || ECHO_DEBUG_LEVEL=""
         fi
+        if test $LEVEL -le $OPTION_DEBUG_LEVEL
+        then
+            if test_yes "$OPTION_COLOR"
+            then
+                command echo -e "${COLOR_DEBUG}${ECHO_PREFIX}${ECHO_UNAME}${ECHO_DEBUG_LEVEL}$@${COLOR_RESET}" > "${REDIRECT_DEBUG}"
+            else
+                command echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}${ECHO_DEBUG_LEVEL}$@" > "${REDIRECT_DEBUG}"
+            fi
 
-        echo_log --date "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@"
+            echo_log --date "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}${ECHO_DEBUG_LEVEL}$@"
+        fi
     fi
     return 0
 }
@@ -1574,7 +1617,7 @@ function echo_debug_right
             cursor_get_position
             let SHIFT_MESSAGE=$SHIFT_MESSAGE+1
 #echo -en "\\033[1A"
-            test_yes "$SHIFT1" && test $SHIFT_MESSAGE -le $SHIFT1_MIN_FREE && command echo -e "\r" > "${REDIRECT_DEBUG}"
+            test_yes "$SHIFT1" && test $SHIFT_MESSAGE -le $SHIFT1_MIN_FREE && echo -e "\r" > "${REDIRECT_DEBUG}"
             command echo -en "\\033[${SHIFT_MESSAGE}G" > "${REDIRECT_DEBUG}"
             test_yes "$SHIFT1" && echo -en "\\033[1A" > "${REDIRECT_DEBUG}"
             command echo -e "${COLOR_DEBUG}$DEBUG_MESSAGE${COLOR_RESET}\c" > "${REDIRECT_DEBUG}"
@@ -1591,15 +1634,23 @@ function echo_debug_right
 
 function echo_debug_variable
 {
-    local VAR_LIST=""
-    while test $# -gt 0
-    do
-        local VAR_NAME="$1"
-        shift
-        test -n "$VAR_LIST" && VAR_LIST="$VAR_LIST "
-        VAR_LIST="${VAR_LIST}${VAR_NAME}=\"${!VAR_NAME}\""
-    done
-    echo_debug "$VAR_LIST"
+    if check_debug variable
+    then
+        local VAR_LIST=""
+        while test $# -gt 0
+        do
+            local VAR_NAME="$1"
+            shift
+            test -n "$VAR_LIST" && VAR_LIST="$VAR_LIST "
+            VAR_LIST="${VAR_LIST}${VAR_NAME}=\"${!VAR_NAME}\""
+        done
+        if test_yes "$OPTION_COLOR"
+        then
+            command echo -e "${COLOR_DEBUG}${ECHO_PREFIX}${ECHO_UNAME}${VAR_LIST}${COLOR_RESET}" > "${REDIRECT_DEBUG}"
+        else
+            command echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}${VAR_LIST}" > "${REDIRECT_DEBUG}"
+        fi
+    fi
     return 0
 }
 
@@ -1645,9 +1696,9 @@ function echo_error
 
     if test_yes "$OPTION_COLOR"
     then
-        command echo -e "$COLOR_ERROR${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!$COLOR_RESET" >&$REDIRECT_ERROR
+        echo -e "$COLOR_ERROR${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!$COLOR_RESET" >&$REDIRECT_ERROR
     else
-        command echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!" >&$REDIRECT_ERROR
+        echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!" >&$REDIRECT_ERROR
     fi
 
     echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!"
@@ -1707,7 +1758,7 @@ function echo_warning
 
     if test_yes "$OPTION_COLOR"
     then
-        command echo -e "$COLOR_WARNING${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}.$COLOR_RESET" >&$REDIRECT_WARNING
+        command echo -e "${COLOR_WARNING}${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}.${COLOR_RESET}" >&$REDIRECT_WARNING
     else
         command echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}." >&$REDIRECT_WARNING
     fi
@@ -1752,7 +1803,7 @@ function history_store
     test -z "$1" -o "$1" = "${HISTORY[0]}" && return 0
 
     HISTORY=("$1" "${HISTORY[@]}")
-    command echo "$1" >> "$HISTFILE"
+    echo "$1" >> "$HISTFILE"
     history -s "$1"
 }
 
@@ -1775,7 +1826,7 @@ function colors_init
     # init color usage if is not set
     if ! test_yes "$OPTION_COLOR" && ! test_no "$OPTION_COLOR"
     then
-        if test "`command echo "$TERM" | cut -c 1-5`" = "xterm" -o "$TERM" = "rxvt" -o "$TERM" = "konsole" -o "$TERM" = "linux" -o "$TERM" = "putty"
+        if test "`echo "$TERM" | cut -c 1-5`" = "xterm" -o "$TERM" = "rxvt" -o "$TERM" = "konsole" -o "$TERM" = "linux" -o "$TERM" = "putty"
         then
             OPTION_COLOR="yes"
             OPTION_COLORS="256"
@@ -1921,8 +1972,9 @@ function check_arg_tools
 {
     check_arg_switch "|ignore-unknown" "OPTION_IGNORE_UNKNOWN|yes" "$@"
     check_arg_switch "|debug" "OPTION_DEBUG|yes,$OPTION_DEBUG" "$@" && set_debug right
-    check_arg_value "|debug-level" "OPTION_DEBUG_LEVEL|100" "$@" && set_debug_level $OPTION_DEBUG_LEVEL
+    check_arg_value "|debug-level" "OPTION_DEBUG_LEVEL|ALL" "$@" && set_debug_level $OPTION_DEBUG_LEVEL
     check_arg_switch "|debug-right" "OPTION_DEBUG|right,$OPTION_DEBUG" "$@"
+    check_arg_switch "|debug-variable" "OPTION_DEBUG|variable,$OPTION_DEBUG" "$@"
     check_arg_switch "|debug-function" "OPTION_DEBUG|function,$OPTION_DEBUG" "$@"
     check_arg_value "|term" "OPTION_TERM|xterm" "$@"
     check_arg_value "|prefix" "OPTION_PREFIX|yes" "$@"
@@ -1950,6 +2002,8 @@ function tools_init
     TOOLS_FILE="`readlink --canonicalize "$TOOLS_FILE"`"
     TOOLS_NAME="`basename "$TOOLS_FILE"`"
     TOOLS_DIR="`dirname "$TOOLS_FILE"`"
+
+    set_debug_level ALL
 }
 
 ### tools exports
@@ -1962,16 +2016,6 @@ export OPTION_IGNORE_UNKNOWN="yes"
 
 export OPTION_TERM="xterm" # default value if TERM is not set
 export OPTION_DEBUG
-export OPTION_DEBUG_LEVEL=100
-declare -A OPTION_DEBUGS
-OPTION_DEBUGS[ALL]=100
-OPTION_DEBUGS[TRACE]=90
-OPTION_DEBUGS[DEBUG]=80
-OPTION_DEBUGS[INFO]=50
-OPTION_DEBUGS[WARN]=30
-OPTION_DEBUGS[ERROR]=20
-OPTION_DEBUGS[FATAL]=10
-OPTION_DEBUGS[OFF]=0
 export OPTION_PREFIX="no"
 export OPTION_COLOR
 export OPTION_COLORS
@@ -2078,8 +2122,8 @@ export -f fd_find_free
 
 export -f set_yes
 
-export S_TAB="`command echo -e "\t"`"
-export S_NEWLINE="`command echo -e "\n"`"
+export S_TAB="`echo -e "\t"`"
+export S_NEWLINE="`echo -e "\n"`"
 export -f test_ne0
 export -f fill_command_options
 export -f test_boolean
@@ -2137,6 +2181,22 @@ export -f set_debug
 export -f unset_debug
 export -f check_debug
 
+export OPTION_DEBUG_LEVEL
+export OPTION_DEBUG_LEVEL_STR
+export OPTION_DEBUG_LEVEL_DEFAULT=80
+export OPTION_DEBUG_LEVEL_DEFAULT_STR=""
+export ECHO_DEBUG_LEVEL
+declare -A OPTION_DEBUGS
+OPTION_DEBUGS[ALL]=100
+OPTION_DEBUGS[TRACE]=90
+OPTION_DEBUGS[DEBUG]=80
+OPTION_DEBUGS[INFO]=50
+OPTION_DEBUGS[WARN]=30
+OPTION_DEBUGS[ERROR]=20
+OPTION_DEBUGS[FATAL]=10
+OPTION_DEBUGS[OFF]=0
+export -f set_debug_level
+export -f set_debug_level_default
 export -f echo_debug
 export -f echo_debug_right
 export -f echo_debug_variable

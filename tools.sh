@@ -822,9 +822,91 @@ function fd_find_free
     echo $FILE_FD
 }
 
+function fill_command_options
+{
+	export COMMAND="$1"
+	export OPTIONS="$2 $3 $4 $5 $6 $7 $8 $9"
+	export OPTIONS2="$3 $4 $5 $6 $7 $8 $9"
+	export OPTION="$2"
+	export OPTION2="$3"
+	unset OPTIONS_A
+	declare -a OPTIONS_A=("$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9")
+}
+
 function test_integer
+# $1 integer
 {
     [[ "$1" =~ ^-?[0-9]+$ ]]
+}
+
+function test_ip
+# $1 ip
+{
+    [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
+}
+
+function test_cmd
+# [$1] string to test
+# $2 regexp
+{
+    local CMD="$COMMAND"
+
+    if test "$#" = "2"
+    then
+        CMD="$1"
+        shift
+    fi
+
+    echo "$CMD" | egrep --quiet "$1"
+    return "$?"
+}
+
+function test_cmd_z
+# $1 regexp
+{
+    test_cmd "$COMMAND" "^\$"
+}
+
+function test_opt
+# $1 regexp
+{
+    test_cmd "$OPTION" "$1"
+}
+
+function test_opt2
+# $1 regexp
+{
+    test_cmd "$OPTION2" "$1"
+}
+
+function test_opt_z
+# $1 regexp
+{
+    test_cmd "$OPTION" "^\$"
+}
+
+function test_opt2_z
+# $1 regexp
+{
+    test_cmd "$OPTION2" "^\$"
+}
+
+function test_opt_i
+# $1 regexp
+{
+    test_integer "$OPTION"
+}
+
+function test_opt2_i
+# $1 regexp
+{
+    test_integer "$OPTION2"
+}
+
+function test_param
+# $1 regexp
+{
+    test_cmd "$1" "$2"
 }
 
 function cursor_get_position
@@ -970,15 +1052,15 @@ function echo_debug_funct
 
 function echo_error
 {
-    local EXIT_CODE="0"
+    local EXIT_CODE=""
     local ECHO_ERROR="$@"
     test_integer "${@:(-1)}" && local EXIT_CODE=$2 && ECHO_ERROR="${@:1:${#@}-1}"
 
     if test "$OPTION_COLOR" = "yes"
     then
-        echo -e "$COLOR_ERROR${ECHO_PREFIX}${ECHO_UNAME}${ECHO_ERROR}$COLOR_RESET" >&$REDIRECT_ERROR
+        echo -e "$COLOR_ERROR${ECHO_PREFIX}${ECHO_UNAME}${ECHO_ERROR_PREFIX}${ECHO_ERROR}!$COLOR_RESET" >&$REDIRECT_ERROR
     else
-        echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_ERROR_PREFIX}${ECHO_ERROR}" >&$REDIRECT_ERROR
+        echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_ERROR_PREFIX}${ECHO_ERROR}!" >&$REDIRECT_ERROR
     fi
 
     test -n "$EXIT_CODE" && exit $EXIT_CODE
@@ -1080,7 +1162,17 @@ export -f kill_tree
 export -f fd_check
 export -f fd_find_free
 
+export -f fill_command_options
 export -f test_integer
+export -f test_cmd
+export -f test_cmd_z
+export -f test_opt
+export -f test_opt2
+export -f test_opt_z
+export -f test_opt2_z
+export -f test_opt_i
+export -f test_opt2_i
+export -f test_param
 
 declare CURSOR_POSITION="0;0"
 export CURSOR_POSITION

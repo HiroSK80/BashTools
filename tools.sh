@@ -7,8 +7,16 @@
 
 # options:
 # --prefix
-# --color yes|no
-# --uname yes|no
+# --color=yes|no
+# --uname=yes|no
+# combinations for example for color:
+# -c
+# -c no
+# -c yes
+# --color
+# --color=yes
+# --color=no
+# etc...
 
 export TOOLS_LOADED="yes"
 
@@ -204,15 +212,15 @@ function check_arg_shift
 
 function check_arg_switch
 # $1 short|long
-# $2 variable
+# $2 variable|default
 # $3 arguments
-# usage: check_arg_switch "d|debug" "OPTION_DEBUG" "$@"
+# usage: check_arg_switch "d|debug" "OPTION_DEBUG|default" "$@"
 # example:
 # while test $# -gt 0
 # do
 #     check_arg_init
 #     check_arg_switch "d|debug" "OPTION_DEBUG|yes" "$@"
-#     check_arg_value "h|host" "OPTION_HOST" "$@"
+#     check_arg_value "h|host" "OPTION_HOST|localhost" "$@"
 #     check_arg_shift && shift $CHECK_ARG_SHIFT && continue
 #     echo_error "Unknown argument: $1" 1
 # done
@@ -236,7 +244,7 @@ function check_arg_switch
 
 function check_arg_value
 # $1 short|long
-# $2 variable
+# $2 variable|default
 # $3 arguments
 # usage: check_arg_value "h|host" "OPTION_HOST" "$@"
 # example:
@@ -244,22 +252,23 @@ function check_arg_value
 # do
 #     check_arg_init
 #     check_arg_switch "d|debug" "OPTION_DEBUG|yes" "$@"
-#     check_arg_value "h|host" "OPTION_HOST" "$@"
+#     check_arg_value "h|host" "OPTION_HOST|localhost" "$@"
 #     check_arg_shift && shift $CHECK_ARG_SHIFT && continue
 #     echo_error "Unknown argument: $1" 1
 # done
 {
     ARG_NAME_SHORT="${1%|*}"
     ARG_NAME_LONG="${1#*|}"
-    ARG_NAME_VAR="$2"
+    ARG_NAME_VAR="${2%|*}"
+    ARG_NAME_VALUE="${2#*|}"
     shift 2
-    #echo_debug_variable ARG_NAME_SHORT ARG_NAME_LONG ARG_NAME_VAR
+    #echo_debug_variable ARG_NAME_SHORT ARG_NAME_LONG ARG_NAME_VAR ARG_NAME_VALUE
 
     if test "$1" = "--$ARG_NAME_LONG" -o "$1" = "-$ARG_NAME_SHORT"
     then
-        test $# -eq 1 && echo_error "Missing value for argument \"$1\"" 99
-        eval ${ARG_NAME_VAR}="$2"
-        CHECK_ARG_SHIFT+=2
+        test $# -eq 1 && eval ${ARG_NAME_VAR}="$ARG_NAME_VALUE" && CHECK_ARG_SHIFT+=1 && return 0 #echo_error "Missing value for argument \"$1\"" 99
+        test "${2:0:1}" != "-" && eval ${ARG_NAME_VAR}="$2" && CHECK_ARG_SHIFT+=1 || eval ${ARG_NAME_VAR}="$ARG_NAME_VALUE"
+        CHECK_ARG_SHIFT+=1
         return 0
     fi
 
@@ -348,7 +357,7 @@ function file_line_remove
         cat "$FILE" > "$TEMP_FILE"
         if diff "$FILE" "$TEMP_FILE" > /dev/null 2> /dev/null
         then
-            cat "$TEMP_FILE" 2> /dev/null | "$GREP" -v "$REGEXP" > "$FILE" 2> /dev/null
+            cat "$TEMP_FILE" 2> /dev/null | "$GREP" --invert-match "$REGEXP" > "$FILE" 2> /dev/null
             /bin/rm -f "$TEMP_FILE"
         else
             /bin/rm -f "$TEMP_FILE"
@@ -378,12 +387,12 @@ function file_line_add
         cat "$FILE" > "$TEMP_FILE"
         if test -n "$REGEXP_REPLACE" && `cat "$TEMP_FILE" | "$AWK" 'BEGIN { f=1; } /'"$REGEXP_REPLACE"'/ { f=0; } END { exit f; }'`
         then
-            cat "$TEMP_FILE" | "$AWK" -v line="$LINE" 'BEGIN { p=0; gsub(/\n/, "\\n", line); } p==0&&/'"$REGEXP_REPLACE"'/ { p=1; print line; next } { print; } END { if (p==0) print line; }' > "$FILE"
+            cat "$TEMP_FILE" | "$AWK" --assign=line="$LINE" 'BEGIN { p=0; gsub(/\n/, "\\n", line); } p==0&&/'"$REGEXP_REPLACE"'/ { p=1; print line; next } { print; } END { if (p==0) print line; }' > "$FILE"
         elif test -n "$REGEXP_AFTER" && `cat "$TEMP_FILE" | "$AWK" 'BEGIN { f=1; } /'"$REGEXP_AFTER"'/ { f=0; } END { exit f; }'`
         then
-            cat "$TEMP_FILE" | "$AWK" -v line="$LINE" 'BEGIN { p=0; gsub(/\n/, "\\n", line); } p==0&&/'"$REGEXP_AFTER"'/ { print $0; p=1; print line; next } { print; } END { if (p==0) print line; }' > "$FILE"
+            cat "$TEMP_FILE" | "$AWK" --assign=line="$LINE" 'BEGIN { p=0; gsub(/\n/, "\\n", line); } p==0&&/'"$REGEXP_AFTER"'/ { print $0; p=1; print line; next } { print; } END { if (p==0) print line; }' > "$FILE"
         else
-            cat "$TEMP_FILE" | "$AWK" -v line="$LINE" 'BEGIN { gsub(/\n/, "\\n", line); } { print; } END { print line; }' > "$FILE"
+            cat "$TEMP_FILE" | "$AWK" --assign=line="$LINE" 'BEGIN { gsub(/\n/, "\\n", line); } { print; } END { print line; }' > "$FILE"
         fi
         if test -s "$FILE"
         then
@@ -847,6 +856,11 @@ function call_command
     return $EXIT_CODE
 }
 
+function get_pids
+{
+    ps -ef | grep --invert-match $$ | awk --assign=p="$1" --assign=s="$$" '$3==s { next; } $0~p { print $2; }'
+}
+
 export ECHO_KILL="no"
 function kill_tree_childs
 {
@@ -859,7 +873,13 @@ function kill_tree_childs
     done
     if test_yes "$TOPMOST" -a "$CHECK_PID" != "$$"
     then
-        test_yes "$ECHO_KILL" && echo_line "Killing process with $CHECK_PID PID" && ps -ef | awk --assign p="$CHECK_PID" '$2==p { print "Killed: "$0; }' | echo_output
+        local FOUND_PID="`ps -ef | awk --assign p="$CHECK_PID" '$2==p { print "yes"; }'`"
+        if test_yes ECHO_KILL
+        then
+            test_yes FOUND_PID \
+                && ps -ef | awk --assign p="$CHECK_PID" '$2==p { print "PID " p " killed: " $0; }' | echo_output \
+                || echo "PID $CHECK_PID already killed" | echo_output
+        fi
         kill -9 "$CHECK_PID" 2>/dev/null
     fi
 }
@@ -873,9 +893,14 @@ function kill_tree
 }
 
 function kill_tree_name
+# $1 regexp for process name
+# $2 exclude PIDs
 {
-    kill_tree `ps -ef | grep -v $$ | awk --assign p="$1" --assign s="$$" '$3==s { next; } $0~p { print $2; }'`
+    local PID_LIST="`get_pids "$1"`"
+    test -n "$2" && PID_LIST="`echo "$PID_LIST" | grep --invert-match $2`"
+    kill_tree $PID_LIST
 }
+
 
 function fd_check
 # $1 FD number to check if is opened
@@ -891,6 +916,12 @@ function fd_find_free
         fd_check $FILE_FD || break
     done
     echo $FILE_FD
+}
+
+function set_yes
+# $1=yes
+{
+    eval $1=yes
 }
 
 function test_ne0
@@ -943,16 +974,32 @@ function test_boolean
     [[ "$1" =~ ^(y|Y|yes|Yes|YES|true|True|TRUE)$ ]]
 }
 
-function test_yes
-# $1 boolean yes string
+function test_str_yes
+# $1 test string for yes
 {
+    #echo "Testing string $1"
     [[ "$1" =~ ^(y|Y|yes|Yes|YES)$ ]]
 }
 
-function test_no
-# $1 boolean no string
+function test_yes
+# $1 yes string or variable
+{
+    test_str_yes "$1" && return 0
+    #echo "Testing $1 - variable ${!1+exist}, $1 = ${!1}"
+    test -n "${1+ok}" && test_str_yes "${!1}" || return 1
+}
+
+function test_str_no
+# $1 $1 test string for boolean no string
 {
     [[ "$1" =~ ^(n|N|no|No|NO)$ ]]
+}
+
+function test_no
+# $1 no string or variable
+{
+    test_str_no "$1" && return 0
+    test -n "${1+ok}" && test_str_no "${!1}" || return 1
 }
 
 function test_ok
@@ -985,17 +1032,17 @@ function test_str
 {
     local IGNORE_CASE=""
     test "$1" = "-i" -o "$1" = "--ignore-case" && IGNORE_CASE="--ignore-case" && shift
-    test "$#" != "2" && echo_error_function "test_str" "Wrong parameters count"
+    test $# != 2 && echo_error_function "test_str" "Wrong parameters count"
 
     /bin/echo "$1" | grep --quiet --extended-regexp $IGNORE_CASE "$2"
     return $?
 }
 
 function test_file
-# $1 string to test
-# $2 regexp
+# $1 regexp string to test
+# $2 filename
 {
-    test "$#" != "2" && echo_error_function "test_file" "Wrong parameters count"
+    test $# != 2 && echo_error_function "test_file" "Wrong parameters count"
 
     test -f "$2" || return 1
 
@@ -1009,7 +1056,7 @@ function test_cmd
 {
     local CMD="$COMMAND"
 
-    if test "$#" = "2"
+    if test $# = 2
     then
         CMD="$1"
         shift
@@ -1274,6 +1321,7 @@ function echo_info
     fi
 
     echo_log "${ECHO_PREFIX}${ECHO_UNAME}$@"
+    return 0
 }
 
 function echo_step
@@ -1300,6 +1348,7 @@ function echo_step
     test_integer "$STEP_NUMBER" && let STEP_NUMBER++ && let $STEP_VARIABLE=$STEP_NUMBER
     test_str "$STEP_NUMBER" "^[a-z]$" && eval $STEP_VARIABLE="`echo "$STEP_NUMBER" | tr "a-z" "b-z_"`"
     test_str "$STEP_NUMBER" "^[A-Z]$" && eval $STEP_VARIABLE="`echo "$STEP_NUMBER" | tr "A-Z" "B-Z_"`"
+    return 0
 }
 
 function echo_substep
@@ -1312,6 +1361,7 @@ function echo_substep
     fi
 
     echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_SUBSTEP}$@"
+    return 0
 }
 
 function set_debug
@@ -1345,6 +1395,7 @@ function echo_debug
 
         echo_log --date "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@"
     fi
+    return 0
 }
 
 function echo_debug_right
@@ -1395,6 +1446,7 @@ function echo_debug_right
 
         echo_log --date "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@"
     fi
+    return 0
 }
 
 function echo_debug_variable
@@ -1408,11 +1460,13 @@ function echo_debug_variable
         VAR_LIST="${VAR_LIST}${VAR_NAME}=\"${!VAR_NAME}\""
     done
     echo_debug "$VAR_LIST"
+    return 0
 }
 
 function echo_debug_var
 {
     echo_debug_variable "$@"
+    return 0
 }
 
 function echo_debug_function
@@ -1434,11 +1488,13 @@ function echo_debug_function
 
         echo_log --date "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}${FUNCTION_INFO}"
     fi
+    return 0
 }
 
 function echo_debug_funct
 {
     echo_debug_function "$@"
+    return 0
 }
 
 function echo_error
@@ -1519,6 +1575,7 @@ function echo_warning
     echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}."
 
     test -n "$EXIT_CODE" && exit $EXIT_CODE
+    return 0
 }
 
 ### history
@@ -1563,13 +1620,13 @@ function history_store
 function colors_init
 {
     # set colors to current terminal
-    #echo_debug "Initial color usage is set to $OPTION_COLOR and using $OPTION_COLORS colors"
+    #echo "Initial color usage is set to $OPTION_COLOR and using $OPTION_COLORS colors"
 
     # init color numbers
-    test_integer "$OPTION_COLORS" || OPTION_COLORS="2"
+    test_integer "$OPTION_COLORS" || OPTION_COLORS="256"
 
     # init color usage if is not set
-    if ! test_yes "$OPTION_COLOR" -a ! test_no "$OPTION_COLOR"
+    if ! test_yes "$OPTION_COLOR" && ! test_no "$OPTION_COLOR"
     then
         if test "`echo "$TERM" | cut -c 1-5`" = "xterm" -o "$TERM" = "rxvt" -o "$TERM" = "konsole" -o "$TERM" = "linux" -o "$TERM" = "putty"
         then
@@ -1708,7 +1765,38 @@ function colors_init
     COLOR_ERROR="$COLOR_LIGHT_RED"
     COLOR_WARNING="$COLOR_CYAN"
 
-    #echo "Color usage is now set to $OPTION_COLOR and using $OPTION_COLORS colors"
+    #echo "Color usage is now set to $OPTION_COLOR and using $OPTION_COLORS colors for $TERM"
+}
+
+function check_arg_tools
+{
+    check_arg_switch "i|ignore-unknown" "OPTION_IGNORE_UNKNOWN|yes" "$@"
+    check_arg_switch "d|debug" "OPTION_DEBUG|yes,$OPTION_DEBUG" "$@" && set_debug right
+    check_arg_switch "|debug-right" "OPTION_DEBUG|right,$OPTION_DEBUG" "$@"
+    check_arg_switch "|debug-function" "OPTION_DEBUG|function,$OPTION_DEBUG" "$@"
+    check_arg_value "p|prefix" "OPTION_PREFIX|yes" "$@"
+    check_arg_value "c|color" "OPTION_COLOR|yes" "$@"
+    check_arg_value "u|uname" "OPTION_UNAME|yes" "$@"
+}
+
+function tools_init
+{
+    while test $# -gt 0
+    do
+        check_arg_init
+        check_arg_tools "$@"
+        check_arg_shift && shift $CHECK_ARG_SHIFT && continue
+        if test -z "$TOOLS_FILE" -o -f "$1"
+        then
+            test -f "$1" && TOOLS_FILE="$1"
+            TOOLS_NAME="`basename $TOOLS_FILE`"
+            TOOLS_DIR="`dirname $TOOLS_FILE`"
+            shift && continue
+        fi
+        shift
+        test_no OPTION_IGNORE_UNKNOWN && echo_error "Unknown argument for tools: $1" 1
+        shift
+    done
 }
 
 ### tools exports
@@ -1716,6 +1804,8 @@ function colors_init
 export REDIRECT_DEBUG=/dev/stderr
 export REDIRECT_ERROR=/dev/stdout
 export REDIRECT_WARNING=/dev/stdout
+
+export OPTION_IGNORE_UNKNOWN="yes"
 
 export OPTION_DEBUG
 export OPTION_PREFIX="no"
@@ -1811,16 +1901,22 @@ export -f ssh_importid
 export CALL_COMMAND_DEFAULT_USER=""
 export -f call_command
 
+export -f get_pids
 export -f kill_tree_childs
 export -f kill_tree
+export -f kill_tree_name
 
 export -f fd_check
 export -f fd_find_free
 
+export -f set_yes
+
 export -f test_ne0
 export -f fill_command_options
 export -f test_boolean
+export -f test_str_yes
 export -f test_yes
+export -f test_str_no
 export -f test_no
 export -f test_ok
 export -f test_nok
@@ -1890,26 +1986,7 @@ export -f colors_init
 
 
 ### tools init
-
-while test $# -gt 0
-do
-    check_arg_init
-    check_arg_switch "d|debug" "OPTION_DEBUG|yes,$OPTION_DEBUG" "$@" && set_debug right
-    check_arg_switch "|debug-right" "OPTION_DEBUG|right,$OPTION_DEBUG" "$@"
-    check_arg_switch "|debug-function" "OPTION_DEBUG|function,$OPTION_DEBUG" "$@"
-    check_arg_switch "p|prefix" "OPTION_PREFIX|yes" "$@"
-    check_arg_switch "c|color" "OPTION_COLOR|yes" "$@"
-    check_arg_switch "u|uname" "OPTION_UNAME|yes" "$@"
-    check_arg_shift && shift $CHECK_ARG_SHIFT && continue
-    if test -n "$TOOLS_FILE" -o -f "$1"
-    then
-        test -f "$1" && TOOLS_FILE="$1"
-        TOOLS_NAME="`basename $TOOLS_FILE`"
-        TOOLS_DIR="`dirname $TOOLS_FILE`"
-        shift && continue
-    fi
-    echo_error "Unknown argument: $1" 1
-done
+tools_init "$@"
 
 # set echo prefix or uname prefix
 test_yes "$OPTION_PREFIX" && ECHO_PREFIX="### " || ECHO_PREFIX=""

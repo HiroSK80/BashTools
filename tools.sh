@@ -18,7 +18,7 @@
 # --color=no
 # etc...
 
-export TOOLS_LOADED="yes"
+declare -x TOOLS_LOADED="yes"
 
 shopt -s extglob
 #export LC_ALL=C
@@ -43,31 +43,31 @@ test -f "/etc/OEL-release" && fill_unix_type "RedHat" "OEL"
 
 if test "$UNIX_TYPE" = "SunOS"
 then
-    export RM="rm"
-    export AWK="/usr/bin/nawk"
-    export GREP="/usr/xpg4/bin/grep"
-    export SSH="ssh -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
-    export SSHq="$SSH -q"
-    export SCP="scp -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
-    export SCPq="$SCP -q"
+    declare -x RM="rm"
+    declare -x AWK="/usr/bin/nawk"
+    declare -x GREP="/usr/xpg4/bin/grep"
+    declare -x SSH="ssh -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
+    declare -x SSHq="$SSH -q"
+    declare -x SCP="scp -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
+    declare -x SCPq="$SCP -q"
 fi
 if test "$UNIX_TYPE" = "Linux"
 then
-    export RM="/bin/rm -f"
-    export AWK="/bin/awk"
-    type awk > /dev/null 2>&1 && export AWK="`type -P awk`"
-    export GREP="/bin/grep"
-    type grep > /dev/null 2>&1 && export GREP="`type -P grep`"
-    #export SSH="ssh -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
-    export SSH="ssh -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
-    export SSHb="ssh -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
-    export SSHq="$SSH -q"
-    export SSHbq="$SSHb -q"
-    #export SCP="scp -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
-    export SCP="scp -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
-    export SCPb="scp -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
-    export SCPq="$SCP -q"
-    export SCPbq="$SCPb -q"
+    declare -x RM="/bin/rm -f"
+    declare -x AWK="/bin/awk"
+    type awk > /dev/null 2>&1 && declare -x AWK="`type -P awk`"
+    declare -x GREP="/bin/grep"
+    type grep > /dev/null 2>&1 && declare -x GREP="`type -P grep`"
+    #declare -x SSH="ssh -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
+    declare -x SSH="ssh -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
+    declare -x SSHb="ssh -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
+    declare -x SSHq="$SSH -q"
+    declare -x SSHbq="$SSHb -q"
+    #declare -x SCP="scp -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
+    declare -x SCP="scp -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
+    declare -x SCPb="scp -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
+    declare -x SCPq="$SCP -q"
+    declare -x SCPbq="$SCPb -q"
 fi
 
 function query
@@ -84,8 +84,8 @@ function query
     fi
     test -z "$TEST_REGEXP" && TEST_REGEXP=".*"
     DEFAULT="$4"
-    export REPLY=""
-    export QUERY_REPLY=""
+    declare -x REPLY=""
+    declare -x QUERY_REPLY=""
 
     if test -z "$DEFAULT"
     then
@@ -139,8 +139,8 @@ function query
         done
     fi
 
-    export REPLY
-    export QUERY_REPLY="$REPLY"
+    declare -x REPLY
+    declare -x QUERY_REPLY="$REPLY"
     #echo $REPLY
 }
 
@@ -164,41 +164,41 @@ function command_options
     shift
     if test "$TASK" = "fill"
     then
-        export COMMAND="$1"
-        export OPTIONS="$2 $3 $4 $5 $6 $7 $8 $9"
-        export OPTIONS2="$3 $4 $5 $6 $7 $8 $9 ${10}"
-        export OPTIONS3="$4 $5 $6 $7 $8 $9 $10 ${11}"
-        export OPTIONS4="$5 $6 $7 $8 $9 $10 $11 ${12}"
-        export OPTION="$2"
-        export OPTION1="$2"
-        export OPTION2="$3"
-        export OPTION3="$4"
-        export OPTION4="$5"
-        export OPTION5="$6"
-        export OPTION6="$7"
-        export OPTION7="$8"
-        export OPTION8="$9"
-        export OPTION9="${10}"
+        declare -x COMMAND="$1"
+        declare -x OPTIONS="$2 $3 $4 $5 $6 $7 $8 $9"
+        declare -x OPTIONS2="$3 $4 $5 $6 $7 $8 $9 ${10}"
+        declare -x OPTIONS3="$4 $5 $6 $7 $8 $9 $10 ${11}"
+        declare -x OPTIONS4="$5 $6 $7 $8 $9 $10 $11 ${12}"
+        declare -x OPTION="$2"
+        declare -x OPTION1="$2"
+        declare -x OPTION2="$3"
+        declare -x OPTION3="$4"
+        declare -x OPTION4="$5"
+        declare -x OPTION5="$6"
+        declare -x OPTION6="$7"
+        declare -x OPTION7="$8"
+        declare -x OPTION8="$9"
+        declare -x OPTION9="${10}"
         unset OPTIONS_A
         declare -a OPTIONS_A=("$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}")
     fi
     if test "$TASK" = "parse"
     then
-        export COMMAND="`str_get_arg "$INPUT" 1`"
-        export OPTIONS="`str_get_arg_from "$INPUT" 2`"
-        export OPTIONS2="`str_get_arg_from "$INPUT" 3`"
-        export OPTIONS3="`str_get_arg_from "$INPUT" 4`"
-        export OPTIONS4="`str_get_arg_from "$INPUT" 5`"
-        export OPTION="`str_get_arg "$INPUT" 2`"
-        export OPTION1="`str_get_arg "$INPUT" 2`"
-        export OPTION2="`str_get_arg "$INPUT" 3`"
-        export OPTION3="`str_get_arg "$INPUT" 4`"
-        export OPTION4="`str_get_arg "$INPUT" 5`"
-        export OPTION5="`str_get_arg "$INPUT" 6`"
-        export OPTION6="`str_get_arg "$INPUT" 7`"
-        export OPTION7="`str_get_arg "$INPUT" 8`"
-        export OPTION8="`str_get_arg "$INPUT" 9`"
-        export OPTION9="`str_get_arg "$INPUT" 10`"
+        declare -x COMMAND="`str_get_arg "$INPUT" 1`"
+        declare -x OPTIONS="`str_get_arg_from "$INPUT" 2`"
+        declare -x OPTIONS2="`str_get_arg_from "$INPUT" 3`"
+        declare -x OPTIONS3="`str_get_arg_from "$INPUT" 4`"
+        declare -x OPTIONS4="`str_get_arg_from "$INPUT" 5`"
+        declare -x OPTION="`str_get_arg "$INPUT" 2`"
+        declare -x OPTION1="`str_get_arg "$INPUT" 2`"
+        declare -x OPTION2="`str_get_arg "$INPUT" 3`"
+        declare -x OPTION3="`str_get_arg "$INPUT" 4`"
+        declare -x OPTION4="`str_get_arg "$INPUT" 5`"
+        declare -x OPTION5="`str_get_arg "$INPUT" 6`"
+        declare -x OPTION6="`str_get_arg "$INPUT" 7`"
+        declare -x OPTION7="`str_get_arg "$INPUT" 8`"
+        declare -x OPTION8="`str_get_arg "$INPUT" 9`"
+        declare -x OPTION9="`str_get_arg "$INPUT" 10`"
         unset OPTIONS_A
         declare -a OPTIONS_A=("$OPTION" "$OPTION2" "$OPTION3" "$OPTION4" "$OPTION5" "$OPTION6" "$OPTION7" "$OPTION8" "$OPTION9")
     fi
@@ -247,24 +247,38 @@ function assign
 function str_trim
 {
     local STR="$@"
-    test -n "${!@:+exist}" && STR="${!@}"
+    test -n "${!@+exist}" && STR="${!@}"
     #echo "STR=$STR"
     STR="${STR#"${STR%%[![:space:]]*}"}"   # remove leading whitespace characters
     STR="${STR%"${STR##*[![:space:]]}"}"   # remove trailing whitespace characters
-    test -n "${!@:+exist}" && assign "${!@}" "$STR" || echo -n "$STR"
+    test -n "${!@+exist}" && assign "${!@}" "$STR" || echo -n "$STR"
 }
 
-function str_delete_word
-# delete word delimited by spaces from string or variable
+function str_add_word
+# add word if not present delimited by space to string or variable
 # $1 variable or string
 # $2 word
 {
     local STR="$1"
-    test -n "${!1:+exist}" && STR="${!1}"
+    test -n "${!1+exist}" && STR="${!1}"
+    test_str "$STR" "\b$2\b" && return 0
+    test -n "$STR" && STR="$STR "
+    STR="$STR$2"
+    test -n "${!1+exist}" && assign "$1" "$STR" || echo -n "out=$STR"
+}
+
+function str_delete_word
+# delete word delimited by start/spaces/end from string or variable
+# $1 variable or string
+# $2 word
+{
+    local STR="$1"
+    test -n "${!1+exist}" && STR="${!1}"
     STR="${STR% $2}"
     STR="${STR#$2 }"
     STR="${STR/ $2 / }"
-    test -n "${!1:+exist}" && assign "$1" "$STR" || echo -n "$STR"
+    test -n "${!1+exist}" && assign "$1" "$STR" || echo -n "out=$STR"
+    test -n "${!1+exist}" && echo a || echo b
 }
 
 function str_parse_url
@@ -336,7 +350,7 @@ function str_parse_args
         #assign $ARRAY "($V)"
         #eval "${!ARRAY}"+=($V)
         PARSE_ARGS+=("$V")
-        export PARSE_ARGS_$C="$V"
+        declare -x PARSE_ARGS_$C="$V"
         C=C+1
     done
 }
@@ -434,7 +448,7 @@ function check_arg_switch
     then
         ARG_NAME_VAR="${2%|*}"
         ARG_NAME_VALUE="${2#*|}"
-        test -n "$ARG_NAME_VAR" && export ${ARG_NAME_VAR}="$ARG_NAME_VALUE"
+        test -n "$ARG_NAME_VAR" && declare -x ${ARG_NAME_VAR}="$ARG_NAME_VALUE"
         CHECK_ARG_SHIFT+=1
         return 0
     fi
@@ -470,14 +484,14 @@ function check_arg_value
     then
         if test $# -eq 1
         then
-            test -n "${ARG_NAME_VAR}" && export ${ARG_NAME_VAR}="$ARG_NAME_VALUE"
+            test -n "${ARG_NAME_VAR}" && declare -x ${ARG_NAME_VAR}="$ARG_NAME_VALUE"
             CHECK_ARG_SHIFT+=1 && return 0 #echo_error "Missing value for argument \"$1\"" $ERROR_CODE_DEFAULT
         elif test "${2:0:1}" != "-"
         then
-            test -n "${ARG_NAME_VAR}" && export ${ARG_NAME_VAR}="$2"
+            test -n "${ARG_NAME_VAR}" && declare -x ${ARG_NAME_VAR}="$2"
             CHECK_ARG_SHIFT+=1
         else
-            export ${ARG_NAME_VAR}="$ARG_NAME_VALUE"
+            declare -x ${ARG_NAME_VAR}="$ARG_NAME_VALUE"
         fi
         CHECK_ARG_SHIFT+=1
         return 0
@@ -485,7 +499,7 @@ function check_arg_value
 
     if test "${1%%=*}" = "--$ARG_NAME_LONG"
     then
-        export ${ARG_NAME_VAR}="${1#*=}"
+        declare -x ${ARG_NAME_VAR}="${1#*=}"
         CHECK_ARG_SHIFT+=1
         return 0
     fi
@@ -584,7 +598,7 @@ function file_remote_get
 {
     local SSH="${1%%:*}"
     local FILE="${1#*:}"
-    export FILE_REMOTE="`file_temporary_name file_remote "$FILE"`"
+    declare -x FILE_REMOTE="`file_temporary_name file_remote "$FILE"`"
     test -n "$2" && FILE_REMOTE="$2"
     file_delete "$FILE_REMOTE"
     $SCPq "$SSH":"$FILE" "$FILE_REMOTE" || return 1
@@ -596,7 +610,7 @@ function file_remote_put
 {
     local SSH="${1%%:*}"
     local FILE="${1#*:}"
-    export FILE_REMOTE="`file_temporary_name file_remote "$FILE"`"
+    declare -x FILE_REMOTE="`file_temporary_name file_remote "$FILE"`"
     test -n "$2" && FILE_REMOTE="$2"
     $SCPq "$FILE_REMOTE" "$SSH":"$FILE" || return 1
     file_delete "$FILE_REMOTE"
@@ -804,8 +818,8 @@ function file_config_read
     local OPTION_SECTION="`dirname "$2"`"
     local OPTION_NAME="`basename "$2"`"
 
-    test "$OPTION_SECTION" != "." && export ${OPTION_SECTION}_${OPTION_NAME}="$VALUE"
-    export $OPTION_NAME="$VALUE"
+    test "$OPTION_SECTION" != "." && declare -x ${OPTION_SECTION}_${OPTION_NAME}="$VALUE"
+    declare -x $OPTION_NAME="$VALUE"
 }
 
 function file_replace
@@ -1735,9 +1749,9 @@ function echo_quote
                 else # ONLY DOUBLE
                     if [[ $ARG =~ $CHECK_VARS ]]
                     then
-                        QUOTE="D"
-                    else
                         QUOTE="S"
+                    else
+                        QUOTE="D"
                     fi
                 fi
             else # SINGLE or NONE
@@ -1746,7 +1760,8 @@ function echo_quote
 
             if test "$QUOTE" = "D"
             then
-                ARG="${ARG//\"/\\\\\"}"
+                ARG="${ARG//\"/\\\"}"
+                ARG="${ARG//\$/\\\$}"
                 #command echo -e "$SPACE\"$ARG\"\c"
                 ECHO_QUOTE="$ECHO_QUOTE$SPACE\"$ARG\""
             else
@@ -1755,6 +1770,7 @@ function echo_quote
             fi
         else
             #command echo -e "$SPACE$ARG\c"
+            ARG="${ARG//\$/\\\$}"
             ECHO_QUOTE="$ECHO_QUOTE$SPACE$ARG"
         fi
         SPACE=" "
@@ -1835,8 +1851,8 @@ function echo_step
     echo_log "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_STEP$STEP_NUMBER_STR$@"
 
     test_integer "$STEP_NUMBER" && let STEP_NUMBER++ && let $STEP_VARIABLE=$STEP_NUMBER
-    test_str "$STEP_NUMBER" "^[a-z]$" && export $STEP_VARIABLE="`command echo "$STEP_NUMBER" | tr "a-z" "b-z_"`"
-    test_str "$STEP_NUMBER" "^[A-Z]$" && export $STEP_VARIABLE="`command echo "$STEP_NUMBER" | tr "A-Z" "B-Z_"`"
+    test_str "$STEP_NUMBER" "^[a-z]$" && declare -x $STEP_VARIABLE="`command echo "$STEP_NUMBER" | tr "a-z" "b-z_"`"
+    test_str "$STEP_NUMBER" "^[A-Z]$" && declare -x $STEP_VARIABLE="`command echo "$STEP_NUMBER" | tr "A-Z" "B-Z_"`"
     return 0
 }
 
@@ -1899,28 +1915,29 @@ function debug_init_namespaces
 
 function debug_set
 {
-    test $# = 0 && local OPTIONS="yes" || local OPTIONS="$@"
+    test $# = 0 && local OPTIONS="debug" || local OPTIONS="$@"
 
     local OPTION
     for OPTION in $OPTIONS
     do
-        #echo "$OPTION_DEBUG" | $GREP --quiet --word-regexp "$OPTION" || export OPTION_DEBUG="$OPTION,$OPTION_DEBUG"
-        debug_unset $OPTION
-        test -n "$OPTION_DEBUG" && OPTION_DEBUG="$OPTION_DEBUG "
-        OPTION_DEBUG="$OPTION_DEBUG$OPTION"
+        #echo "$OPTION_DEBUG" | $GREP --quiet --word-regexp "$OPTION" || declare -x OPTION_DEBUG="$OPTION,$OPTION_DEBUG"
+        #debug_unset $OPTION
+        #test -n "$OPTION_DEBUG" && OPTION_DEBUG="$OPTION_DEBUG "
+        #OPTION_DEBUG="$OPTION_DEBUG$OPTION"
+        str_add_word OPTION_DEBUG "$OPTION"
     done
 }
 
 function debug_unset
 {
-    local OPTION="${1:-yes}"
+    local OPTION="${1:-debug}"
     #OPTION_DEBUG="${OPTION_DEBUG/$OPTION?(,)/}"
     str_delete_word OPTION_DEBUG "$OPTION"
 }
 
 function debug_check
 {
-    local OPTION="${1:-yes}"
+    local OPTION="${1:-debug}"
     #echo "$OPTION_DEBUG" | $GREP --quiet --word-regexp "$OPTION"
     test_str "$OPTION_DEBUG" "\b$OPTION\b"
 }
@@ -1991,36 +2008,6 @@ function debug_level_set_default
     DEBUG_LEVEL_DEFAULT_STR="${DEBUG_LEVEL_PARSE[1]}"
 }
 
-function echo_debug
-{
-    if debug_check
-    then
-        local ECHO_DEBUG_LEVEL
-        if test $# -ge 2
-        then
-            debug_level_parse "$1"
-            local LEVEL=${DEBUG_LEVEL_PARSE[0]}
-            test -n "${DEBUG_LEVEL_PARSE[1]}" && ECHO_DEBUG_LEVEL="[${DEBUG_LEVEL_PARSE[1]}] "
-            shift
-        else
-            local LEVEL=$DEBUG_LEVEL_DEFAULT
-            test -n "$DEBUG_LEVEL_DEFAULT_STR" && ECHO_DEBUG_LEVEL="[$DEBUG_LEVEL_DEFAULT_STR] " || ECHO_DEBUG_LEVEL=""
-        fi
-        if test $LEVEL -le $DEBUG_LEVEL
-        then
-            if test_yes "$OPTION_COLOR"
-            then
-                command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_DEBUG$ECHO_DEBUG_LEVEL$@$COLOR_RESET" > $REDIRECT_DEBUG
-            else
-                command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$ECHO_DEBUG_LEVEL$@" > $REDIRECT_DEBUG
-            fi
-
-            echo_log --date "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$ECHO_DEBUG_LEVEL$@"
-        fi
-    fi
-    return 0
-}
-
 function echo_debug_custom
 # $1 debug string to be compared to OPTION_DEBUG
 {
@@ -2028,7 +2015,7 @@ function echo_debug_custom
     then
         shift
         local ECHO_DEBUG_LEVEL
-        if test $# -ge 2
+        if test $# -ge 2 -a "$1" != "--"
         then
             debug_level_parse "$1"
             local LEVEL=${DEBUG_LEVEL_PARSE[0]}
@@ -2038,6 +2025,7 @@ function echo_debug_custom
             local LEVEL=$DEBUG_LEVEL_DEFAULT
             test -n "$DEBUG_LEVEL_DEFAULT_STR" && ECHO_DEBUG_LEVEL="[$DEBUG_LEVEL_DEFAULT_STR] " || ECHO_DEBUG_LEVEL=""
         fi
+        test "$1" == "--" && shift
         if test $LEVEL -le $DEBUG_LEVEL
         then
             if test_yes "$OPTION_COLOR"
@@ -2053,57 +2041,9 @@ function echo_debug_custom
     return 0
 }
 
-function echo_debug_right
-# -1 shift to previous line
-# $@ message
+function echo_debug
 {
-    local SHIFT1="no"
-    local SHIFT1_MIN_FREE="20"
-    if debug_check right
-    then
-        test "$1" = "-1" && SHIFT1="yes" && shift
-        if test_yes "$OPTION_COLOR"
-        then
-            local DEBUG_MESSAGE="$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_DEBUG$@$COLOR_RESET"
-            local DEBUG_MESSAGE_STR="$ECHO_PREFIX$ECHO_UNAME$@"
-        else
-            local DEBUG_MESSAGE="$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$@"
-            local DEBUG_MESSAGE_STR="$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$@"
-        fi
-        local -i SHIFT_MESSAGE="`tput cols`"
-        let SHIFT_MESSAGE="$SHIFT_MESSAGE-${#DEBUG_MESSAGE_STR}"
-
-##############OLD
-        #cursor_get_position
-#tput sc
-        #/bin/echo -e "\r\c" > $REDIRECT_DEBUG
-        #test $SHIFT_MESSAGE -ge 25 && tput cuu1 > $REDIRECT_DEBUG && tput cuf $SHIFT_MESSAGE > $REDIRECT_DEBUG
-        #/bin/echo -e "$COLOR_DEBUG$DEBUG_MESSAGE$COLOR_RESET" > $REDIRECT_DEBUG
-#tput rc
-        #let CURSOR_COLUMN--
-        #test $CURSOR_COLUMN -ge 1 && tput cuf $CURSOR_COLUMN > $REDIRECT_DEBUG
-#test $SHIFT_MESSAGE -ge 15 || cursor_move_down
-##############OLD
-
-
-        if test $SHIFT_MESSAGE -gt 0
-        then
-            cursor_get_position
-            let SHIFT_MESSAGE++
-#echo -en "\\033[1A"
-            test_yes "$SHIFT1" && test $SHIFT_MESSAGE -le $SHIFT1_MIN_FREE && command echo -e "\r" > $REDIRECT_DEBUG
-            command echo -en "\\033[${SHIFT_MESSAGE}G" > $REDIRECT_DEBUG
-            test_yes "$SHIFT1" && echo -en "\\033[1A" > $REDIRECT_DEBUG
-            command echo -e "$DEBUG_MESSAGE\c" > $REDIRECT_DEBUG
-            command echo -en "\\033[${CURSOR_COLUMN}G" > $REDIRECT_DEBUG
-            test_yes "$SHIFT1" && echo -en "\\033[1B" > $REDIRECT_DEBUG
-        else
-            command echo -e "\r$DEBUG_MESSAGE" > $REDIRECT_DEBUG
-        fi
-
-        echo_log --date "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$@"
-    fi
-    return 0
+    echo_debug_custom debug "$@"
 }
 
 function echo_debug_variable
@@ -2157,6 +2097,59 @@ function echo_debug_function
         FUNCTION_INFO="<<< $FUNCTION_INFO"
 
         echo_debug_custom function $LEVEL "$FUNCTION_INFO"
+    fi
+    return 0
+}
+
+function echo_debug_right
+# -1 shift to previous line
+# $@ message
+{
+    local SHIFT1="no"
+    local SHIFT1_MIN_FREE="20"
+    if debug_check right
+    then
+        test "$1" = "-1" && SHIFT1="yes" && shift
+        if test_yes "$OPTION_COLOR"
+        then
+            local DEBUG_MESSAGE="$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_DEBUG$@$COLOR_RESET"
+            local DEBUG_MESSAGE_STR="$ECHO_PREFIX$ECHO_UNAME$@"
+        else
+            local DEBUG_MESSAGE="$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$@"
+            local DEBUG_MESSAGE_STR="$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$@"
+        fi
+        local -i SHIFT_MESSAGE="`tput cols`"
+        let SHIFT_MESSAGE="$SHIFT_MESSAGE-${#DEBUG_MESSAGE_STR}"
+
+##############OLD
+        #cursor_get_position
+#tput sc
+        #/bin/echo -e "\r\c" > $REDIRECT_DEBUG
+        #test $SHIFT_MESSAGE -ge 25 && tput cuu1 > $REDIRECT_DEBUG && tput cuf $SHIFT_MESSAGE > $REDIRECT_DEBUG
+        #/bin/echo -e "$COLOR_DEBUG$DEBUG_MESSAGE$COLOR_RESET" > $REDIRECT_DEBUG
+#tput rc
+        #let CURSOR_COLUMN--
+        #test $CURSOR_COLUMN -ge 1 && tput cuf $CURSOR_COLUMN > $REDIRECT_DEBUG
+#test $SHIFT_MESSAGE -ge 15 || cursor_move_down
+##############OLD
+
+
+        if test $SHIFT_MESSAGE -gt 0
+        then
+            cursor_get_position
+            let SHIFT_MESSAGE++
+#echo -en "\\033[1A"
+            test_yes "$SHIFT1" && test $SHIFT_MESSAGE -le $SHIFT1_MIN_FREE && command echo -e "\r" > $REDIRECT_DEBUG
+            command echo -en "\\033[${SHIFT_MESSAGE}G" > $REDIRECT_DEBUG
+            test_yes "$SHIFT1" && echo -en "\\033[1A" > $REDIRECT_DEBUG
+            command echo -e "$DEBUG_MESSAGE\c" > $REDIRECT_DEBUG
+            command echo -en "\\033[${CURSOR_COLUMN}G" > $REDIRECT_DEBUG
+            test_yes "$SHIFT1" && echo -en "\\033[1B" > $REDIRECT_DEBUG
+        else
+            command echo -e "\r$DEBUG_MESSAGE" > $REDIRECT_DEBUG
+        fi
+
+        echo_log --date "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$@"
     fi
     return 0
 }
@@ -2257,12 +2250,12 @@ function history_init
     then
         HISTFILE="${SCRIPT_FILE_NOEXT}.history"
     else
-        export HISTFILE="$1"
+        declare -x HISTFILE="$1"
     fi
-    export HISTCMD=1001
-    export HISTCONTROL=ignoredups
-    export HISTSIZE=1000
-    export HISTFILESIZE=1000
+    declare -x HISTCMD=1001
+    declare -x HISTCONTROL=ignoredups
+    declare -x HISTSIZE=1000
+    declare -x HISTFILESIZE=1000
     touch "$HISTFILE"
     #set -o history
 
@@ -2301,7 +2294,7 @@ function colors_init
 # no dumb/sun
 
     # set TERM if is not set
-    test -z "$TERM" -a -n "$OPTION_TERM" && export TERM="$OPTION_TERM"
+    test -z "$TERM" -a -n "$OPTION_TERM" && declare -x TERM="$OPTION_TERM"
 
     # init color numbers
     test_integer "$OPTION_COLORS" || OPTION_COLORS="256"
@@ -2456,15 +2449,16 @@ function colors_init
 function check_arg_tools
 {
     check_arg_switch "|ignore-unknown" "OPTION_IGNORE_UNKNOWN|yes" "$@"
-    check_arg_switch "|debug" "" "$@" && debug_set yes
-    check_arg_value "|debug-level" "DEBUG_LEVEL|ALL" "$@" && debug_level_set $DEBUG_LEVEL
-    check_arg_switch "|debug-right" "" "$@" && debug_set right
+    check_arg_switch "|debug" "" "$@" && debug_set debug
     check_arg_switch "|debug-variable" "" "$@" && debug_set variable
     check_arg_switch "|debug-function" "" "$@" && debug_set function
     check_arg_switch "|debug-command" "" "$@" && debug_set command
+    check_arg_switch "|debug-right" "" "$@" && debug_set right
+    check_arg_value "|debug-level" "DEBUG_LEVEL|ALL" "$@" && debug_level_set $DEBUG_LEVEL
     check_arg_value "|term" "OPTION_TERM|xterm" "$@"
     check_arg_value "|prefix" "OPTION_PREFIX|yes" "$@"
     check_arg_value "|color" "OPTION_COLOR|yes" "$@"
+    check_arg_value "|no-color" "OPTION_COLOR|no" "$@"
     check_arg_value "|uname" "OPTION_UNAME|yes" "$@"
 }
 
@@ -2510,236 +2504,230 @@ function tools_init
 
 ### tools exports
 
-export REDIRECT_DEBUG=/dev/stderr
-export REDIRECT_ERROR=/dev/stdout
-export REDIRECT_WARNING=/dev/stdout
+declare -x REDIRECT_DEBUG=/dev/stderr
+declare -x REDIRECT_ERROR=/dev/stdout
+declare -x REDIRECT_WARNING=/dev/stdout
 
-export OPTION_TERM="xterm" # default value if TERM is not set
-export OPTION_DEBUG
-export OPTION_PREFIX="no"
-export OPTION_COLOR
-export OPTION_COLORS
-export OPTION_UNAME
+declare -x OPTION_TERM="xterm" # default value if TERM is not set
+declare -x OPTION_DEBUG=""
+declare -x OPTION_PREFIX="no"
+declare -x OPTION_COLOR="unknown"
+declare -x OPTION_COLORS=-1
+declare -x OPTION_UNAME=""
 
-export ECHO_PREFIX
-export ECHO_PREFIX_STEP="  "
-export ECHO_PREFIX_SUBSTEP="    - "
-export ECHO_PREFIX_DEBUG="@@@ "
-export ECHO_PREFIX_ERROR="Error: "
-export ECHO_PREFIX_WARNING="Warning: "
-export ECHO_UNAME
+declare -x ECHO_PREFIX=""
+declare -x ECHO_PREFIX_STEP="  "
+declare -x ECHO_PREFIX_SUBSTEP="    - "
+declare -x ECHO_PREFIX_DEBUG="@@@ "
+declare -x ECHO_PREFIX_ERROR="Error: "
+declare -x ECHO_PREFIX_WARNING="Warning: "
+declare -x ECHO_UNAME=""
 
-export COLOR_BLACK COLOR_BLACK_E
-export COLOR_RESET COLOR_RESET_E
-export COLOR_RED COLOR_RED_E
-export COLOR_GREEN COLOR_GREEN_E
-export COLOR_YELLOW COLOR_YELLOW_E
-export COLOR_BLUE COLOR_BLUE_E
-export COLOR_MAGENTA COLOR_MAGENTA_E
-export COLOR_CYAN COLOR_CYAN_E
-export COLOR_GRAY COLOR_GRAY_E
-export COLOR_LIGHT_GRAY COLOR_LIGHT_GRAY_E
+declare -x COLOR_BLACK COLOR_BLACK_E
+declare -x COLOR_RESET COLOR_RESET_E
+declare -x COLOR_RED COLOR_RED_E
+declare -x COLOR_GREEN COLOR_GREEN_E
+declare -x COLOR_YELLOW COLOR_YELLOW_E
+declare -x COLOR_BLUE COLOR_BLUE_E
+declare -x COLOR_MAGENTA COLOR_MAGENTA_E
+declare -x COLOR_CYAN COLOR_CYAN_E
+declare -x COLOR_GRAY COLOR_GRAY_E
+declare -x COLOR_LIGHT_GRAY COLOR_LIGHT_GRAY_E
 
-export COLOR_DARK_GRAY COLOR_DARK_GRAY_E
-export COLOR_LIGHT_RED COLOR_LIGHT_RED_E
-export COLOR_LIGHT_GREEN COLOR_LIGHT_GREEN_E
-export COLOR_LIGHT_YELLOW COLOR_LIGHT_YELLOW_E
-export COLOR_LIGHT_BLUE COLOR_LIGHT_BLUE_E
-export COLOR_LIGHT_MAGENTA COLOR_LIGHT_MAGENTA_E
-export COLOR_LIGHT_CYAN COLOR_LIGHT_CYAN_E
-export COLOR_WHITE COLOR_WHITE_E
+declare -x COLOR_DARK_GRAY COLOR_DARK_GRAY_E
+declare -x COLOR_LIGHT_RED COLOR_LIGHT_RED_E
+declare -x COLOR_LIGHT_GREEN COLOR_LIGHT_GREEN_E
+declare -x COLOR_LIGHT_YELLOW COLOR_LIGHT_YELLOW_E
+declare -x COLOR_LIGHT_BLUE COLOR_LIGHT_BLUE_E
+declare -x COLOR_LIGHT_MAGENTA COLOR_LIGHT_MAGENTA_E
+declare -x COLOR_LIGHT_CYAN COLOR_LIGHT_CYAN_E
+declare -x COLOR_WHITE COLOR_WHITE_E
 
-export COLOR_ORANGE COLOR_ORANGE_E
-export COLOR_CHARCOAL COLOR_CHARCOAL_E
+declare -x COLOR_ORANGE COLOR_ORANGE_E
+declare -x COLOR_CHARCOAL COLOR_CHARCOAL_E
 
-export TITLE_STYLE="+|+--+|+"
-export TITLE_STYLE="########"
-export TITLE_STYLE="[ [==] ]"
-export COLOR_TITLE; export COLOR_TITLE_BORDER
-export COLOR_INFO
-export COLOR_STEP
-export COLOR_SUBSTEP
-export COLOR_DEBUG
-export COLOR_ERROR
-export COLOR_WARNING
-export COLOR_UNAME
-export COLOR_PREFIX
+declare -x TITLE_STYLE="+|+--+|+"
+declare -x TITLE_STYLE="########"
+declare -x TITLE_STYLE="[ [==] ]"
+declare -x COLOR_TITLE; declare -x COLOR_TITLE_BORDER
+declare -x COLOR_INFO
+declare -x COLOR_STEP
+declare -x COLOR_SUBSTEP
+declare -x COLOR_DEBUG
+declare -x COLOR_ERROR
+declare -x COLOR_WARNING
+declare -x COLOR_UNAME
+declare -x COLOR_PREFIX
 
-export -f query
-export -f query_yn
-export -f query_ny
+declare -x -f query
+declare -x -f query_yn
+declare -x -f query_ny
 
-export COMMAND
-export OPTIONS
-export OPTIONS2
-export OPTIONS3
-export OPTIONS4
-export OPTION
-export OPTION1
-export OPTION2
-export OPTION3
-export OPTION4
-export OPTION5
-export OPTION6
-export OPTION7
-export OPTION8
-export OPTION9
+declare -x COMMAND
+declare -x OPTIONS
+declare -x OPTIONS2
+declare -x OPTIONS3
+declare -x OPTIONS4
+declare -x OPTION
+declare -x OPTION1
+declare -x OPTION2
+declare -x OPTION3
+declare -x OPTION4
+declare -x OPTION5
+declare -x OPTION6
+declare -x OPTION7
+declare -x OPTION8
+declare -x OPTION9
 declare -a OPTIONS_A
-export -f command_options;  export -f fill_command_options # = command_options fill $@
-                            export -f insert_cmd # = command_options insert $@
+declare -x -f command_options;  declare -x -f fill_command_options # = command_options fill $@
+                                declare -x -f insert_cmd # = command_options insert $@
 
-export -f assign
+declare -x -f assign
 
-export S_TAB="`command echo -e "\t"`"
-export S_NEWLINE="`command echo -e "\n"`"
+declare -x -r S_TAB="`command echo -e "\t"`"
+declare -x -r S_NEWLINE="`command echo -e "\n"`"
 
-export -f str_trim
-export -f str_delete_word
+declare -x -f str_trim
+declare -x -f str_add_word
+declare -x -f str_delete_word
 
-export PARSE_URL
-export PARSE_URL_PROTOCOL
-export PARSE_URL_USER_HOST
-export PARSE_URL_USER
-export PARSE_URL_HOST
-export PARSE_URL_FILE
-export -f str_parse_url
+declare -x PARSE_URL
+declare -x PARSE_URL_PROTOCOL
+declare -x PARSE_URL_USER_HOST
+declare -x PARSE_URL_USER
+declare -x PARSE_URL_HOST
+declare -x PARSE_URL_FILE
+declare -x -f str_parse_url
 
-declare -a PARSE_ARGS=()
-export PARSE_ARGS=()
-export -f str_parse_args
-export -f str_get_arg
-export -f str_get_arg_from
+declare -x -a PARSE_ARGS=()
+declare -x -f str_parse_args
+declare -x -f str_get_arg
+declare -x -f str_get_arg_from
 
-declare -a CHECK_ARG_SHIFTS=()
-export CHECK_ARG_SHIFTS
-declare -i CHECK_ARG_SHIFTS_I=0
-export CHECK_ARG_SHIFTS_I
-declare -i CHECK_ARG_SHIFT=0
-export CHECK_ARG_SHIFT
-export -f check_arg_init
-export -f check_arg_done
-export -f check_arg_loop
-export -f check_arg_shift
-export -f check_arg_switch
-export -f check_arg_value
+declare -x -a CHECK_ARG_SHIFTS=()
+declare -x -i CHECK_ARG_SHIFTS_I=0
+declare -x -i CHECK_ARG_SHIFT=0
+declare -x -f check_arg_init
+declare -x -f check_arg_done
+declare -x -f check_arg_loop
+declare -x -f check_arg_shift
+declare -x -f check_arg_switch
+declare -x -f check_arg_value
 
-export -f file_temporary_name
-export -f file_delete
-export -f file_prepare;     export -f prepare_file
+declare -x -f file_temporary_name
+declare -x -f file_delete
+declare -x -f file_prepare;     declare -x -f prepare_file
 
-export FILE_REMOTE
-export -f file_remote_get
-export -f file_remote_put
+declare -x    FILE_REMOTE
+declare -x -f file_remote_get
+declare -x -f file_remote_put
 
-export -f file_line_remove_local
-export -f file_line_add_local
-export -f file_line_set_local
-export -f file_line         #export -f file_line_add1 lr_file_line_add
+declare -x -f file_line_remove_local
+declare -x -f file_line_add_local
+declare -x -f file_line_set_local
+declare -x -f file_line
 
-export -f file_config_set
-export -f file_config_get
-export -f file_config_read
-export -f file_replace
+declare -x -f file_config_set
+declare -x -f file_config_get
+declare -x -f file_config_read
+declare -x -f file_replace
 
-export -f check_ssh
-export -f check_internet
+declare -x -f check_ssh
+declare -x -f check_internet
 
-export -f check_ping
-export -f get_ip_arp
-export -f get_ip_ping
-export -f get_ip
-export -f is_localhost
-export -f get_id
+declare -x -f check_ping
+declare -x -f get_ip_arp
+declare -x -f get_ip_ping
+declare -x -f get_ip
+declare -x -f is_localhost
+declare -x -f get_id
 
-export -f ssh_scanid
-export -f ssh_scanremoteid
-export -f ssh_exportid
-export -f ssh_importid
+declare -x -f ssh_scanid
+declare -x -f ssh_scanremoteid
+declare -x -f ssh_exportid
+declare -x -f ssh_importid
 
-export CALL_COMMAND_DEFAULT_USER=""
-export -f call_command
+declare -x CALL_COMMAND_DEFAULT_USER=""
+declare -x -f call_command
 
-export -f get_pids
-export KILL_ECHO="no"
-export -f kill_tree_childs
-export -f kill_tree
-export -f kill_tree_name
+declare -x -f get_pids
+declare -x    KILL_ECHO="no"
+declare -x -f kill_tree_childs
+declare -x -f kill_tree
+declare -x -f kill_tree_name
 
-export -f fd_check
-export -f fd_find_free
+declare -x -f fd_check
+declare -x -f fd_find_free
 
-declare -A PERF_DATA
-declare -A PERF_MSG
+declare -x -A PERF_DATA
+declare -x -A PERF_MSG
 #PERF_DATA["default"]=0
-export -f perf_start
-export -f perf_now
-export -f perf_end
+declare -x -f perf_start
+declare -x -f perf_now
+declare -x -f perf_end
 
-export -f set_yes
-export -f test_ne0
-export -f test_boolean
-export -f test_str_yes
-export -f test_yes
-export -f test_str_no
-export -f test_no
-export -f test_ok
-export -f test_nok
-export -f test_integer
-export -f test_str;         export -f test_str_grep
-export -f test_file
-export -f test_cmd
-export -f test_cmd_z
-export -f test_opt
-export -f test_opt2
-export -f test_opt_z
-export -f test_opt2_z
-export -f test_opt_i
-export -f test_opt2_i
+declare -x -f set_yes
+declare -x -f test_ne0
+declare -x -f test_boolean
+declare -x -f test_str_yes
+declare -x -f test_yes
+declare -x -f test_str_no
+declare -x -f test_no
+declare -x -f test_ok
+declare -x -f test_nok
+declare -x -f test_integer
+declare -x -f test_str;         declare -x -f test_str_grep
+declare -x -f test_file
+declare -x -f test_cmd
+declare -x -f test_cmd_z
+declare -x -f test_opt
+declare -x -f test_opt2
+declare -x -f test_opt_z
+declare -x -f test_opt2_z
+declare -x -f test_opt_i
+declare -x -f test_opt2_i
 
-declare CURSOR_POSITION="0;0"
-export CURSOR_POSITION
-declare -i CURSOR_COLUMN=0
-export CURSOR_COLUMN
-declare -i CURSOR_ROW=0
-export CURSOR_ROW
-export -f cursor_get_position
-export -f cursor_move_down
+declare -x    CURSOR_POSITION="0;0"
+declare -x -i CURSOR_COLUMN=0
+declare -x -i CURSOR_ROW=0
+declare -x -f cursor_get_position
+declare -x -f cursor_move_down
 
-export -f pipe_remove_color
-export -f pipe_from
-export -f pipe_cut
-export -f echo_cut
+declare -x -f pipe_remove_color
+declare -x -f pipe_from
+declare -x -f pipe_cut
+declare -x -f echo_cut
 
-export PIPE_PREFIX="  >  "
-export PIPE_PREFIX_HIDELINES="" # regexp to hide lines
-export PIPE_PREFIX_COMMAND=""
-export PIPE_PREFIX_DEDUPLICATE="yes" ### !!!TODO!!!
+declare -x PIPE_PREFIX="  >  "
+declare -x PIPE_PREFIX_HIDELINES="" # regexp to hide lines
+declare -x PIPE_PREFIX_COMMAND=""
+declare -x PIPE_PREFIX_DEDUPLICATE="yes" ### !!!TODO!!!
 
-export -f log_init;         export -f log_file_init
-export -f log_done;         export -f log_file_done
-export -f echo_log
+declare -x -f log_init;         declare -x -f log_file_init
+declare -x -f log_done;         declare -x -f log_file_done
+declare -x -f echo_log
 
-export -f pipe_log;         export -f log_output
-export -f pipe_echo;        export -f echo_output
-export -f pipe_prefix
-export -f pipe_echo_prefix; export -f show_output
+declare -x -f pipe_log;         declare -x -f log_output
+declare -x -f pipe_echo;        declare -x -f echo_output
+declare -x -f pipe_prefix
+declare -x -f pipe_echo_prefix; declare -x -f show_output
 
-export ECHO_QUOTE
-export -f echo_quote
-export -f echo_line
-export -f echo_title
-export -f echo_info
-export -f echo_step
-export -f echo_substep
+declare -x ECHO_QUOTE
+declare -x -f echo_quote
+declare -x -f echo_line
+declare -x -f echo_title
+declare -x -f echo_info
+declare -x -f echo_step
+declare -x -f echo_substep
 
-export -f debug_init
-export DEBUG_INIT_NAMESPACES="no"
-export -f debug_init_namespaces
-export DEBUG_LEVEL
-export DEBUG_LEVEL_STR
-export DEBUG_LEVEL_DEFAULT=80
-export DEBUG_LEVEL_DEFAULT_STR=""
-declare -A DEBUG_LEVELS
+declare -x -f debug_init
+declare -x    DEBUG_INIT_NAMESPACES="no"
+declare -x -f debug_init_namespaces
+declare -x -i DEBUG_LEVEL
+declare -x    DEBUG_LEVEL_STR
+declare -x -i DEBUG_LEVEL_DEFAULT=80
+declare -x    DEBUG_LEVEL_DEFAULT_STR=""
+declare -x -A DEBUG_LEVELS
 DEBUG_LEVELS[ALL]=100
 DEBUG_LEVELS[TRACE]=90
 DEBUG_LEVELS[DEBUG]=80
@@ -2749,35 +2737,35 @@ DEBUG_LEVELS[ERROR]=20
 DEBUG_LEVELS[FATAL]=10
 DEBUG_LEVELS[FORCE]=1
 DEBUG_LEVELS[OFF]=0
-export -f debug_set
-export -f debug_unset
-export -f debug_check
-export -f debug_level_check
-export -a DEBUG_LEVEL_PARSE
-export -f debug_level_parse
-export -f debug_level_set
-export -f debug_level_set_default
-export -f echo_debug
-export -f echo_debug_custom
-export -f echo_debug_right
-export -f echo_debug_variable
-export -f echo_debug_function
-export ERROR_CODE_DEFAULT=99
-export -f echo_error
-export -f echo_error_ne0
-declare -A FUNCTION_NAMESPACES
-export -f echo_error_function
-export -f echo_error_exit
-export -f echo_warning
+declare -x -f debug_set
+declare -x -f debug_unset
+declare -x -f debug_check
+declare -x -f debug_level_check
+declare -x -a DEBUG_LEVEL_PARSE
+declare -x -f debug_level_parse
+declare -x -f debug_level_set
+declare -x -f debug_level_set_default
+declare -x -f echo_debug_custom
+declare -x -f echo_debug
+declare -x -f echo_debug_variable
+declare -x -f echo_debug_function
+declare -x -f echo_debug_right
+declare -x -i ERROR_CODE_DEFAULT=99
+declare -x -f echo_error
+declare -x -f echo_error_ne0
+declare -x -A FUNCTION_NAMESPACES=()
+declare -x -f echo_error_function
+declare -x -f echo_error_exit
+declare -x -f echo_warning
 
-export -f history_init
-export -f history_restore
-export -f history_store
+declare -x -f history_init
+declare -x -f history_restore
+declare -x -f history_store
 
-export OPTION_IGNORE_UNKNOWN="no"
-export -f check_arg_tools
-export -f tools_init
-export -f colors_init
+declare -x OPTION_IGNORE_UNKNOWN="no"
+declare -x -f check_arg_tools
+declare -x -f tools_init
+declare -x -f colors_init
 
 ### tools init
 tools_init "$@"

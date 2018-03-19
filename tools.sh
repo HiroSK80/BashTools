@@ -2718,7 +2718,7 @@ function echo_title
     local TITLE_SEQ="`eval echo "{1..$TITLE_LENGTH}"`"
     local TITLE_HEAD="${TITLE_STYLE:0:1}`printf -- "${TITLE_STYLE:3:1}%.0s" $TITLE_SEQ`${TITLE_STYLE:5:1}"
     local TITLE_TAIL="${TITLE_STYLE:2:1}`printf -- "${TITLE_STYLE:4:1}%.0s" $TITLE_SEQ`${TITLE_STYLE:7:1}"
-    if test_yes "$OPTION_COLOR"
+    if test_yes "$TOOLS_COLOR"
     then
         command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_INFO$TITLE_HEAD$COLOR_RESET"
         command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_INFO$TITLE_MSG$COLOR_RESET"
@@ -2738,7 +2738,7 @@ function echo_title
 
 function echo_info
 {
-    if test_yes "$OPTION_COLOR"
+    if test_yes "$TOOLS_COLOR"
     then
         command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_INFO$@$COLOR_RESET"
         command echo -e "$COLOR_RESET\c"
@@ -2762,7 +2762,7 @@ function echo_step
         shift
     fi
 
-    if test_yes "$OPTION_COLOR"
+    if test_yes "$TOOLS_COLOR"
     then
         command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_STEP$ECHO_PREFIX_STEP$STEP_NUMBER_STR$@$COLOR_RESET"
         command echo -e "$COLOR_RESET\c"
@@ -2780,7 +2780,7 @@ function echo_step
 
 function echo_substep
 {
-    if test_yes "$OPTION_COLOR"
+    if test_yes "$TOOLS_COLOR"
     then
         command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_SUBSTEP$ECHO_PREFIX_SUBSTEP$@$COLOR_RESET"
         command echo -e "$COLOR_RESET\c"
@@ -2842,15 +2842,15 @@ function debug
             ;;
         set)
             test $# = 0 && local OPTIONS="debug" || local OPTIONS="$@"
-            str_word add OPTION_DEBUG $OPTIONS
+            str_word add DEBUG_TYPE $OPTIONS
             ;;
         unset)
             test $# = 0 && local OPTIONS="debug" || local OPTIONS="$@"
-            str_word delete OPTION_DEBUG $OPTIONS
+            str_word delete DEBUG_TYPE $OPTIONS
             ;;
         check)
             local OPTION="${1:-debug}"
-            str_word check OPTION_DEBUG $OPTION
+            str_word check DEBUG_TYPE $OPTION
             ;;
         parse_type)
             #DEBUG_TYPES[debug]="D"
@@ -2858,7 +2858,7 @@ function debug
             #DEBUG_TYPES[function]="F"
             #DEBUG_TYPES[variable]="V"
             DEBUG_PARSE_TYPE="${DEBUG_TYPES[$1]}"
-            test -n "$DEBUG_PARSE_TYPE" && DEBUG_PARSE_TYPE="[$DEBUG_PARSE_TYPE] "
+            #test -n "$DEBUG_PARSE_TYPE" && DEBUG_PARSE_TYPE_STR="[$DEBUG_PARSE_TYPE] " || DEBUG_PARSE_TYPE_STR=""
             ;;
         set_level)
             debug parse_level "$@"
@@ -2922,29 +2922,36 @@ function debug
 #NAMESPACE/debug/end
 
 function echo_debug_custom
-# $1 debug string to be compared to OPTION_DEBUG
+# $1 debug type to be compared to DEBUG_TYPE
+# [$2] debug level
+# $@ message
 {
     if debug check "$1"
     then
-        local ECHO_DEBUG_TYPE
-        debug parse_type "$1"
-        ECHO_DEBUG_TYPE="$DEBUG_PARSE_TYPE"
-        shift
-        local ECHO_DEBUG_LEVEL
-        if test $# -ge 2 -a "$1" != "--"
-        then
+        local ECHO_DEBUG_TYPE=""
+        local ECHO_DEBUG_LEVEL=""
+
+        local LEVEL=$DEBUG_LEVEL_DEFAULT
+        test -n "$DEBUG_LEVEL_DEFAULT_STR" && ECHO_DEBUG_LEVEL="[$DEBUG_LEVEL_DEFAULT_STR] " || ECHO_DEBUG_LEVEL=""
+
+        while test $# -ge 2 -a "$1" != "--"
+        do
+            debug parse_type "$1"
+            if test -n "$DEBUG_PARSE_TYPE"
+            then
+                ECHO_DEBUG_TYPE="[$DEBUG_PARSE_TYPE] "
+                shift && continue
+            fi
+
             debug parse_level "$1"
-            local LEVEL=$DEBUG_PARSE_LEVEL
+            LEVEL=$DEBUG_PARSE_LEVEL
             test -n "$DEBUG_PARSE_LEVEL_STR" && ECHO_DEBUG_LEVEL="[$DEBUG_PARSE_LEVEL_STR] "
             shift
-        else
-            local LEVEL=$DEBUG_LEVEL_DEFAULT
-            test -n "$DEBUG_LEVEL_DEFAULT_STR" && ECHO_DEBUG_LEVEL="[$DEBUG_LEVEL_DEFAULT_STR] " || ECHO_DEBUG_LEVEL=""
-        fi
+        done
         test "$1" == "--" && shift
         if test $LEVEL -le $DEBUG_LEVEL
         then
-            if test_yes "$OPTION_COLOR"
+            if test_yes "$TOOLS_COLOR"
             then
                 command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@$COLOR_RESET" > $REDIRECT_DEBUG
             else
@@ -3046,7 +3053,7 @@ function echo_debug_right
     if debug check right
     then
         test "$1" = "-1" && SHIFT1="yes" && shift
-        if test_yes "$OPTION_COLOR"
+        if test_yes "$TOOLS_COLOR"
         then
             local DEBUG_MESSAGE="$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_DEBUG$@$COLOR_RESET"
             local DEBUG_MESSAGE_STR="$ECHO_PREFIX$ECHO_UNAME$@"
@@ -3086,7 +3093,7 @@ function echo_debug_right
         fi
 
         debug parse_type right
-        log echo --date "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$DEBUG_PARSE_TYPE$@"
+        log echo --date "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG[$DEBUG_PARSE_TYPE] $@"
     fi
     return 0
 }
@@ -3097,7 +3104,7 @@ function echo_error
     local ECHO_ERROR="$@"
     test_integer "${@:(-1)}" && local EXIT_CODE=${@:(-1)} && ECHO_ERROR="${@:1:${#@}-1}"
 
-    if test_yes "$OPTION_COLOR"
+    if test_yes "$TOOLS_COLOR"
     then
         command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_ERROR$ECHO_PREFIX_ERROR$ECHO_ERROR!$COLOR_RESET" >&$REDIRECT_ERROR
     else
@@ -3165,7 +3172,7 @@ function echo_warning
     local ECHO_WARNING="$@"
     test_integer "${@:(-1)}" && local EXIT_CODE=$2 && ECHO_WARNING="${@:1:${#@}-1}"
 
-    if test_yes "$OPTION_COLOR"
+    if test_yes "$TOOLS_COLOR"
     then
         command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_WARNING$ECHO_PREFIX_WARNING$ECHO_WARNING.$COLOR_RESET" >&$REDIRECT_WARNING
     else
@@ -3266,18 +3273,18 @@ function history
 
 function arguments_check_tools
 {
-    arguments check switch "|ignore-unknown" "OPTION_IGNORE_UNKNOWN|yes" "$@"
+    arguments check switch "|ignore-unknown" "TOOLS_IGNORE_UNKNOWN|yes" "$@"
     arguments check switch "|debug" "" "$@" && debug set debug
     arguments check switch "|debug-variable" "" "$@" && debug set variable
     arguments check switch "|debug-function" "" "$@" && debug set function
     arguments check switch "|debug-command" "" "$@" && debug set command
     arguments check switch "|debug-right" "" "$@" && debug set right
     arguments check value "|debug-level" "DEBUG_LEVEL|ALL|" "$@" && debug set_level $DEBUG_LEVEL
-    arguments check value "|term" "OPTION_TERM|xterm|" "$@"
-    arguments check switch "|prefix" "OPTION_PREFIX|yes" "$@"
-    arguments check value "|color" "OPTION_COLOR|yes|yes_no" "$@" && init_colors
-    arguments check switch "|no-color" "OPTION_COLOR|no" "$@" && init_colors
-    arguments check switch "|uname" "OPTION_UNAME|yes" "$@"
+    arguments check value "|term" "TOOLS_TERM|xterm|" "$@"
+    arguments check value "|color" "TOOLS_COLOR|yes|yes_no" "$@" && init_colors
+    arguments check switch "|no-color" "TOOLS_COLOR|no" "$@" && init_colors
+    arguments check switch "|prefix" "TOOLS_PREFIX|yes" "$@"
+    arguments check switch "|uname" "TOOLS_UNAME|yes" "$@"
 }
 
 function init_debug
@@ -3289,35 +3296,35 @@ function init_debug
 function init_colors
 {
     # set colors to current terminal
-    #echo "Initial color usage is set to $OPTION_COLOR and using $OPTION_COLORS colors"
+    #echo "Initial color usage is set to $TOOLS_COLOR and using $TOOLS_COLORS colors"
 
 # echo $TERM
 # ok xterm/rxvt/konsole/linux
 # no dumb/sun
 
     # set TERM if is not set
-    test -z "$TERM" -a -n "$OPTION_TERM" && TERM="$OPTION_TERM"
+    test -z "$TERM" -a -n "$TOOLS_TERM" && TERM="$TOOLS_TERM"
 
     # init color numbers
-    test_integer "$OPTION_COLORS" || OPTION_COLORS="256"
+    test_integer "$TOOLS_COLORS" || TOOLS_COLORS=256
 
     # init color usage if is not set
-    if ! test_yes "$OPTION_COLOR" && ! test_no "$OPTION_COLOR"
+    if ! test_yes "$TOOLS_COLOR" && ! test_no "$TOOLS_COLOR"
     then
         if test "${TERM:0:5}" = "xterm" -o "$TERM" = "rxvt" -o "$TERM" = "konsole" -o "$TERM" = "linux" -o "$TERM" = "putty"
         then
-            OPTION_COLOR="yes"
-            OPTION_COLORS="256"
-            test "$TERM" = "linux" && OPTION_COLORS="8"
+            TOOLS_COLOR="yes"
+            TOOLS_COLORS=256
+            test "$TERM" = "linux" && TOOLS_COLORS=8
         else
-            OPTION_COLOR="no"
-            OPTION_COLORS="2"
+            TOOLS_COLOR="no"
+            TOOLS_COLORS=2
         fi
-        #echo "Color is $OPTION_COLOR"
+        #echo "Color is $TOOLS_COLOR"
     fi
 
     # init color names
-    if test_yes "$OPTION_COLOR"
+    if test_yes "$TOOLS_COLOR"
     then
         # color definitions
         COLOR_RESET="\033[0m"
@@ -3332,7 +3339,7 @@ function init_colors
         COLOR_GRAY="\033[37m"
         COLOR_LIGHT_GRAY="\033[37m"
 
-        if test $OPTION_COLORS -gt 8
+        if test $TOOLS_COLORS -gt 8
         then
             COLOR_DARK_GRAY="\033[90m"
             COLOR_LIGHT_RED="\033[91m"
@@ -3439,13 +3446,13 @@ function init_colors
     COLOR_INFO="$COLOR_LIGHT_YELLOW"
     COLOR_STEP="$COLOR_WHITE"
     COLOR_SUBSTEP="$COLOR_LIGHT_GREY"
-    test $OPTION_COLORS -gt 8 && COLOR_DEBUG="$COLOR_CHARCOAL" || COLOR_DEBUG="$COLOR_BLUE"
+    test $TOOLS_COLORS -gt 8 && COLOR_DEBUG="$COLOR_CHARCOAL" || COLOR_DEBUG="$COLOR_BLUE"
     COLOR_ERROR="$COLOR_LIGHT_RED"
     COLOR_WARNING="$COLOR_CYAN"
     COLOR_UNAME="$COLOR_GREEN"
     COLOR_PREFIX="$COLOR_DARK_GRAY"
 
-    #echo "Color usage is now set to $OPTION_COLOR and using $OPTION_COLORS colors for $TERM"
+    #echo "Color usage is now set to $TOOLS_COLOR and using $TOOLS_COLORS colors for $TERM"
 }
 
 function init_tools
@@ -3472,7 +3479,7 @@ function init_tools
         #    command_options fill "$@"
         #    break
         #fi
-        test_no OPTION_IGNORE_UNKNOWN && echo_error "Unknown argument for tools: $1" 1
+        test_no TOOLS_IGNORE_UNKNOWN && echo_error "Unknown argument for tools: $1" 1
         shift
     done
     arguments done
@@ -3512,12 +3519,11 @@ declare -x REDIRECT_DEBUG=/dev/stderr
 declare -x REDIRECT_ERROR=/dev/stdout
 declare -x REDIRECT_WARNING=/dev/stdout
 
-declare -x OPTION_TERM="xterm" # default value if TERM is not set
-declare -x OPTION_DEBUG=""
-declare -x OPTION_PREFIX="no"
-declare -x OPTION_COLOR="unknown"
-declare -x OPTION_COLORS=-1
-declare -x OPTION_UNAME=""
+declare -x    TOOLS_TERM="xterm" # default value if TERM is not set
+declare -x    TOOLS_COLOR="unknown"
+declare -x -i TOOLS_COLORS=-1
+declare -x    TOOLS_PREFIX="no"
+declare -x    TOOLS_UNAME=""
 
 declare -x ECHO_PREFIX=""
 declare -x ECHO_PREFIX_STEP="  "
@@ -3773,6 +3779,7 @@ declare -x -f echo_step
 declare -x -f echo_substep
 
 declare -x    DEBUG_INIT_NAMESPACES="no"
+declare -x    DEBUG_TYPE=""
 declare -x -A DEBUG_TYPES
 DEBUG_TYPES[debug]="D"
 DEBUG_TYPES[right]="R"
@@ -3813,7 +3820,7 @@ declare -x -f echo_warning
 
 declare -x -f history                   # init / restore / store
 
-declare -x OPTION_IGNORE_UNKNOWN="yes"
+declare -x    TOOLS_IGNORE_UNKNOWN="yes"
 declare -x -f arguments_check_tools
 declare -x -f init_debug
 declare -x -f init_colors
@@ -3825,9 +3832,9 @@ init_colors
 init_tools "$@"
 
 # set echo prefix or uname prefix
-test_yes OPTION_PREFIX && ECHO_PREFIX="### " || ECHO_PREFIX=""
+test_yes TOOLS_PREFIX && ECHO_PREFIX="### " || ECHO_PREFIX=""
 test -n "$ECHO_PREFIX" && ECHO_PREFIX_C="$COLOR_PREFIX$ECHO_PREFIX$COLOR_RESET"
-test_yes OPTION_UNAME && ECHO_UNAME="`uname -n`: " || ECHO_UNAME=""
+test_yes TOOLS_UNAME && ECHO_UNAME="`uname -n`: " || ECHO_UNAME=""
 test -n "$ECHO_UNAME" && ECHO_UNAME_C="$COLOR_UNAME$ECHO_UNAME$COLOR_RESET"
 
 return 0

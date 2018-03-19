@@ -1586,6 +1586,8 @@ function call_command
     local TOPT="-t"
     local QUIET="no"
     local REDIRECT=""
+    local PREFIX="no"
+    local PIPE=""
     local LOCAL_DEBUG="no"
     local COMMAND_STRING=""
     debug check command && set_yes LOCAL_DEBUG
@@ -1603,6 +1605,7 @@ function call_command
 
         test "$1" = "--verbose" && set_no QUIET && shift && continue
         test "$1" = "--quiet" && set_yes QUIET && shift && continue
+        test "$1" = "--prefix" && set_yes PREFIX && shift && continue
         test "$1" = "--debug" && set_yes LOCAL_DEBUG && shift && continue
         test "$1" = "--debug-right" && LOCAL_DEBUG="right" && shift && continue
         test "$1" = "--nodebug" && set_no LOCAL_DEBUG && shift && continue
@@ -1612,7 +1615,8 @@ function call_command
 
     local FILE="`file_temporary_name call_command`"
     test_no QUIET && REDIRECT="/dev/stdout" && debug set variable command || REDIRECT="/dev/null"
-    test -z "$COMMAND_STRING" && { test $# -eq 1 && COMMAND_STRING="`echo $1`" || COMMAND_STRING="`echo_quote "$@"`"; }
+    test_no PREFIX && PIPE="cat" || PIPE="pipe_echo_prefix"
+    test -z "$COMMAND_STRING" && { test $# -eq 1 && COMMAND_STRING="`echo "$1"`" || COMMAND_STRING="`echo_quote "$@"`"; }
     local EXIT_CODE
     if is_localhost "$HOST"
     then
@@ -1621,10 +1625,10 @@ function call_command
         if test_no "$USER_SET" -o "`get_id`" = "$USER"
         then
             #bash -c "$@"
-            eval "stdbuf -i0 -o0 -e0 $@" 2>&1 | tee "$FILE" > $REDIRECT
+            eval "stdbuf -i0 -o0 -e0 $@" 2>&1 | tee "$FILE" | $PIPE > $REDIRECT
             EXIT_CODE=$?
         else
-            su - "$USER" "$@" 2>&1 | tee "$FILE" > $REDIRECT
+            su - "$USER" "$@" 2>&1 | tee "$FILE" | $PIPE > $REDIRECT
             EXIT_CODE=$?
         fi
     else
@@ -1632,7 +1636,7 @@ function call_command
         test -n "$USER" && USER_SSH="$USER@"
         test_yes "$LOCAL_DEBUG" && echo_debug_custom command "$SSH $TOPT $USER_SSH$HOST $COMMAND_STRING"
         test "$LOCAL_DEBUG" = "right" && echo_debug_right "$SSH $TOPT $USER_SSH$HOST $COMMAND_STRING"
-        $SSH $TOPT $USER_SSH$HOST "$@" 2>&1 | grep --invert-match "Connection to .* closed" | tee "$FILE" > $REDIRECT
+        $SSH $TOPT $USER_SSH$HOST "$@" 2>&1 | grep --invert-match "Connection to .* closed" | tee "$FILE" | $PIPE > $REDIRECT
         EXIT_CODE=$?
     fi
 
@@ -1992,20 +1996,29 @@ function pipe_prefix
 {
     local PREFIX="$PIPE_PREFIX"
     test -n "$SHOW_OUTPUT_PREFIX" && PREFIX="$SHOW_OUTPUT_PREFIX"
-    local HIDELINES="$PIPE_PREFIX_HIDELINES"
-    test -n "$SHOW_OUTPUT_HIDELINES" && HIDELINES="$SHOW_OUTPUT_HIDELINES"
+
+    local HIDE="$PIPE_PREFIX_HIDE"
+    test -n "$SHOW_OUTPUT_HIDELINES" && HIDE="$SHOW_OUTPUT_HIDELINES"
+
     local COMMAND="$PIPE_PREFIX_COMMAND"
-    test -n "$SHOW_OUTPUT_COMMAND" && HIDELINES="$SHOW_OUTPUT_COMMAND"
-    local NEW_LINE="yes"
+    test -n "$SHOW_OUTPUT_COMMAND" && COMMAND="$SHOW_OUTPUT_COMMAND"
+
+    local EMPTY="$PIPE_PREFIX_EMPTY"
+
+    local DEDUPLICATE="$PIPE_PREFIX_DEDUPLICATE"
 
     arguments init
     while test $# -gt 0
     do
         arguments loop
         arguments check value "p|prefix" "PREFIX" "$@"
+        arguments check value "h|hide" "HIDE" "$@"
         arguments check value "c|command" "COMMAND" "$@"
-        arguments check switch "l|newline" "NEW_LINE|no" "$@"
-        arguments check option "HIDELINES" "$@"
+        arguments check switch "l|empty" "EMPTY|yes" "$@"
+        arguments check switch "|no-deduplicate" "DEDUPLICATE|no" "$@"
+        arguments check switch "d|dedup" "DEDUPLICATE|yes" "$@"
+        arguments check switch "|deduplicate" "DEDUPLICATE|yes" "$@"
+        arguments check option "HIDE" "$@"
         arguments shift && shift $ARGUMENTS_SHIFT && continue
         echo_error_function "Unknown argument: $1" $ERROR_CODE_DEFAULT
     done
@@ -2016,7 +2029,7 @@ function pipe_prefix
     #    echo "$PREFIX$LINE"
     #done
 
-    $AWK --assign=prefix="$PREFIX" --assign=hideline="$HIDELINES" --assign=command="$COMMAND" --assign=newline="$NEW_LINE" '
+    $AWK --assign=prefix="$PREFIX" --assign=hide="$HIDE" --assign=command="$COMMAND" --assign=empty="$EMPTY" --assign=deduplicate="$DEDUPLICATE" '
         BEGIN { line=""; count=0; }
         command=="" { current=$0; }
         command!="" {
@@ -2029,13 +2042,16 @@ function pipe_prefix
             #print $0 " -> " current;
         }
 
-        newline=="no" && $0=="" { next; }
-        hideline!="" && current~hideline { next; }
-        current==line { count++; next; }
-        count==0 { line=current; count++; next; }
-        count==1 { print prefix line; line=current; count=1; next; }
-        count>1 { print prefix line " ("count"x)"; line=current; count=1; next; }
-        END { if (count>1) p=" ("count"x)"; else p=""; print prefix line p; }'
+        empty=="no" && current=="" { next; }
+
+        hide!="" && current~hide { next; }
+
+        deduplicate=="yes" && current==line { count++; next; }
+        deduplicate=="yes" && count==0 { line=current; count++; next; }
+        deduplicate=="yes" && count==1 { print prefix line; line=current; count=1; next; }
+        deduplicate=="yes" && count>1 { print prefix line " ("count"x)"; line=current; count=1; next; }
+        deduplicate=="no" { print prefix current; }
+        END { if (deduplicate=="yes") { if (count>1) print prefix line " ("count"x)"; else print prefix line; } }'
 }
 
 function pipe_remove_color
@@ -3234,9 +3250,10 @@ declare -x -f cursor_get_position
 declare -x -f cursor_move_down
 
 declare -x PIPE_PREFIX="  >  "
-declare -x PIPE_PREFIX_HIDELINES=""     # regexp to hide lines
+declare -x PIPE_PREFIX_HIDE=""     # regexp to hide lines
 declare -x PIPE_PREFIX_COMMAND=""
-declare -x PIPE_PREFIX_DEDUPLICATE="yes" ### !!!TODO!!!
+declare -x PIPE_PREFIX_EMPTY="no"
+declare -x PIPE_PREFIX_DEDUPLICATE="yes"
 declare -x -f pipe_prefix
 declare -x -f pipe_remove_color
 declare -x -f pipe_join_lines

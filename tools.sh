@@ -974,9 +974,10 @@ function show_output
     awk --assign=x="$PREFIX" --assign=h="$HIDELINES" '
         BEGIN { l=""; c=0; }
         h!="" && $0~h { next; }
-        $0==l { c++; }
-        c==0 && $0!=l { l=$0; c++; }
-        c!=0 && $0!=l { if (c>1) p=" ("c"x)"; else p=""; print x l p; l=$0; c=1; }
+        $0==l { c++; next; }
+        c==0 { l=$0; c++; next; }
+        c==1 { print x l; l=$0; c=1; next; }
+        c>1 { print x l " ("c"x)"; l=$0; c=1; next; }
         END { if (c>1) p=" ("c"x)"; else p=""; print x l p; }'
 }
 

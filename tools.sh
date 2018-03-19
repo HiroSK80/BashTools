@@ -839,6 +839,24 @@ function fill_command_options
     declare -a OPTIONS_A=("$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9")
 }
 
+function test_boolean
+# $1 integer
+{
+    [[ "$1" =~ ^(yes|Yes|YES|true|True|TRUE)$ ]]
+}
+
+function test_yes
+# $1 integer
+{
+    [[ "$1" =~ ^(yes|Yes|YES)$ ]]
+}
+
+function test_no
+# $1 integer
+{
+    [[ "$1" =~ ^(no|No|NO)$ ]]
+}
+
 function test_integer
 # $1 integer
 {
@@ -1225,6 +1243,9 @@ export -f fd_check
 export -f fd_find_free
 
 export -f fill_command_options
+export -f test_boolean
+export -f test_yes
+export -f test_no
 export -f test_integer
 export -f test_str
 export -f test_cmd

@@ -255,13 +255,15 @@ function check_arg_switch
 {
     ARG_NAME_SHORT="${1%|*}"
     ARG_NAME_LONG="${1#*|}"
-    ARG_NAME_VAR="${2%|*}"
-    ARG_NAME_VALUE="${2#*|}"
-    shift 2
+    #ARG_NAME_VAR="${2%|*}"
+    #ARG_NAME_VALUE="${2#*|}"
+    #shift 2
     #echo_debug_variable ARG_NAME_SHORT ARG_NAME_LONG ARG_NAME_VAR ARG_NAME_VALUE
 
-    if test "$1" = "--$ARG_NAME_LONG" -o "$1" = "-$ARG_NAME_SHORT"
+    if test "$3" = "--$ARG_NAME_LONG" -o "$3" = "-$ARG_NAME_SHORT"
     then
+        ARG_NAME_VAR="${2%|*}"
+        ARG_NAME_VALUE="${2#*|}"
         export ${ARG_NAME_VAR}="$ARG_NAME_VALUE"
         CHECK_ARG_SHIFT+=1
         return 0
@@ -567,9 +569,16 @@ function file_config_get
     if test -r "$CONFIG_FILE"
     then
 #A="  A = \"\$USER \" "; echo "-$A-"; B="`echo "$A" | awk '/^[\t ]*A[\t ]*=[\t ]*/ { sub(/^[\t ]*A[\t ]*=[\t ]*/, ""); sub(/^["]/, ""); sub(/["]*[\t ]*$/, ""); print; }'`"; eval "set O=\"$B\""; echo "-$B-$O-"
-        VALUE="`$AWK '/^[\t ]*'"$OPTION_NAME"'[\t ]*=[\t ]*/ { sub(/^[\t ]*'"$OPTION_NAME"'[\t ]*=[\t ]*/, ""); sub(/^["]/, ""); sub(/["][\t ]*$/, ""); print; }' "$CONFIG_FILE"`"
+        VALUE="`$AWK 'BEGIN { if ("'"$OPTION_SECTION"'" == ".") s=1; else s=0; }
+                /* { print "LINE=" $0; } */
+            "'"$OPTION_SECTION"'" != "." && /^[\t ]*\[.*\][\t ]*$/ {
+                s=0; }
+            "'"$OPTION_SECTION"'" != "." && /^[\t ]*\['"$OPTION_SECTION"'\][\t ]*$/ {
+                s=1; next; }
+            s==1 && /^[\t ]*'"$OPTION_NAME"'[\t ]*=[\t ]*/ {
+                sub(/^[\t ]*'"$OPTION_NAME"'[\t ]*=[\t ]*/, ""); sub(/^["]/, ""); sub(/["][\t ]*$/, ""); print; }' "$CONFIG_FILE"`"
     fi
-    test_yes DO_EVAL && eval "echo \"$VALUE\"" || echo "$VALUE"
+    test_yes DO_EVAL && eval "command echo \"$VALUE\"" || command echo "$VALUE"
 }
 
 function file_config_read
@@ -1010,19 +1019,32 @@ function fd_find_free
 }
 
 declare -A PERF_DATA
+declare -A PERF_MSG
 #PERF_DATA["default"]=0
 function perf_start
 {
     local PERF_VAR="${1:-default}"
+    shift
+    PERF_MSG[$PERF_VAR]="$@"
+    test -n "${PERF_MSG[$PERF_VAR]}" && local MSG=" \"${PERF_MSG[$PERF_VAR]}\""
     PERF_DATA[$PERF_VAR]="`date "+%s.%N"`"
-    echo_line "Performance started on date `date +"%Y-%m-%d %H:%M:%S"` time: ${PERF_DATA[$PERF_VAR]}"
+    echo_line "Performance$MSG started on date `date +"%Y-%m-%d %H:%M:%S"` time: ${PERF_DATA[$PERF_VAR]}"
+}
+
+function perf_now
+{
+    local PERF_VAR="${1:-default}"
+    local PERF_DATA_NOW="`date "+%s.%N"`"
+    test -n "${PERF_MSG[$PERF_VAR]}" && local MSG=" \"${PERF_MSG[$PERF_VAR]}\""
+    echo_line "Performance$MSG on date `date +"%Y-%m-%d %H:%M:%S"` time: $PERF_DATA_NOW elapsed: `command echo | $AWK "{ print $PERF_DATA_NOW - ${PERF_DATA[$PERF_VAR]}; }"`s"
 }
 
 function perf_end
 {
     local PERF_VAR="${1:-default}"
     local PERF_DATA_NOW="`date "+%s.%N"`"
-    echo_line "Performance ended on date `date +"%Y-%m-%d %H:%M:%S"` time: $PERF_DATA_NOW elapsed: `command echo | $AWK "{ print $PERF_DATA_NOW - ${PERF_DATA[$PERF_VAR]}; }"`s"
+    test -n "${PERF_MSG[$PERF_VAR]}" && local MSG=" \"${PERF_MSG[$PERF_VAR]}\""
+    echo_line "Performance$MSG ended on date `date +"%Y-%m-%d %H:%M:%S"` time: $PERF_DATA_NOW elapsed: `command echo | $AWK "{ print $PERF_DATA_NOW - ${PERF_DATA[$PERF_VAR]}; }"`s"
     PERF_DATA[$PERF_VAR]=0
 }
 
@@ -1134,7 +1156,7 @@ function test_ip
     [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
 }
 
-function test_str
+function test_str_grep
 # $1 string to test
 # $2 regexp
 {
@@ -1144,6 +1166,23 @@ function test_str
 
     command echo "$1" | $GREP --quiet --extended-regexp $IGNORE_CASE "$2"
     return $?
+}
+
+function test_str
+# $1 string to test
+# $2 regexp
+{
+    local IGNORE_CASE=""
+    test "$1" = "-i" -o "$1" = "--ignore-case" && IGNORE_CASE="yes" && shift
+    test $# != 2 && echo_error_function "Wrong parameters count"
+
+    #test -n "$IGNORE_CASE" && local SHOPT="`shopt -p nocasematch`" && shopt -s nocasematch
+    #test -n "$IGNORE_CASE" && shopt -s nocasematch
+    [[ "$1" =~ $2 ]]
+    RETURN=$?
+    #test -n "$IGNORE_CASE" && $SHOPT
+    test -n "$IGNORE_CASE" && shopt -u nocasematch
+    return $RETURN
 }
 
 function test_file
@@ -1252,7 +1291,7 @@ function pipe_remove_color
 }
 
 function pipe_remove_lines
-# removes color control codes from pipe
+# removes new line codes from pipe
 {
     $AWK '$0=="" { next; } { print; }' | tr '\n' ' ' | xargs
 }
@@ -1326,6 +1365,7 @@ function echo_log
     prepare_file "$LOG_FILE"
     #echo "${LOG_SPACE}$@" | sed --expression='s/\\n/\n                    /g' --expression='s/^/                    /g' >> "$LOG_FILE"
     command echo "${LOG_SPACE}${LOG_DATE_STRING} $@" | pipe_remove_color >> "$LOG_FILE"
+    #command echo "${LOG_SPACE}${LOG_DATE_STRING} $@" >> "$LOG_FILE"
 }
 
 function log_output
@@ -2190,6 +2230,7 @@ export -f fd_check
 export -f fd_find_free
 
 export -f perf_start
+export -f perf_now
 export -f perf_end
 
 export -f set_yes
@@ -2206,7 +2247,7 @@ export -f test_no
 export -f test_ok
 export -f test_nok
 export -f test_integer
-export -f test_str
+export -f test_str;     export -f test_str_grep
 export -f test_file
 export -f test_cmd
 export -f test_cmd_z

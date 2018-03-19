@@ -241,6 +241,21 @@ function assign
     printf -v "$1" '%s' "$2"
 }
 
+function assign_array
+{
+    array_convert "$2" > /dev/null
+    eval "$1"="$ARRAY_CONVERT"
+}
+
+function array_convert
+{
+    local TMP="$@"
+    test_str "$TMP" "^[(].*[)]$" && ARRAY_CONVERT="$TMP" && echo "$ARRAY_CONVERT" && return 0
+    test_str "$TMP" "^[[].*[]]$" && TMP="${TMP:1:${#TMP}-2}" && ARRAY_CONVERT="(\"${TMP//,/\" \"}\")" && echo "$ARRAY_CONVERT" && return 0
+    test_str "$TMP" "^[{].*[}]$" && TMP="${TMP:1:${#TMP}-2}" && ARRAY_CONVERT="(\"${TMP//:/\" \"}\")" && echo "$ARRAY_CONVERT" && return 0
+    ARRAY_CONVERT="($TMP)" && echo "$ARRAY_CONVERT" && return 0
+}
+
 #NAMESPACE/string/start
 function str_trim
 {
@@ -249,7 +264,7 @@ function str_trim
     #echo "STR=$STR"
     STR="${STR#"${STR%%[![:space:]]*}"}"   # delete leading whitespace characters
     STR="${STR%"${STR##*[![:space:]]}"}"   # delete trailing whitespace characters
-    test -n "${!@+exist}" && assign "${!@}" "$STR" || echo -n "$STR"
+    test -n "${!@+exist}" && assign "${@}" "$STR" || echo -n "$STR"
 }
 
 function str_word
@@ -339,7 +354,7 @@ function str_parse_url
 }
 
 function str_parse_args
-# $1 string with arguments and options in ""
+# $1 string with arguments and options in quotes
 # !!! $2 destination array variable
 {
     PARSE_ARGS=()
@@ -407,120 +422,207 @@ function str_get_arg_from_quoted
     echo_quote "${@:$FROM}"
 }
 
-function check_arg_init
+function arguments
 {
-    CHECK_ARG_SHIFTS[$CHECK_ARG_SHIFTS_I]=$CHECK_ARG_SHIFT
-    let CHECK_ARG_SHIFTS_I++
+    case "$1" in
+        init)
+            ARGUMENTS_SHIFTS[$ARGUMENTS_SHIFTS_I]=$ARGUMENTS_SHIFT
+            let ARGUMENTS_SHIFTS_I++
+            ;;
+        done)
+            let ARGUMENTS_SHIFTS_I--
+            ARGUMENTS_SHIFT=${ARGUMENTS_SHIFTS[$ARGUMENTS_SHIFTS_I]}
+            unset ARGUMENTS_SHIFTS[$ARGUMENTS_SHIFTS_I]
+            ;;
+        loop)
+            ARGUMENTS_SHIFT=0
+            set_no ARGUMENTS_OPTION_FOUND
+            ;;
+        shift)
+            test $ARGUMENTS_SHIFT -ne 0 && return $?
+            ;;
+        check)
+            shift
+            arguments_check "$@"
+    esac
 }
 
-function check_arg_done
-{
-    let CHECK_ARG_SHIFTS_I--
-    CHECK_ARG_SHIFT=${CHECK_ARG_SHIFTS[$CHECK_ARG_SHIFTS_I]}
-    unset CHECK_ARG_SHIFTS[$CHECK_ARG_SHIFTS_I]
-}
+function arguments_check
+# $1 type: switch
+# $2 argument name: short|long
+# $3 argument store: variable|value
+# $4 arguments: "$@"
 
-function check_arg_loop
-{
-    CHECK_ARG_SHIFT=0
-}
+# $1 type: value
+# $2 argument name: short|long
+# $3 argument store: variable|tester
+# $4 arguments: "$@"
 
-function check_arg_shift
-{
-    test $CHECK_ARG_SHIFT -ne 0
-}
+# $1 type: option
+# $2 argument store: variable|tester
+# $3 arguments: "$@"
 
-function check_arg_switch
-# $1 short|long
-# $2 variable|default
-# $3 arguments
-# usage: check_arg_switch "d|debug" "OPTION_DEBUG|default" "$@"
-# example:
-# check_arg_init
-# while test $# -gt 0
-# do
-#     check_arg_loop
-#     check_arg_switch "d|debug" "OPTION_DEBUG|yes" "$@"
-#     check_arg_value "h|host" "OPTION_HOST|localhost" "$@"
-#     check_arg_shift && shift $CHECK_ARG_SHIFT && continue
-#     echo_error "Unknown argument: $1" 1
-# done
-# check_arg_done
+# $1 type: tester
+# $2 tester array
+# $3 argument value
 {
-    ARG_NAME_SHORT="${1%|*}"
-    ARG_NAME_LONG="${1#*|}"
-    #ARG_NAME_VAR="${2%|*}"
-    #ARG_NAME_VALUE="${2#*|}"
-    #shift 2
-    #echo_debug_variable ARG_NAME_SHORT ARG_NAME_LONG ARG_NAME_VAR ARG_NAME_VALUE
+    local CHECK="$1"
+    shift
+    case "$CHECK" in
+        switch)
+            local ARG_SHORT="${1%|*}"
+            local ARG_LONG="${1#*|}"
+            local ARG_VAR="${2%|*}"
+            local ARG_VALUE="${2#*|}"
+            local ARG_TEST=""
+            shift 2
+            ;;
+        value)
+            local ARG_SHORT="${1%|*}"
+            local ARG_LONG="${1#*|}"
+            if test_str "$2" "^.*\|.*$"
+            then
+                local ARG_VAR="${2%|*}"
+                local ARG_VALUE=""
+                local ARG_TEST="${2#*|}"
+            else
+                local ARG_VAR="$2"
+                local ARG_VALUE=""
+                local ARG_TEST=""
+            fi
+            shift 2
+            ;;
+        option)
+            if test_str "$1" "^.*\|.*$"
+            then
+                local ARG_VAR="${1%|*}"
+                local ARG_TEST="${1#*|}"
+            else
+                local ARG_VAR="$1"
+                local ARG_TEST=""
+            fi
+            shift
+            ;;
+        tester)
+            local ARG_TEST="$1"
+            local ARG_OPTION="$2"
+            if test -n "$ARG_TEST"
+            then
+                if test_array "$ARG_TEST"
+                then
+                    array_convert "$ARG_TEST" > /dev/null
+                    ARG_TEST="${ARG_TEST:1:${#ARG_TEST}-2}"
+                    str_word check ARG_TEST "$ARG_OPTION" || echo_error "Argument `echo_quote "$ARG_OPTION"` is not supported. Available: $ARG_TEST" $ERROR_CODE_DEFAULT
+                else
+                    shift
+                    for TEST in $ARG_TEST
+                    do
+                        arguments_tester_$TEST "$@"
+                    done
+                fi
+            fi
+            return 0
+            ;;
+        *)  arguments_check_$CHECK "$@"
+            return $?
+            ;;
+    esac
 
-    if test "$3" = "--$ARG_NAME_LONG" -o "$3" = "-$ARG_NAME_SHORT"
-    then
-        ARG_NAME_VAR="${2%|*}"
-        ARG_NAME_VALUE="${2#*|}"
-        test -n "$ARG_NAME_VAR" && assign ${ARG_NAME_VAR} "$ARG_NAME_VALUE"
-        CHECK_ARG_SHIFT+=1
-        return 0
-    fi
+    case "$CHECK" in
+        switch)
+            if test "$1" = "--$ARG_LONG" -o "$1" = "-$ARG_SHORT"
+            then
+                test -n "$ARG_VAR" && assign "$ARG_VAR" "$ARG_VALUE"
+                ARGUMENTS_SHIFT+=1
+                #echo_debug_variable ARG_SHORT ARG_LONG ARG_VAR ARG_VALUE $ARG_VAR
+                return 0
+            fi
+            ;;
+        value)
+            if test "$1" = "--$ARG_LONG" -o "$1" = "-$ARG_SHORT"
+            then
+                if test $# -eq 1
+                then
+                    test -n "$ARG_VAR" && assign "$ARG_VAR" "$ARG_VALUE"
+                    #echo_error "Missing value for argument \"$1\"" $ERROR_CODE_DEFAULT
+                elif test "${2:0:1}" != "-"
+                then
+                    test -n "$ARG_VAR" && assign "$ARG_VAR" "$2"
+                    ARGUMENTS_SHIFT+=1
+                else
+                    assign "$ARG_VAR" "$ARG_VALUE"
+                fi
+                shift && arguments_check tester "$ARG_TEST" "$@"
+                ARGUMENTS_SHIFT+=1
+                echo_debug_variable ARG_SHORT ARG_LONG ARG_VAR $ARG_VAR ARG_TEST
+                return 0
+            fi
+
+            if test "${1%%=*}" = "--$ARG_LONG"
+            then
+                assign "$ARG_VAR" "${1#*=}"
+                shift && arguments_check tester "$ARG_TEST" "${!ARG_VAR}" "$@"
+                ARGUMENTS_SHIFT+=1
+                echo_debug_variable ARG_SHORT ARG_LONG ARG_VAR $ARG_VAR ARG_TEST
+                return 0
+            fi
+            ;;
+        option)
+            test_yes ARGUMENTS_OPTION_FOUND && return 1
+            test "${1:0:1}" = "-" && return 1
+            test -n "${!ARG_VAR}" && return 1
+            test -n "$ARG_VAR" && assign "$ARG_VAR" "$1"
+            arguments_check tester "$ARG_TEST" "$@"
+            ARGUMENTS_SHIFT+=1
+            set_yes ARGUMENTS_OPTION_FOUND
+            echo_debug_variable ARG_VAR $ARG_VAR ARG_TEST
+            return 0
+            ;;
+    esac
 
     return 1
 }
 
-function check_arg_value
-# $1 short|long
-# $2 variable|default
-# $3 arguments
-# usage: check_arg_value "h|host" "OPTION_HOST" "$@"
-# example:
-# check_arg_init
-# while test $# -gt 0
-# do
-#     check_arg_loop
-#     check_arg_switch "d|debug" "OPTION_DEBUG|yes" "$@"
-#     check_arg_value "h|host" "OPTION_HOST|localhost" "$@"
-#     check_arg_shift && shift $CHECK_ARG_SHIFT && continue
-#     echo_error "Unknown argument: $1" 1
-# done
-# check_arg_done
+function arguments_check_info
 {
-    ARG_NAME_SHORT="${1%|*}"
-    ARG_NAME_LONG="${1#*|}"
-    ARG_NAME_VAR="${2%|*}"
-    ARG_NAME_VALUE="${2#*|}"
-    shift 2
-    #echo_debug_variable ARG_NAME_SHORT ARG_NAME_LONG ARG_NAME_VAR ARG_NAME_VALUE
-
-    if test "$1" = "--$ARG_NAME_LONG" -o "$1" = "-$ARG_NAME_SHORT"
-    then
-        if test $# -eq 1
-        then
-            test -n "$ARG_NAME_VAR" && assign $ARG_NAME_VAR "$ARG_NAME_VALUE"
-            CHECK_ARG_SHIFT+=1 && return 0 #echo_error "Missing value for argument \"$1\"" $ERROR_CODE_DEFAULT
-        elif test "${2:0:1}" != "-"
-        then
-            test -n "$ARG_NAME_VAR" && assign $ARG_NAME_VAR "$2"
-            CHECK_ARG_SHIFT+=1
-        else
-            assign $ARG_NAME_VAR "$ARG_NAME_VALUE"
-        fi
-        CHECK_ARG_SHIFT+=1
-        return 0
-    fi
-
-    if test "${1%%=*}" = "--$ARG_NAME_LONG"
-    then
-        assign $ARG_NAME_VAR "${1#*=}"
-        CHECK_ARG_SHIFT+=1
-        return 0
-    fi
-
-    return 1
+    echo_debug INFO "Argument check for type info: $@"
 }
+
+function arguments_tester_info
+{
+    echo_debug INFO "Argument tester for string: $@"
+}
+
+function arguments_tester_file
+{
+    test -f "$1" || echo_error "Specified file: `echo_quote "$1"` doesn't exist" $ERROR_CODE_DEFAULT
+}
+
+function arguments_tester_file_exist
+{
+    test -f "$1" || echo_error "Specified file: `echo_quote "$1"` doesn't exist" $ERROR_CODE_DEFAULT
+}
+
+function arguments_tester_file_read
+{
+    test -r "$1" || echo_error "Specified file: `echo_quote "$1"` can't be readed" $ERROR_CODE_DEFAULT
+}
+
+function arguments_tester_file_write
+{
+    test -w "$1" || echo_error "Specified file: `echo_quote "$1"` can't be written" $ERROR_CODE_DEFAULT
+}
+
+function arguments_tester_ping
+{
+    check_ping "$1" || echo_error "Specified host: `echo_quote "$1"` is not reachable, ping problem" $ERROR_CODE_DEFAULT
+}
+
 #NAMESPACE/string/end
 
 #NAMESPACE/file/start
 function file_temporary_name
-# $1 temporary file prefix
+# $1 temporary file postfix
 # $2 source filename to be use as part of temporary filename
 {
     echo "/tmp/`basename "$2"`.$1.$$.tmp"
@@ -558,19 +660,19 @@ function file_prepare
     local COUNT="9"
     local USER=""
     local GROUP=""
-    check_arg_init
+    arguments init
     while test $# -gt 0
     do
-        check_arg_loop
-        check_arg_switch "e|empty" "EMPTY|yes" "$@"
-        check_arg_switch "r|roll" "ROLL|yes" "$@"
-        check_arg_switch "u|user" "USER|" "$@"
-        check_arg_switch "g|group" "GROUP|" "$@"
-        check_arg_shift && shift $CHECK_ARG_SHIFT && continue
+        arguments loop
+        arguments check switch "e|empty" "EMPTY|yes" "$@"
+        arguments check switch "r|roll" "ROLL|yes" "$@"
+        arguments check switch "u|user" "USER|" "$@"
+        arguments check switch "g|group" "GROUP|" "$@"
+        arguments shift && shift $ARGUMENTS_SHIFT && continue
         test -z "$FILE" && FILE="$1" && shift && continue
         echo_error_function "Unknown argument: $1" $ERROR_CODE_DEFAULT
     done
-    check_arg_done
+    arguments done
     test -z "$FILE" && echo_error_function "Filename is not specified" $ERROR_CODE_DEFAULT
 
     if test_yes "$ROLL" && test -f "$FILE"
@@ -1327,13 +1429,13 @@ function perf_end
 function set_yes
 # $1=yes
 {
-    let $1=yes
+    assign "$1" yes
 }
 
 function set_no
 # $1=no
 {
-    let $1=no
+    assign "$1" no
 }
 
 function test_ne0
@@ -1393,6 +1495,15 @@ function test_integer
     [[ "$1" =~ ^-?[0-9]+$ ]]
 }
 
+function test_array
+# $1 array as:
+#   (item1 item2 item3)
+#   [item1,item2,item3]
+#   {item1:item2:item3}
+{
+    [[ "$1" =~ ^[[({].*[])}]$ ]]
+}
+
 function test_ip
 # $1 ip
 {
@@ -1405,7 +1516,7 @@ function test_str_grep
 {
     local IGNORE_CASE=""
     test "$1" = "-i" -o "$1" = "--ignore-case" && IGNORE_CASE="--ignore-case" && shift
-    test $# != 2 && echo_error_function "Wrong parameters count"
+    test $# != 2 && echo_error_function "Wrong arguments count"
 
     command echo "$1" | $GREP --quiet --extended-regexp $IGNORE_CASE "$2"
     return $?
@@ -1417,7 +1528,7 @@ function test_str
 {
     local IGNORE_CASE=""
     test "$1" = "-i" -o "$1" = "--ignore-case" && IGNORE_CASE="yes" && shift
-    test $# != 2 && echo_error_function "Wrong parameters count"
+    test $# != 2 && echo_error_function "Wrong arguments count"
 
     #test -n "$IGNORE_CASE" && local SHOPT="`shopt -p nocasematch`" && shopt -s nocasematch
     test -n "$IGNORE_CASE" && shopt -s nocasematch
@@ -1432,7 +1543,7 @@ function test_file
 # $1 regexp string to test
 # $2 filename
 {
-    test $# != 2 && echo_error_function "Wrong parameters count"
+    test $# != 2 && echo_error_function "Wrong arguments count"
 
     test -f "$2" || return 1
 
@@ -1522,7 +1633,7 @@ function cursor_move_down
 {
     cursor_get_position
     echo
-    CURSOR_COLUMN=$CURSOR_COLUMN-1
+    let CURSOR_COLUMN--
     test $CURSOR_COLUMN -gt 0 && tput cuf $CURSOR_COLUMN
 }
 
@@ -1715,18 +1826,18 @@ function pipe_prefix
     test -n "$SHOW_OUTPUT_COMMAND" && HIDELINES="$SHOW_OUTPUT_COMMAND"
     local NEW_LINE="yes"
 
-    check_arg_init
+    arguments init
     while test $# -gt 0
     do
-        check_arg_loop
-        check_arg_value "p|prefix" "PREFIX" "$@"
-        check_arg_value "c|command" "COMMAND" "$@"
-        check_arg_switch "l|newline" "NEW_LINE|no" "$@"
-        check_arg_shift && shift $CHECK_ARG_SHIFT && continue
+        arguments loop
+        arguments check value "p|prefix" "PREFIX" "$@"
+        arguments check value "c|command" "COMMAND" "$@"
+        arguments check switch "l|newline" "NEW_LINE|no" "$@"
+        arguments shift && shift $ARGUMENTS_SHIFT && continue
         test -z "$HIDELINES" && HIDELINES="$1" && shift && continue
         echo_error_function "Unknown argument: $1" $ERROR_CODE_DEFAULT
     done
-    check_arg_done
+    arguments done
 
     #while read LINE
     #do
@@ -2032,7 +2143,7 @@ function debug_level_set
 }
 
 function debug_level_set_default
-# default level for echo_debug without parameter
+# default level for echo_debug without argument
 {
     debug_level_parse "$@"
     DEBUG_LEVEL_DEFAULT=${DEBUG_LEVEL_PARSE[0]}
@@ -2115,9 +2226,9 @@ function echo_debug_function
         test_no "$DEBUG_INIT_NAMESPACES" && debug_init_namespaces
 
         local F
-        echo_quote "$@" > /dev/null
         F="${FUNCNAME[1]}"
         test -n "${FUNCTION_NAMESPACES[$F]}" && F="${FUNCTION_NAMESPACES[$F]}"
+        echo_quote "$@" > /dev/null
         FUNCTION_INFO="$F($ECHO_QUOTE)"
         for F in "${FUNCNAME[@]:2}"
         do
@@ -2477,33 +2588,35 @@ function colors_init
     #echo "Color usage is now set to $OPTION_COLOR and using $OPTION_COLORS colors for $TERM"
 }
 
-function check_arg_tools
+function arguments_check_tools
 {
-    check_arg_switch "|ignore-unknown" "OPTION_IGNORE_UNKNOWN|yes" "$@"
-    check_arg_switch "|debug" "" "$@" && debug_set debug
-    check_arg_switch "|debug-variable" "" "$@" && debug_set variable
-    check_arg_switch "|debug-function" "" "$@" && debug_set function
-    check_arg_switch "|debug-command" "" "$@" && debug_set command
-    check_arg_switch "|debug-right" "" "$@" && debug_set right
-    check_arg_value "|debug-level" "DEBUG_LEVEL|ALL" "$@" && debug_level_set $DEBUG_LEVEL
-    check_arg_value "|term" "OPTION_TERM|xterm" "$@"
-    check_arg_value "|prefix" "OPTION_PREFIX|yes" "$@"
-    check_arg_value "|color" "OPTION_COLOR|yes" "$@"
-    check_arg_value "|no-color" "OPTION_COLOR|no" "$@"
-    check_arg_value "|uname" "OPTION_UNAME|yes" "$@"
+    arguments check switch "|ignore-unknown" "OPTION_IGNORE_UNKNOWN|yes" "$@"
+    arguments check switch "|debug" "" "$@" && debug_set debug
+    arguments check switch "|debug-variable" "" "$@" && debug_set variable
+    arguments check switch "|debug-function" "" "$@" && debug_set function
+    arguments check switch "|debug-command" "" "$@" && debug_set command
+    arguments check switch "|debug-right" "" "$@" && debug_set right
+    arguments check value "|debug-level" "DEBUG_LEVEL|ALL" "$@" && debug_level_set $DEBUG_LEVEL
+    arguments check value "|term" "OPTION_TERM|xterm" "$@"
+    arguments check value "|prefix" "OPTION_PREFIX|yes" "$@"
+    arguments check value "|color" "OPTION_COLOR|yes" "$@" && colors_init
+    arguments check value "|no-color" "OPTION_COLOR|no" "$@" && colors_init
+    arguments check value "|uname" "OPTION_UNAME|yes" "$@"
 }
 
 function tools_init
 {
-    check_arg_init
+    debug_level_set ALL
+
+    arguments init
     while test $# -gt 0
     do
-        check_arg_loop
-        check_arg_tools "$@"
-        check_arg_shift && shift $CHECK_ARG_SHIFT && continue
+        arguments loop
+        arguments check tools "$@"
+        arguments shift && shift $ARGUMENTS_SHIFT && continue
         if test -z "$TOOLS_FILE" -a -f "$1"
         then
-            test -f "$1" && TOOLS_FILE="$1"
+            TOOLS_FILE="$1"
             shift && continue
         fi
         if test "$1" = "--"
@@ -2515,7 +2628,7 @@ function tools_init
         test_no OPTION_IGNORE_UNKNOWN && echo_error "Unknown argument for tools: $1" 1
         shift
     done
-    check_arg_done
+    arguments done
 
     SCRIPT_FILE="`readlink --canonicalize "$0"`"
     SCRIPT_FILE_NOEXT="${SCRIPT_FILE_NOEXT%.sh}"
@@ -2529,8 +2642,6 @@ function tools_init
     TOOLS_FILE="`readlink --canonicalize "$TOOLS_FILE"`"
     TOOLS_NAME="`basename "$TOOLS_FILE"`"
     TOOLS_DIR="`dirname "$TOOLS_FILE"`"
-
-    debug_level_set ALL
 }
 
 ### tools exports
@@ -2614,6 +2725,8 @@ declare -x -f command_options;  declare -x -f fill_command_options # = command_o
                                 declare -x -f insert_cmd # = command_options insert $@
 
 declare -x -f assign
+declare -x -a ARRAY_CONVERT=()
+declare -x -f array_convert
 
 declare -x -r S_TAB="`command echo -e "\t"`"
 declare -x -r S_NEWLINE="`command echo -e "\n"`"
@@ -2634,19 +2747,21 @@ declare -x -f str_parse_args
 declare -x -f str_get_arg
 declare -x -f str_get_arg_from
 
-declare -x -a CHECK_ARG_SHIFTS=()
-declare -x -i CHECK_ARG_SHIFTS_I=0
-declare -x -i CHECK_ARG_SHIFT=0
-declare -x -f check_arg_init
-declare -x -f check_arg_done
-declare -x -f check_arg_loop
-declare -x -f check_arg_shift
-declare -x -f check_arg_switch
-declare -x -f check_arg_value
+declare -x -a ARGUMENTS_SHIFTS=()
+declare -x -i ARGUMENTS_SHIFTS_I=0
+declare -x -i ARGUMENTS_SHIFT=0
+declare -x    ARGUMENTS_OPTION_FOUND
+declare -x -f arguments             # init / done / loop / shift / check
+#declare -x -f arguments_check_${type}
+declare -x -f arguments_check       # switch / value / option / tools
+declare -x -f arguments_check_info
+declare -x -f arguments_check_tools # checks for standard tools.sh arguments
+#declare -x -f arguments_tester_${check}
+declare -x -f arguments_tester_info
 
 declare -x -f file_temporary_name
 declare -x -f file_delete
-declare -x -f file_prepare;     declare -x -f prepare_file
+declare -x -f file_prepare
 
 declare -x    FILE_REMOTE
 declare -x -f file_remote   # get / put
@@ -2733,8 +2848,8 @@ declare -x PIPE_PREFIX_HIDELINES="" # regexp to hide lines
 declare -x PIPE_PREFIX_COMMAND=""
 declare -x PIPE_PREFIX_DEDUPLICATE="yes" ### !!!TODO!!!
 
-declare -x -f log_init;         declare -x -f log_file_init
-declare -x -f log_done;         declare -x -f log_file_done
+declare -x -f log_init
+declare -x -f log_done
 declare -x -f echo_log
 
 declare -x -f pipe_log;         declare -x -f log_output
@@ -2793,14 +2908,14 @@ declare -x -f history_restore
 declare -x -f history_store
 
 declare -x OPTION_IGNORE_UNKNOWN="yes"
-declare -x -f check_arg_tools
+declare -x -f arguments_tools
 declare -x -f tools_init
 declare -x -f colors_init
 
 ### tools init
-tools_init "$@"
 debug_init
 colors_init
+tools_init "$@"
 
 # set echo prefix or uname prefix
 test_yes OPTION_PREFIX && ECHO_PREFIX="### " || ECHO_PREFIX=""

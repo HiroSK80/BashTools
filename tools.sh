@@ -1007,15 +1007,20 @@ function file_config
 # $3 option
 # $4 default value
 #
-# read and store value into option variable
+# read and store value into option variable: PREFIX_OPTION=VALUE and PREFIX_SECTION_OPTION=VALUE
 # $1 read
 # $2 filename
 # $3 option
 # $4 default value
 #
-# read and store all values into variables
-# $1 read
+# read and store all values into variables: PREFIX_OPTION=VALUE and PREFIX_SECTION_OPTION=VALUE
+# $1 load
 # $2 filename
+#
+# read and store all values into array: ARRAY[OPTION]=VALUE and ARRAY[SECTION_OPTION]=VALUE
+# $1 load
+# $2 filename
+# $3 array
 #
 # $1 set
 # $2 filename
@@ -1043,6 +1048,9 @@ function file_config
             OPTION="`basename "$2"`"
             VALUE="$3"
             ;;
+        load)
+            true
+            ;;
         *)
             echo_error_function "Unknown config file task: $@" $ERROR_CODE_DEFAULT
     esac
@@ -1063,6 +1071,11 @@ function file_config
             test_yes DO_EVAL && eval "command echo \"$VALUE\"" || command echo "$VALUE"
             ;;
         read)
+            VALUE="`file_config get "$@"`"
+            test "$SECTION" != "." && assign "$FILE_CONFIG_PREFIX${SECTION}_${OPTION}" "$VALUE"
+            assign "$FILE_CONFIG_PREFIX$OPTION" "$VALUE"
+            ;;
+        load)
             if test $# -eq 1
             then
                 if test -r "$CONFIG_FILE"
@@ -1070,26 +1083,31 @@ function file_config
                     local VARIABLE
                     while read LINE
                     do
-                        #VARIABLE="${LINE%%=*}"
-                        #VARIABLE="${!VARIABLE+exist}"
+                        #echo "LINE=$LINE"
                         eval "$LINE"
-                    done < <( $AWK '/* { print "LINE=" $0; } */
+                    done < <( $AWK 'BEGIN { s=""; }
                             /^[\t ]*#/ { next; }
                             /^[\t ]*$/ { next; }
                             /^[\t ]*\[.*\][\t ]*$/ {
-                                gsub(/^.*\[/, ""); gsub(/\].*$/, "");
+                                sub(/^.*\[/, "");
+                                sub(/\].*$/, "");
+                                sub(/^[\t ]*/, "");
+                                sub(/[\t ]*$/, "");
                                 s=$0; next; }
                             { sub(/^[\t ]*/, "");
                               sub(/[\t ]*=[\t ]*/, "=");
                               sub(/[\t ]*$/, "");
-                              print $0;
-                              print s "_" $0; }
-                            ' "$CONFIG_FILE")
+                              n=substr($0, 1, index($0, "=") - 1);
+                              v=substr($0, index($0, "=") + 1);
+                              if (a[n] != "") a[n]=a[n] "\"$S_NEWLINE\"";
+                              if (a[s "_" n] != "") a[s "_" n]=a[s "_" n] "";
+                              a[n]=a[n] v;
+                              a[s "_" n]=a[s "_" n] v;
+                            }
+                            END { for (i in a) print "'"$FILE_CONFIG_PREFIX"'" i "=" a[i]; }' "$CONFIG_FILE")
                 fi
             else
-                VALUE="`file_config get "$@"`"
-                test "$SECTION" != "." && assign "${SECTION}_${OPTION}" "$VALUE"
-                assign "$OPTION" "$VALUE"
+                load array
             fi
             ;;
         set)
@@ -2943,7 +2961,8 @@ declare -x -f array_variable
 declare -x -f array_convert
 
 declare -x -r S_TAB="`command echo -e "\t"`"
-declare -x -r S_NEWLINE="`command echo -e "\n"`"
+#declare -x -r S_NEWLINE="`command echo -e "\n"`"
+declare -x -r S_NEWLINE=$'\n'
 
 declare -x -f str_trim
 declare -x -f str_word                  # add / delete / check
@@ -2995,6 +3014,7 @@ declare -x -f file_line_add_local
 declare -x -f file_line_set_local
 declare -x -f file_line                 # add / delete / set
 declare -x -f file_replace
+declare -x    FILE_CONFIG_PREFIX="CONFIG_"  # prefix before variables name for read function
 declare -x -f file_config               # format / get / read / set
 
 declare -x -f check_ssh

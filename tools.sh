@@ -3,7 +3,7 @@
 # execute as: ". <thisname> <thisname> [options]"
 # example:
 #       export TOOLS_FILE="`dirname $0`/tools.sh"
-#       . "$TOOLS_FILE" "$TOOLS_FILE" --debug-right
+#       . "$TOOLS_FILE" --debug-right
 
 # options:
 # -prefix <prefix_string>
@@ -798,11 +798,15 @@ function call_command
     local TOPT=""
     local USER="$CALL_COMMAND_DEFAULT_USER"
     local USER_SET="no"
-    local DEBUG="yes"
+    local DEBUG="no"
+    check_debug && DEBUG="yes"
+    check_debug right && DEBUG="right"
     while test $# -gt 0
     do
+        test "$1" = "--debug" && DEBUG="yes" && shift && continue
         test "$1" = "--nodebug" && DEBUG="no" && shift && continue
         test "$1" = "--term" -o "$1" = "-t" && TOPT="-t" && shift && continue
+        test "$1" = "--tterm" -o "$1" = "-tt" && TOPT="-tt" && shift && continue
         test "$1" = "--host" -o "$1" = "-h" && shift && HOST="$1" && shift && continue
         test "${1%%=*}" = "--host" && HOST="${1#*=}" && shift && continue
         test "$1" = "--user" -o "$1" = "-u" && shift && USER="$1" && USER_SET="yes" && shift && continue
@@ -810,24 +814,30 @@ function call_command
         break
     done
 
+    local EXIT_CODE
     if is_localhost "$HOST"
     then
-        test_yes "$DEBUG" && echo_debug_right "$@"
+        test_yes "$DEBUG" && echo_debug "$@"
+        test "$DEBUG" = "right" && echo_debug_right "$@"
         if test_no "$USER_SET" -o "`get_id`" = "$USER"
         then
-            bash -c "$@"
-            TOOL_EXEC_EXIT_CODE="$?"
+            #bash -c "$@"
+            eval "stdbuf -i0 -o0 -e0 $@"
+            EXIT_CODE=$?
         else
             su - "$USER" "$@"
-            TOOL_EXEC_EXIT_CODE="$?"
+            EXIT_CODE=$?
         fi
     else
-        echo_debug_right "ssh $TOPT \"$USER@$HOST\" \"$@\""
-        ssh $TOPT "$USER@$HOST" "$@"
-        TOOL_EXEC_EXIT_CODE="$?"
+        USER_SSH=""
+        test -n "$USER" && USER_SSH="$USER@"
+        test_yes "$DEBUG" && echo_debug "ssh $TOPT \"$USER_SSH$HOST\" \"$@\""
+        test "$DEBUG" = "right" && echo_debug_right "ssh $TOPT \"$USER_SSH$HOST\" \"$@\""
+        ssh $TOPT -o "GSSAPIAuthentication no" -o "BatchMode yes" "$USER_SSH$HOST" "$@"
+        EXIT_CODE=$?
     fi
 
-    return $TOOL_EXEC_EXIT_CODE
+    return $EXIT_CODE
 }
 
 export ECHO_KILL="no"
@@ -894,21 +904,33 @@ function fill_command_options
 }
 
 function test_boolean
-# $1 integer
+# $1 boolean string
 {
     [[ "$1" =~ ^(y|Y|yes|Yes|YES|true|True|TRUE)$ ]]
 }
 
 function test_yes
-# $1 integer
+# $1 boolean yes string
 {
     [[ "$1" =~ ^(y|Y|yes|Yes|YES)$ ]]
 }
 
 function test_no
-# $1 integer
+# $1 boolean no string
 {
     [[ "$1" =~ ^(n|N|no|No|NO)$ ]]
+}
+
+function test_ok
+# $1 boolean ok string
+{
+    [[ "$1" =~ ^(ok|Ok|OK)$ ]]
+}
+
+function test_nok
+# $1 boolean ok string
+{
+    ! test_ok "$1"
 }
 
 function test_integer
@@ -1047,6 +1069,7 @@ function pipe_from
 }
 
 LOG_FILE=""
+LOG_WITHDATE="yes"
 LOG_DATE="%Y-%m-%d %H:%M:%S"
 LOG_SECTION="=============================================================================="
 LOG_SPACE=""
@@ -1063,14 +1086,14 @@ function log_init
 
     while test $# -gt 0
     do
-        test "${1:0:1}" = "/" && LOG_FILE="$1" || LOG_TITLE="$1"
+        test "${1:0:1}" = "/" && LOG_FILE="$1" || LOG_TITLE="${1:-$LOG_TITLE}"
         shift
     done
     test -z "$LOG_FILE" && LOG_FILE="`echo "$0" | sed --regexp-extended --expression='s:(|\.|\.sh)$:.log:'`"
 
     prepare_file "$LOG_FILE"
     /bin/echo "$LOG_SECTION" >> "$LOG_FILE"
-    /bin/echo "`date +"$LOG_DATE"` $LOG_TITLE" >> "$LOG_FILE"
+    echo_log "`uname -n`: $LOG_TITLE"
 }
 
 function log_file_done
@@ -1098,11 +1121,12 @@ function echo_log
     test -z "$LOG_FILE" && return
 
     local LOG_DATE_STRING=""
-    test_str "$1" "(-d|--date)" && LOG_DATE_STRING="`date +"$LOG_DATE"` " && shift
+    test_str "$1" "^(-d|--date)$" && LOG_DATE_STRING="`date +"$LOG_DATE"`" shift
+    test_yes "$LOG_WITHDATE" && LOG_DATE_STRING="`date +"$LOG_DATE"`"
 
     prepare_file "$LOG_FILE"
     #echo "${LOG_SPACE}$@" | sed --expression='s/\\n/\n                    /g' --expression='s/^/                    /g' >> "$LOG_FILE"
-    /bin/echo "${LOG_SPACE}${LOG_DATE_STRING}$@" | pipe_remove_color >> "$LOG_FILE"
+    /bin/echo "${LOG_SPACE}${LOG_DATE_STRING} $@" | pipe_remove_color >> "$LOG_FILE"
 }
 
 function log_output
@@ -1199,7 +1223,7 @@ function echo_line
 # echoes arguments to standard output and log to the file
 {
     /bin/echo "$@"
-    echo_log "$@"
+    echo_log "${ECHO_PREFIX}${ECHO_UNAME}$@"
 }
 
 function echo_info
@@ -1528,6 +1552,8 @@ export -f fill_command_options
 export -f test_boolean
 export -f test_yes
 export -f test_no
+export -f test_ok
+export -f test_nok
 export -f test_integer
 export -f test_str
 export -f test_file
@@ -1590,14 +1616,14 @@ do
     check_arg_switch "|debug-right" "OPTION_DEBUG|right,$OPTION_DEBUG" "$@"
     check_arg_switch "|debug-function" "OPTION_DEBUG|function,$OPTION_DEBUG" "$@"
     check_arg_switch "p|prefix" "OPTION_PREFIX|yes" "$@"
-    check_arg_value "c|color" "OPTION_COLOR" "$@"
-    check_arg_value "u|uname" "OPTION_UNAME" "$@"
+    check_arg_switch "c|color" "OPTION_COLOR|yes" "$@"
+    check_arg_switch "u|uname" "OPTION_UNAME|yes" "$@"
     check_arg_shift && shift $CHECK_ARG_SHIFT && continue
-    if test -z "$TOOLS"
+    if test -z "$TOOLS_FILE" -o -f "$1"
     then
-        TOOLS="$1"
-        TOOLSNAME="`basename $TOOLS`"
-        TOOLSDIR="`dirname $TOOLS`"
+        TOOLS_FILE="$1"
+        TOOLS_NAME="`basename $TOOLS_FILE`"
+        TOOLS_DIR="`dirname $TOOLS_FILE`"
         shift && continue
     fi
     echo_error "Unknown argument: $1" 1

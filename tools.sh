@@ -234,7 +234,7 @@ function check_arg_switch
 
     if test "$1" = "--$ARG_NAME_LONG" -o "$1" = "-$ARG_NAME_SHORT"
     then
-        eval ${ARG_NAME_VAR}="$ARG_NAME_VALUE"
+        export ${ARG_NAME_VAR}="$ARG_NAME_VALUE"
         CHECK_ARG_SHIFT+=1
         return 0
     fi
@@ -266,15 +266,15 @@ function check_arg_value
 
     if test "$1" = "--$ARG_NAME_LONG" -o "$1" = "-$ARG_NAME_SHORT"
     then
-        test $# -eq 1 && eval ${ARG_NAME_VAR}="$ARG_NAME_VALUE" && CHECK_ARG_SHIFT+=1 && return 0 #echo_error "Missing value for argument \"$1\"" 99
-        test "${2:0:1}" != "-" && eval ${ARG_NAME_VAR}="$2" && CHECK_ARG_SHIFT+=1 || eval ${ARG_NAME_VAR}="$ARG_NAME_VALUE"
+        test $# -eq 1 && export ${ARG_NAME_VAR}="$ARG_NAME_VALUE" && CHECK_ARG_SHIFT+=1 && return 0 #echo_error "Missing value for argument \"$1\"" 99
+        test "${2:0:1}" != "-" && export ${ARG_NAME_VAR}="$2" && CHECK_ARG_SHIFT+=1 || export ${ARG_NAME_VAR}="$ARG_NAME_VALUE"
         CHECK_ARG_SHIFT+=1
         return 0
     fi
 
     if test "${1%%=*}" = "--$ARG_NAME_LONG"
     then
-        eval ${ARG_NAME_VAR}="${1#*=}"
+        export ${ARG_NAME_VAR}="${1#*=}"
         CHECK_ARG_SHIFT+=1
         return 0
     fi
@@ -282,11 +282,25 @@ function check_arg_value
     return 1
 }
 
+function prepare_file_move
+{
+    local F="$1"
+    local N=$2
+    local C=$3
+    local N1
+    let N1=N+1
+
+    test $N1 -ne $C -a -f "$F-$N" -a -f "$F-$N1" && prepare_file_move "$1" $N1 $C
+    test -f "$F-$N1" && rm -f "$F-$N1"
+    mv "$F-$N" "$F-$N1"
+}
+
 function prepare_file
 {
     local FILE=""
     local EMPTY="no"
     local ROLL="no"
+    local COUNT="9"
     local USER=""
     local GROUP=""
     while test $# -gt 0
@@ -294,6 +308,7 @@ function prepare_file
         check_arg_init
         check_arg_switch "e|empty" "EMPTY|yes" "$@"
         check_arg_switch "r|roll" "ROLL|yes" "$@"
+        check_arg_switch "c|count" "COUNT|9" "$@"
         check_arg_shift && shift $CHECK_ARG_SHIFT && continue
         test -z "$FILE" && FILE="$1" && shift && continue
         echo_error_function "prepare_file" "Unknown argument: $1" 1
@@ -302,15 +317,10 @@ function prepare_file
 
     mkdir -p "`dirname $FILE`"
 
-    if test_yes "$ROLL"
+    if test_yes "$ROLL" && test -f "$FILE"
     then
-        test -f "$FILE-9" && rm -f "$FILE-9"
-        for N in 8 7 6 5 4 3 2 1
-        do
-            let N1=N+1
-            test -f "$FILE-$N" && mv "$FILE-$N" "$FILE-$N1"
-        done
-        test -f "$FILE" && mv "$FILE" "$FILE-1"
+        test -f "$FILE-1" && prepare_file_move "$FILE" 1 "$COUNT"
+        mv "$FILE" "$FILE-1"
     fi
 
     test_yes "$EMPTY" && rm -f "$FILE"
@@ -922,7 +932,7 @@ function fd_find_free
 function set_yes
 # $1=yes
 {
-    eval $1=yes
+    export $1=yes
 }
 
 function test_ne0
@@ -1356,8 +1366,8 @@ function echo_step
     echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}${STEP_NUMBER_STR}$@"
 
     test_integer "$STEP_NUMBER" && let STEP_NUMBER++ && let $STEP_VARIABLE=$STEP_NUMBER
-    test_str "$STEP_NUMBER" "^[a-z]$" && eval $STEP_VARIABLE="`echo "$STEP_NUMBER" | tr "a-z" "b-z_"`"
-    test_str "$STEP_NUMBER" "^[A-Z]$" && eval $STEP_VARIABLE="`echo "$STEP_NUMBER" | tr "A-Z" "B-Z_"`"
+    test_str "$STEP_NUMBER" "^[a-z]$" && export $STEP_VARIABLE="`echo "$STEP_NUMBER" | tr "a-z" "b-z_"`"
+    test_str "$STEP_NUMBER" "^[A-Z]$" && export $STEP_VARIABLE="`echo "$STEP_NUMBER" | tr "A-Z" "B-Z_"`"
     return 0
 }
 
@@ -1632,6 +1642,9 @@ function colors_init
     # set colors to current terminal
     #echo "Initial color usage is set to $OPTION_COLOR and using $OPTION_COLORS colors"
 
+    # set TERM if is not set
+    test -z "$TERM" -a -n "$OPTION_TERM" && export TERM="$OPTION_TERM"
+
     # init color numbers
     test_integer "$OPTION_COLORS" || OPTION_COLORS="256"
 
@@ -1784,6 +1797,7 @@ function check_arg_tools
     check_arg_switch "|debug" "OPTION_DEBUG|yes,$OPTION_DEBUG" "$@" && set_debug right
     check_arg_switch "|debug-right" "OPTION_DEBUG|right,$OPTION_DEBUG" "$@"
     check_arg_switch "|debug-function" "OPTION_DEBUG|function,$OPTION_DEBUG" "$@"
+    check_arg_value "|term" "OPTION_TERM|xterm" "$@"
     check_arg_value "|prefix" "OPTION_PREFIX|yes" "$@"
     check_arg_value "|color" "OPTION_COLOR|yes" "$@"
     check_arg_value "|uname" "OPTION_UNAME|yes" "$@"
@@ -1819,6 +1833,7 @@ export REDIRECT_WARNING=/dev/stdout
 
 export OPTION_IGNORE_UNKNOWN="yes"
 
+export OPTION_TERM="xterm" # default value if TERM is not set
 export OPTION_DEBUG
 export OPTION_PREFIX="no"
 export OPTION_COLOR

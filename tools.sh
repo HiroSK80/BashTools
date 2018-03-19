@@ -1141,6 +1141,7 @@ function file_prepare
     local EMPTY="no"
     local ROLL="$FILE_PREPARE_ROLL"
     local COUNT="$FILE_PREPARE_COUNT"
+    local -i SIZE=0
     local USER=""
     local GROUP=""
     arguments init
@@ -1150,6 +1151,7 @@ function file_prepare
         arguments check switch "e|empty" "EMPTY|yes" "$@"
         arguments check switch "r|roll" "ROLL|yes" "$@"
         arguments check value "c|count" "COUNT" "$@"
+        arguments check value s"|size" "SIZE" "$@"
         arguments check switch "u|user" "USER|" "$@"
         arguments check switch "g|group" "GROUP|" "$@"
         arguments check option "FILE" "$@"
@@ -1158,6 +1160,12 @@ function file_prepare
     done
     arguments done
     test -z "$FILE" && echo_error_function "Filename is not specified" $ERROR_CODE_DEFAULT
+
+    if test "$SIZE" -ne 0 -a -f "$FILE"
+    then
+        local CURRENT_SIZE="`stat -c %s analyse.sh`"
+        test $CURRENT_SIZE -gt $SIZE && set_yes ROLL
+    fi
 
     if test_yes "$ROLL" && test -f "$FILE"
     then
@@ -2229,9 +2237,13 @@ function test_cmd
 }
 
 function test_cmd_z
-# $1 regexp
 {
-    test_cmd "^\$"
+    test -z "$COMMAND"
+}
+
+function test_cmd_n
+{
+    test -n "$COMMAND"
 }
 
 function test_opt
@@ -2240,28 +2252,36 @@ function test_opt
     test_str "$OPTION" "$1"
 }
 
-function test_opt2
-# $1 regexp
-{
-    test_str "$OPTION2" "$1"
-}
-
 function test_opt_z
-# $1 regexp
 {
-    test_str "$OPTION" "^\$"
+    test -z "$OPTION"
 }
 
-function test_opt2_z
-# $1 regexp
+function test_opt_n
 {
-    test_str "$OPTION2" "^\$"
+    test -n "$OPTION"
 }
 
 function test_opt_i
 # $1 regexp
 {
     test_integer "$OPTION"
+}
+
+function test_opt2
+# $1 regexp
+{
+    test_str "$OPTION2" "$1"
+}
+
+function test_opt2_z
+{
+    test -z "$OPTION2"
+}
+
+function test_opt2_n
+{
+    test -n "$OPTION2"
 }
 
 function test_opt2_i

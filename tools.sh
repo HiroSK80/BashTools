@@ -1122,19 +1122,19 @@ function file_line
 
 function file_replace
 # $1 filename
-# $2 search
-# $3 replace
+# $* pipe_replace arguments
 {
     local FILE="$1"
     local TEMP_FILE="`file_temporary_name file_replace "$FILE"`"
-    local SEARCH="$2"
-    local REPLACE="$3"
-    local ERROR_MSG="File `echo_quote "$FILE"` string \"$SEARCH\" replace fail"
-    if test -e "$FILE"
+    local ERROR_MSG="File `echo_quote "$FILE"` string replace fail"
+    shift
+    if test -w "$FILE"
     then
         cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG, temporary file create `echo_quote "$TEMP_FILE"` problem" $ERROR_CODE_DEFAULT
-        sed --expression="s|$SEARCH|$REPLACE|g" "$TEMP_FILE" > "$FILE" || echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
+        cat "$TEMP_FILE" | pipe_replace "$@" > "$FILE" || echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
         file_delete "$TEMP_FILE"
+    else
+        echo_error_function "$ERROR_MSG, file not writable" $ERROR_CODE_DEFAULT
     fi
 }
 
@@ -2065,6 +2065,79 @@ function pipe_prefix
         deduplicate=="yes" && count>1 { print prefix line " ("count"x)"; line=current; count=1; next; }
         deduplicate=="no" { print prefix current; }
         END { if (deduplicate=="yes") { if (count>1) print prefix line " ("count"x)"; else print prefix line; } }'
+}
+
+function pipe_replace
+{
+    if test $# -eq 2
+    then
+        pipe_replace_string "$1" "$2"
+    elif test $# -eq 4
+    then
+        pipe_replace_section "$1" "$2" "$3" "$4"
+    else
+        echo_error_function "Wrong arguments count: $#, Arguments: `echo_quote "$@"`" $ERROR_CODE_DEFAULT
+    fi
+}
+
+function pipe_replace_string
+# $1 regex search
+# $2 replace
+{
+    sed --expression="s|$1|$2|g" || echo_error_function "String `echo_quote "$1"` replace `echo_quote "$2"` error" $ERROR_CODE_DEFAULT
+}
+
+function pipe_replace_section
+# $1 start replace flag
+# $2 end replace flag
+# $3 regex search tags: TAG1,TAG2
+# $4 replace list: tag1a,tag2a;tag1b,tag2b
+{
+    awk \
+        -v str_start="$1" \
+        -v str_end="$2" \
+        -v str_keywords="$3" \
+        -v str_vars="$4" '
+        BEGIN {
+            str_keywords_count = split(str_keywords, str_keywords_array, "'"$PIPE_REPLACE_SEPARATOR_ITEM"'");
+            str_vars_count = split(str_vars, str_vars_array, "'"$PIPE_REPLACE_SEPARATOR_LIST"'");
+            #print "KEYWORDS(" str_keywords_count "): 1: " str_keywords_array[1] " 2: " str_keywords_array[2];
+            #print "VARS(" str_vars_count ") 1: " str_vars_array[1] " 2: " str_vars_array[2];
+            
+            copyit=0;
+        }
+
+        $0~str_start {
+            copyit = 1;
+            copybuf = "";
+            next;
+        }
+        $0~str_end {
+            copyit = 0;
+
+            for (str_vars_index=1; str_vars_index <= str_vars_count; str_vars_index++) {
+                copybuf_temp = copybuf;
+                str_vars1 = str_vars_array[str_vars_index];
+                #print "str_vars1: " str_vars1;
+                str_vars1_count = split(str_vars1, str_vars1_array, "'"$PIPE_REPLACE_SEPARATOR_ITEM"'");
+                for (str_keywords_index=1; str_keywords_index <= str_keywords_count; str_keywords_index++) {
+                    #print "GSUB: " str_keywords_array[str_keywords_index] " -> " str_vars1_array[str_keywords_index];
+                    gsub(str_keywords_array[str_keywords_index], str_vars1_array[str_keywords_index], copybuf_temp);
+                }
+                print copybuf_temp;
+            }
+
+            next;
+        }
+        copyit == 0 {
+            print $0;
+            next;
+        }
+        copyit == 1 {
+            if (copybuf == "") copybuf = $0;
+            else copybuf = copybuf "\n" $0;
+            next;
+        }' || echo_error_function "Section `echo_quote "$1"`-`echo_quote "$2"` replace error" $ERROR_CODE_DEFAULT
 }
 
 function pipe_remove_color
@@ -3036,11 +3109,11 @@ function init_tools
     arguments done
 
     SCRIPT_FILE="`readlink --canonicalize "$0"`"
-    SCRIPT_FILE_NOEXT="${SCRIPT_FILE_NOEXT%.sh}"
-    SCRIPT_FILE_NOEXT="${SCRIPT_FILE%.}"
+    SCRIPT_FILE_NOEXT="${SCRIPT_FILE%.sh}"
+    SCRIPT_FILE_NOEXT="${SCRIPT_FILE_NOEXT%.}"
     SCRIPT_NAME="`basename "$SCRIPT_FILE"`"
-    SCRIPT_FILE_NOEXT="${SCRIPT_NAME_NOEXT%.sh}"
-    SCRIPT_FILE_NOEXT="${SCRIPT_NAME%.}"
+    SCRIPT_NAME_NOEXT="${SCRIPT_NAME%.sh}"
+    SCRIPT_NAME_NOEXT="${SCRIPT_NAME_NOEXT%.}"
     SCRIPT_DIR="`dirname "$SCRIPT_FILE"`"
 
     test -z "$TOOLS_FILE" -a -f "`dirname $0`/tools.sh" && TOOLS_FILE="`dirname $0`/tools.sh"
@@ -3269,6 +3342,11 @@ declare -x PIPE_PREFIX_COMMAND=""
 declare -x PIPE_PREFIX_EMPTY="no"
 declare -x PIPE_PREFIX_DEDUPLICATE="yes"
 declare -x -f pipe_prefix
+declare -x PIPE_REPLACE_SEPARATOR_ITEM=","
+declare -x PIPE_REPLACE_SEPARATOR_LIST=";"
+declare -x -f pipe_replace
+declare -x -f pipe_replace_string
+declare -x -f pipe_replace_section
 declare -x -f pipe_remove_color
 declare -x -f pipe_join_lines
 declare -x -f pipe_from

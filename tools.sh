@@ -152,10 +152,14 @@ function str_parse_args
 # !!! $2 destination array variable
 {
     unset PARSE_ARGS
+    declare -a PARSE_ARGS=()
 
-    local ARRAY="${2}"
-    local EVAL="`printf '%q\n' "$1"`"
-    EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\\":":g' --expression='s:\`:_:g')"
+    #local ARRAY="${2}"
+    #local EVAL="`printf '%q\n' "$1"`"
+    #EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\\":":g' --expression='s:\\(:(:g' --expression='s:\\):):g' --expression='s:\\'"'"':'"'"':g' --expression='s:\`:_:g')"
+    #EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\\":":g' --expression='s:\`:_:g')"
+    #local EVAL="`echo "$1" | sed --expression='s:[(]:\\\\(:g' --expression='s:[)]:\\\\):g' --expression='s:[;]:\\\\;:g'`"
+    local EVAL="$1"
     #echo_debug "$EVAL"
 
     eval "set -- $EVAL"
@@ -176,8 +180,9 @@ function str_get_arg
 # $2 index
 {
     local FROM="${2-1}"
-    local EVAL="`printf '%q\n' "$1"`"
-    EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\\":":g' --expression='s:`:_:g')"
+    #local EVAL="`printf '%q\n' "$1"`"
+    #EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\\":":g' --expression='s:`:_:g')"
+    local EVAL="$1"
     #echo_debug_variable EVAL
 
     eval "set -- $EVAL"
@@ -190,14 +195,26 @@ function str_get_arg_from
 # $2 index
 {
     local FROM="${2-1}"
-    local EVAL="`printf '%q\n' "$1"`"
-    EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\\":":g' --expression='s:`:_:g')"
+    #local EVAL="`printf '%q\n' "$1"`"
+    #EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\\":":g' --expression='s:`:_:g')"
     #EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\`:_:g')"
+    local EVAL="$1"
     #echo_debug "$EVAL"
 
     eval "set -- $EVAL"
     #echo_debug "$@"
     echo "${@:$FROM}"
+}
+
+function str_get_arg_from_quoted
+# $1 string with ""
+# $2 index
+{
+    local FROM="${2-1}"
+    local EVAL="$1"
+    eval "set -- $EVAL"
+    #echo_debug "$@"
+    echo_quote "${@:$FROM}"
 }
 
 function check_arg_init
@@ -831,14 +848,14 @@ function call_command
     local TOPT="-t"
     local USER="$CALL_COMMAND_DEFAULT_USER"
     local USER_SET="no"
-    local DEBUG="no"
-    check_debug && DEBUG="yes"
-    check_debug right && DEBUG="right"
+    local LOCAL_DEBUG="no"
+    check_debug && LOCAL_DEBUG="yes"
+    check_debug right && LOCAL_DEBUG="right"
     while test $# -gt 0
     do
-        test "$1" = "--debug" && DEBUG="yes" && shift && continue
-        test "$1" = "--debug-right" && DEBUG="right" && shift && continue
-        test "$1" = "--nodebug" && DEBUG="no" && shift && continue
+        test "$1" = "--debug" && LOCAL_DEBUG="yes" && shift && continue
+        test "$1" = "--debug-right" && LOCAL_DEBUG="right" && shift && continue
+        test "$1" = "--nodebug" && LOCAL_DEBUG="no" && shift && continue
         test "$1" = "--term" -o "$1" = "-t" && TOPT="-t" && shift && continue
         test "$1" = "--noterm" -o "$1" = "-nt" && TOPT="" && shift && continue
         test "$1" = "--tterm" -o "$1" = "-tt" && TOPT="-tt" && shift && continue
@@ -854,8 +871,8 @@ function call_command
     local EXIT_CODE
     if is_localhost "$HOST"
     then
-        test_yes "$DEBUG" && echo_debug "$COMMAND_STRING"
-        test "$DEBUG" = "right" && echo_debug_right "$COMMAND_STRING"
+        test_yes "$LOCAL_DEBUG" && echo_debug "$COMMAND_STRING"
+        test "$LOCAL_DEBUG" = "right" && echo_debug_right "$COMMAND_STRING"
         if test_no "$USER_SET" -o "`get_id`" = "$USER"
         then
             #bash -c "$@"
@@ -868,8 +885,8 @@ function call_command
     else
         USER_SSH=""
         test -n "$USER" && USER_SSH="$USER@"
-        test_yes "$DEBUG" && echo_debug "ssh $TOPT \"$USER_SSH$HOST\" \"$COMMAND_STRING\""
-        test "$DEBUG" = "right" && echo_debug_right "ssh $TOPT \"$USER_SSH$HOST\" \"$COMMAND_STRING\""
+        test_yes "$LOCAL_DEBUG" && echo_debug "ssh $TOPT \"$USER_SSH$HOST\" \"$COMMAND_STRING\""
+        test "$LOCAL_DEBUG" = "right" && echo_debug_right "ssh $TOPT \"$USER_SSH$HOST\" \"$COMMAND_STRING\""
         ssh $TOPT -o "GSSAPIAuthentication no" -o "BatchMode yes" "$USER_SSH$HOST" "$@"
         EXIT_CODE=$?
     fi
@@ -892,7 +909,7 @@ function kill_tree_childs
     do
         kill_tree_childs "yes" "$CHILD_PID"
     done
-    if test_yes "$TOPMOST" -a "$CHECK_PID" != "$$"
+    if test_yes TOPMOST && test "$CHECK_PID" != "$$"
     then
         local FOUND_PID="`ps -ef | awk --assign p="$CHECK_PID" '$2==p { print "yes"; }'`"
         if test_yes ECHO_KILL
@@ -1335,13 +1352,41 @@ function echo_quote
 {
     local ARG
     local SPACE=""
-    local SPACE_CHECK=".*[*; ].*"
+    local CHECK_NEEDQUOTE=".*[*;() \"'].*"
+    #local CHECK_NEEDESCAPE="\`"
+    local CHECK_VARS=".*[\$].*"
+    local CHECK_DOUBLE=".*[\"].*"
+    local CHECK_SINGLE=".*['].*"
     for ARG in "$@"
     do
-        if [[ $ARG =~ $SPACE_CHECK ]]
+        #ARG="`echo "$ARG" | sed --expression='s:\([\`]\):\\1:g'`"
+        if [[ $ARG =~ $CHECK_NEEDQUOTE ]]
         then
-            ARG="${ARG//\"/\\\"}"
-            echo -e "$SPACE\"$ARG\"\c"
+            local QUOTE="D"
+            if [[ $ARG =~ $CHECK_DOUBLE ]]
+            then
+                if [[ $ARG =~ $CHECK_SINGLE ]]
+                then # DOUBLE SINGLE
+                    QUOTE="D"
+                else # ONLY DOUBLE
+                    if [[ $ARG =~ $CHECK_VARS ]]
+                    then
+                        QUOTE="D"
+                    else
+                        QUOTE="S"
+                    fi
+                fi
+            else # SINGLE or NONE
+                QUOTE="D"
+            fi
+
+            if test "$QUOTE" = "D"
+            then
+                ARG="${ARG//\"/\\\\\"}"
+                echo -e "$SPACE\"$ARG\"\c"
+            else
+                echo -e "$SPACE'$ARG'\c"
+            fi
         else
             echo -e "$SPACE$ARG\c"
         fi
@@ -1826,6 +1871,7 @@ function check_arg_tools
 {
     check_arg_switch "|ignore-unknown" "OPTION_IGNORE_UNKNOWN|yes" "$@"
     check_arg_switch "|debug" "OPTION_DEBUG|yes,$OPTION_DEBUG" "$@" && set_debug right
+    check_arg_value "|debug-level" "OPTION_DEBUG_LEVEL|100" "$@" && set_debug_level $OPTION_DEBUG_LEVEL
     check_arg_switch "|debug-right" "OPTION_DEBUG|right,$OPTION_DEBUG" "$@"
     check_arg_switch "|debug-function" "OPTION_DEBUG|function,$OPTION_DEBUG" "$@"
     check_arg_value "|term" "OPTION_TERM|xterm" "$@"
@@ -1866,6 +1912,16 @@ export OPTION_IGNORE_UNKNOWN="yes"
 
 export OPTION_TERM="xterm" # default value if TERM is not set
 export OPTION_DEBUG
+export OPTION_DEBUG_LEVEL=100
+declare -A OPTION_DEBUGS
+OPTION_DEBUGS[ALL]=100
+OPTION_DEBUGS[TRACE]=90
+OPTION_DEBUGS[DEBUG]=80
+OPTION_DEBUGS[INFO]=50
+OPTION_DEBUGS[WARN]=30
+OPTION_DEBUGS[ERROR]=20
+OPTION_DEBUGS[FATAL]=10
+OPTION_DEBUGS[OFF]=0
 export OPTION_PREFIX="no"
 export OPTION_COLOR
 export OPTION_COLORS
@@ -1933,8 +1989,7 @@ export -f put_remote_file
 
 export -f file_line_remove
 export -f file_line_add
-export -f file_line_set
-export -f file_line_add1
+export -f file_line_set;    export -f file_line_add1
 export -f lr_file_line_add
 export -f lr_file_line_add1
 
@@ -1969,6 +2024,8 @@ export -f fd_find_free
 
 export -f set_yes
 
+export S_TAB="`echo -e "\t"`"
+export S_NEWLINE="`echo -e "\n"`"
 export -f test_ne0
 export -f fill_command_options
 export -f test_boolean
@@ -2049,7 +2106,7 @@ export -f colors_init
 tools_init "$@"
 
 # set echo prefix or uname prefix
-test_yes "$OPTION_PREFIX" && ECHO_PREFIX="### " || ECHO_PREFIX=""
-test_yes "$OPTION_UNAME" && ECHO_UNAME="`uname -n`: " || ECHO_UNAME=""
+test_yes OPTION_PREFIX && ECHO_PREFIX="### " || ECHO_PREFIX=""
+test_yes OPTION_UNAME && ECHO_UNAME="`uname -n`: " || ECHO_UNAME=""
 
 colors_init

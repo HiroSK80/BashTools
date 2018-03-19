@@ -3,11 +3,9 @@
 # execute as: ". <tools.sh> [options]"
 # shortest version:
 #       . "`dirname $0`/tools.sh"
-# shortest version with tools known arguments processed:
+# shortest version with process tools known arguments and others put via command_options to $COMMAND, $OPTION, ...:
 #       . "`dirname $0`/tools.sh" "$@"
-# shortest version with arguments set to variables:
-#       . "`dirname $0`/tools.sh" -- "$@"
-# good version:
+# good version with some predefined arguments:
 #       export TOOLS_FILE="`dirname $0`/tools.sh"
 #       . "$TOOLS_FILE" --debug --debug-variable --debug-function --debug-right "$@" || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
 # long version:
@@ -173,66 +171,107 @@ function command_options
 {
     local TASK="$1"
     shift
-    if test "$TASK" = "fill"
-    then
-        COMMAND="$1"
-        OPTIONS="$2 $3 $4 $5 $6 $7 $8 $9"
-        OPTIONS2="$3 $4 $5 $6 $7 $8 $9 ${10}"
-        OPTIONS3="$4 $5 $6 $7 $8 $9 $10 ${11}"
-        OPTIONS4="$5 $6 $7 $8 $9 $10 $11 ${12}"
-        OPTION="$2"
-        OPTION1="$2"
-        OPTION2="$3"
-        OPTION3="$4"
-        OPTION4="$5"
-        OPTION5="$6"
-        OPTION6="$7"
-        OPTION7="$8"
-        OPTION8="$9"
-        OPTION9="${10}"
-        OPTIONS_A=("$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}")
-    fi
-    if test "$TASK" = "parse"
-    then
-        COMMAND="`str_get_arg "$INPUT" 1`"
-        OPTIONS="`str_get_arg_from "$INPUT" 2`"
-        OPTIONS2="`str_get_arg_from "$INPUT" 3`"
-        OPTIONS3="`str_get_arg_from "$INPUT" 4`"
-        OPTIONS4="`str_get_arg_from "$INPUT" 5`"
-        OPTION="`str_get_arg "$INPUT" 2`"
-        OPTION1="`str_get_arg "$INPUT" 2`"
-        OPTION2="`str_get_arg "$INPUT" 3`"
-        OPTION3="`str_get_arg "$INPUT" 4`"
-        OPTION4="`str_get_arg "$INPUT" 5`"
-        OPTION5="`str_get_arg "$INPUT" 6`"
-        OPTION6="`str_get_arg "$INPUT" 7`"
-        OPTION7="`str_get_arg "$INPUT" 8`"
-        OPTION8="`str_get_arg "$INPUT" 9`"
-        OPTION9="`str_get_arg "$INPUT" 10`"
-        OPTIONS_A=("$OPTION" "$OPTION2" "$OPTION3" "$OPTION4" "$OPTION5" "$OPTION6" "$OPTION7" "$OPTION8" "$OPTION9")
-    fi
-    if test "$TASK" = "insert" -o "$TASK" = "insert_command"
-    then
-        # $1 command
-        # move command to options, insert new command
-        OPTION9="$OPTION8"
-        OPTION8="$OPTION7"
-        OPTION7="$OPTION6"
-        OPTION6="$OPTION5"
-        OPTION5="$OPTION4"
-        OPTION4="$OPTION3"
-        OPTION3="$OPTION2"
-        OPTION2="$OPTION1"
-        OPTION1="$COMMAND"
-        OPTION="$COMMAND"
-        OPTIONS2="$OPTIONS"
-        OPTIONS="$COMMAND $OPTIONS"
-        COMMAND="$1"
-    fi
-    if test "$TASK" = "debug"
-    then
-        echo_debug_variable COMMAND OPTION OPTION2 OPTION3 OPTION4 OPTION5 OPTION6 OPTION7 OPTION8 OPTION9
-    fi
+
+    case "$TASK" in
+        add)
+            case "$COMMAND_OPTIONS_FILLED" in
+                "") 
+                    COMMAND="$1" && COMMAND_OPTIONS_FILLED="COMMAND"
+                    ;;
+                "COMMAND")
+                    OPTION1="$1" && OPTION="$1" && COMMAND_OPTIONS_FILLED="OPTION"
+                    ;;
+                "OPTION")
+                    OPTION2="$1" && COMMAND_OPTIONS_FILLED="OPTION2"
+                    ;;
+                "OPTION2")
+                    OPTION3="$1" && COMMAND_OPTIONS_FILLED="OPTION3"
+                    ;;
+                "OPTION3")
+                    OPTION4="$1" && COMMAND_OPTIONS_FILLED="OPTION4"
+                    ;;
+                "OPTION4")
+                    OPTION5="$1" && COMMAND_OPTIONS_FILLED="OPTION5"
+                    ;;
+                "OPTION5")
+                    OPTION6="$1" && COMMAND_OPTIONS_FILLED="OPTION6"
+                    ;;
+                "OPTION6")
+                    OPTION7="$1" && COMMAND_OPTIONS_FILLED="OPTION7"
+                    ;;
+                "OPTION7")
+                    OPTION8="$1" && COMMAND_OPTIONS_FILLED="OPTION8"
+                    ;;
+                "OPTION8")
+                    OPTION9="$1" && COMMAND_OPTIONS_FILLED="OPTION9"
+                    ;;
+            esac
+            OPTIONS="$OPTION $OPTION2 $OPTION3 $OPTION4 $OPTION5 $OPTION6 $OPTION7 $OPTION8 $OPTION9"
+            OPTIONS2="$OPTION2 $OPTION3 $OPTION4 $OPTION5 $OPTION6 $OPTION7 $OPTION8 $OPTION9"
+            OPTIONS3="$OPTION3 $OPTION4 $OPTION5 $OPTION6 $OPTION7 $OPTION8 $OPTION9"
+            OPTIONS4="$OPTION4 $OPTION5 $OPTION6 $OPTION7 $OPTION8 $OPTION9"
+            OPTIONS_A=("$OPTION" "$OPTION2" "$OPTION3" "$OPTION4" "$OPTION5" "$OPTION6" "$OPTION7" "$OPTION8" "$OPTION9")
+            ;;
+        fill)
+            COMMAND="$1"
+            OPTIONS="$2 $3 $4 $5 $6 $7 $8 $9"
+            OPTIONS2="$3 $4 $5 $6 $7 $8 $9 ${10}"
+            OPTIONS3="$4 $5 $6 $7 $8 $9 $10 ${11}"
+            OPTIONS4="$5 $6 $7 $8 $9 $10 $11 ${12}"
+            OPTION="$2"
+            OPTION1="$2"
+            OPTION2="$3"
+            OPTION3="$4"
+            OPTION4="$5"
+            OPTION5="$6"
+            OPTION6="$7"
+            OPTION7="$8"
+            OPTION8="$9"
+            OPTION9="${10}"
+            OPTIONS_A=("$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}")
+            ;;
+        parse)
+            COMMAND="`str_get_arg "$INPUT" 1`"
+            OPTIONS="`str_get_arg_from "$INPUT" 2`"
+            OPTIONS2="`str_get_arg_from "$INPUT" 3`"
+            OPTIONS3="`str_get_arg_from "$INPUT" 4`"
+            OPTIONS4="`str_get_arg_from "$INPUT" 5`"
+            OPTION="`str_get_arg "$INPUT" 2`"
+            OPTION1="`str_get_arg "$INPUT" 2`"
+            OPTION2="`str_get_arg "$INPUT" 3`"
+            OPTION3="`str_get_arg "$INPUT" 4`"
+            OPTION4="`str_get_arg "$INPUT" 5`"
+            OPTION5="`str_get_arg "$INPUT" 6`"
+            OPTION6="`str_get_arg "$INPUT" 7`"
+            OPTION7="`str_get_arg "$INPUT" 8`"
+            OPTION8="`str_get_arg "$INPUT" 9`"
+            OPTION9="`str_get_arg "$INPUT" 10`"
+            OPTIONS_A=("$OPTION" "$OPTION2" "$OPTION3" "$OPTION4" "$OPTION5" "$OPTION6" "$OPTION7" "$OPTION8" "$OPTION9")
+            ;;
+        insert|insert_command)
+            # $1 command
+            # move command to options, insert new command
+            OPTION9="$OPTION8"
+            OPTION8="$OPTION7"
+            OPTION7="$OPTION6"
+            OPTION6="$OPTION5"
+            OPTION5="$OPTION4"
+            OPTION4="$OPTION3"
+            OPTION3="$OPTION2"
+            OPTION2="$OPTION1"
+            OPTION1="$COMMAND"
+            OPTION="$COMMAND"
+            OPTIONS2="$OPTIONS"
+            OPTIONS="$COMMAND $OPTIONS"
+            COMMAND="$1"
+            ;;
+        debug)
+            echo_debug_variable COMMAND OPTION OPTION2 OPTION3 OPTION4 OPTION5 OPTION6 OPTION7 OPTION8 OPTION9
+            ;;
+        *)
+            echo_error_function "Unknown argument: $TASK" $ERROR_CODE_DEFAULT
+            ;;
+    esac
 }
 
 function fill_command_options
@@ -250,7 +289,7 @@ function assign
     #unset -v "$1" || echo_error_function "Invalid variable name: $1" $ERROR_CODE_DEFAULT
     test $# = 2 -a -n "$1" && printf -v "$1" '%s' "$2" && return 0
     test $# = 1 -a -n "${1%%=*}" && printf -v "${1%%=*}" '%s' "${1#*=}" && return 0
-    test $# != 1 -a $# != 2 && echo_error_function "Wrong arguments count: $#, Arguments: `echo_quote "$@"`" $ERROR_CODE_DEFAULT
+    test $# != 1 -a $# != 2 && echo_error_function "Wrong arguments count: $#, arguments: `echo_quote "$@"`" $ERROR_CODE_DEFAULT
     echo_error_function "Empty variable name argument" $ERROR_CODE_DEFAULT
 }
 
@@ -275,7 +314,7 @@ function array_assign
     #unset -v "$1" || echo_error_function "Invalid variable name: $1" $ERROR_CODE_DEFAULT
     test $# = 2 && eval "$1"="$2" && return 0
     test $# = 1 && eval "${1%%=*}"="${1#*=}" && return 0
-    test $# != 1 -a $# != 2 && echo_error_function "Wrong arguments count: $#, Arguments: `echo_quote "$@"`" $ERROR_CODE_DEFAULT
+    test $# != 1 -a $# != 2 && echo_error_function "Wrong arguments count: $#, arguments: `echo_quote "$@"`" $ERROR_CODE_DEFAULT
     echo_error_function "Empty variable name argument" $ERROR_CODE_DEFAULT
 }
 
@@ -354,7 +393,7 @@ function str_count_chars
         local STR="$1"
         local CHR="$2"
     else
-        echo_error_function "Wrong arguments count: $#, Arguments: `echo_quote "$@"`" $ERROR_CODE_DEFAULT
+        echo_error_function "Wrong arguments count: $#, arguments: `echo_quote "$@"`" $ERROR_CODE_DEFAULT
     fi
 
     STR="${STR//[^$CHR]}"
@@ -372,11 +411,12 @@ function str_word
 # $2 variable or string
 # $3+ word[s]
 {
+    local TASK="$1"
     local STR="$2"
     test -n "${!2+exist}" && STR="${!2}"
     local W
 
-    case "$1" in
+    case "$TASK" in
         add)
             for W in "${@:3}"
             do
@@ -403,6 +443,9 @@ function str_word
                 let RESULT=$RESULT+$?
             done
             return $RESULT
+            ;;
+        *)
+            echo_error_function "Unknown argument: $TASK" $ERROR_CODE_DEFAULT
             ;;
     esac
 
@@ -882,13 +925,16 @@ function arguments_check
         value)
             if test "$1" = "--$ARG_LONG" -o "$1" = "-$ARG_SHORT"
             then
-                ARGUMENTS_VALUE="$2"
+                local -i ARGUMENTS_SHIFT_PLUS=0
                 if test $# -eq 1 -o "${2:0:1}" = "-"
                 then
                     test -z "$ARG_VALUE" && echo_error "Missing value for argument \"$1\"" $ERROR_CODE_DEFAULT
-                    ARGUMENTS_VALUE="$ARG_VALUE"
+                    ARGUMENTS_VALUE="$ARG_VALUE"    # assign default value
+                    ARGUMENTS_SHIFT_PLUS=1
+                else
+                    ARGUMENTS_VALUE="$2" && ARGUMENTS_SHIFT_PLUS=2
                 fi
-                shift && arguments_check tester "$ARG_TEST" "$@" && set_yes ARG_ASSIGN && let ARGUMENTS_SHIFT+=2
+                shift && arguments_check tester "$ARG_TEST" "$@" && set_yes ARG_ASSIGN && let ARGUMENTS_SHIFT+=$ARGUMENTS_SHIFT_PLUS
             fi
 
             if test "${1%%=*}" = "--$ARG_LONG"
@@ -999,18 +1045,18 @@ function file_find
 {
     if test -z "$1"
     then
-        local FIND_DIR="."
+        local FIND_PATH="."
         local FIND_MASK="*"
     elif test -d "$1"
     then
-        local FIND_DIR="$1"
+        local FIND_PATH="$1"
         local FIND_MASK="*"
     else
-        local FIND_DIR="`dirname "$1"`"
+        local FIND_PATH="`dirname "$1"`"
         local FIND_MASK="`basename "$1"`"
     fi
 
-    #echo_debug_variable FIND_DIR FIND_MASK
+    #echo_debug_variable FIND_PATH FIND_MASK
 
     #local -a FILES=()
     FILE_FIND=()
@@ -1018,7 +1064,7 @@ function file_find
     while read -r -d $'\0' FILE
     do
         FILE_FIND+=("$FILE")
-    done < <(find "$FIND_DIR" -maxdepth 1 -type f -iname "$FIND_MASK" -printf "%f\0" | sort --zero-terminated)
+    done < <(find "$FIND_PATH" -maxdepth 1 -type f -iname "$FIND_MASK" -printf "%f\0" | sort --zero-terminated)
 
     test -n "$2" && array_copy FILE_FIND "$2"
 }
@@ -1050,7 +1096,7 @@ function file_temporary_name
     test -n "$2" && echo "/tmp/`basename "$2"`.$1.$$.tmp" || echo "/tmp/tools.$1.$$.tmp"
 }
 
-function file_delete
+function file_delete_local
 {
     if test -f "$1"
     then
@@ -1058,6 +1104,21 @@ function file_delete
         test ! -f "$1" || echo_error_function "Can't delete `echo_quote "$1"` file" $ERROR_CODE_DEFAULT
     else
         return 0
+    fi
+}
+
+function file_delete
+{
+    local -A URL
+    str_parse_url "$1" URL
+
+    if test_yes "${URL[LOCAL]}"
+    then
+        file_delete_local "$1"
+        return $?
+    else
+        file_remote delete "$1"
+        return $?
     fi
 }
 
@@ -1070,7 +1131,7 @@ function file_prepare_move
     let N1=N+1
 
     test $N1 -ne $C -a -f "$F-$N" -a -f "$F-$N1" && file_prepare_move "$1" $N1 $C
-    file_delete "$F-$N1"
+    file_delete_local "$F-$N1"
     mv "$F-$N" "$F-$N1"
 }
 
@@ -1078,8 +1139,8 @@ function file_prepare
 {
     local FILE=""
     local EMPTY="no"
-    local ROLL="no"
-    local COUNT="9"
+    local ROLL="$FILE_PREPARE_ROLL"
+    local COUNT="$FILE_PREPARE_COUNT"
     local USER=""
     local GROUP=""
     arguments init
@@ -1104,7 +1165,7 @@ function file_prepare
         mv "$FILE" "$FILE-1"
     fi
 
-    #test_yes "$EMPTY" && file_delete "$FILE"
+    #test_yes "$EMPTY" && file_delete_local "$FILE"
 
     if test ! -w "$FILE"
     then
@@ -1123,22 +1184,105 @@ function file_prepare
 }
 
 function file_remote
+# $1 cache
+# $2 init/done
+
+# $1 cat
+# $2 url with remote file
+
+# $1 delete
+# $2 url with remote file
+
 # $1 get
 # $2 url with remote file
 # $3 local file
-#
+
 # $1 put
 # $2 url with remote file
 # $3 local file
 {
     local TASK="$1"
-    local -A URL
-    str_parse_url "$2" URL
-    test -n "$3" && FILE_REMOTE="$3" || FILE_REMOTE="`file_temporary_name file_remote "${URL[FILE]}"`"
+    shift
 
     case "$TASK" in
+        cat)
+            test_yes FILE_REMOTE_CACHE_ENABLED && test -n "${FILE_REMOTE_CACHE[$1]}" && FILE_REMOTE="${FILE_REMOTE_CACHE[$1]}" && cat "$FILE_REMOTE" && return 0
+            # echo_debug "CACHE ALREADY FOR: $FILE_REMOTE TASK: $TASK"
+            ;;
+        delete)
+            test_yes FILE_REMOTE_CACHE_ENABLED && test -n "${FILE_REMOTE_CACHE[$1]}" && FILE_REMOTE="${FILE_REMOTE_CACHE[$1]}" && file_delete_local "$FILE_REMOTE"
+            # echo_debug "CACHE ALREADY FOR: $FILE_REMOTE TASK: $TASK"
+            ;;
         get)
-            file_delete "$FILE_REMOTE"
+            test_yes FILE_REMOTE_CACHE_ENABLED && test -n "${FILE_REMOTE_CACHE[$1]}" && FILE_REMOTE="${FILE_REMOTE_CACHE[$1]}" && return 0
+            # echo_debug "CACHE ALREADY FOR: $FILE_REMOTE TASK: $TASK"
+            ;;
+        put)
+            test_yes FILE_REMOTE_CACHE_ENABLED && test -n "${FILE_REMOTE_CACHE[$1]}" && FILE_REMOTE="${FILE_REMOTE_CACHE[$1]}" && return 0
+            # echo_debug "CACHE ALREADY FOR: $FILE_REMOTE TASK: $TASK"
+            ;;
+        cache)
+            if test "$1" = "init"
+            then
+                test_yes FILE_REMOTE_CACHE_ENABLED && echo_warning_function "Cache is already enabled" && return 0
+                set_yes FILE_REMOTE_CACHE_ENABLED
+                FILE_REMOTE_CACHE=()
+            elif test "$1" = "done"
+            then
+                #echo_debug_variable FILE_REMOTE_CACHE
+                set_no FILE_REMOTE_CACHE_ENABLED
+
+                local URL
+                for URL in "${!FILE_REMOTE_CACHE[@]}"
+                do
+                    #echo_debug "CACHE FINISHED FOR: \"$URL\" \"${FILE_REMOTE_CACHE[$URL]}\""
+                    file_remote put "$URL" "${FILE_REMOTE_CACHE[$URL]}"
+                done
+                FILE_REMOTE_CACHE=()
+            else
+                echo_error_function "Unknown argument for cache task: $1" $ERROR_CODE_DEFAULT
+            fi
+
+            ;;
+        *)
+            echo_error_function "Unknown argument: $TASK" $ERROR_CODE_DEFAULT
+            ;;
+    esac
+
+    local -A URL
+    str_parse_url "$1" URL
+    test -n "$2" && FILE_REMOTE="$2" || FILE_REMOTE="`file_temporary_name file_remote "${URL[FILE]}"`"
+
+    case "$TASK" in
+        cat)
+            #test_yes FILE_REMOTE_CACHE_ENABLED && echo_warning_function "Cache is enabled but file for cat task is not cached"
+
+            if test_str "${URL[PROTOCOL]}" "^(ssh|scp|remote)$"
+            then
+                call_command --user="${URL[USER]}" --host="${URL[HOST]}" "cat \"${URL[FILE]}\""
+            elif test_yes "${URL[LOCAL]}"
+            then
+                cat "${URL[FILE]}" || return 1
+            else
+                echo_error_function "Unknown transfer protocol for `echo_quote "$URL"`" $ERROR_CODE_DEFAULT
+            fi
+            ;;
+        delete)
+            if test_str "${URL[PROTOCOL]}" "^(ssh|scp|remote)$"
+            then
+                call_command --user="${URL[USER]}" --host="${URL[HOST]}" "rm -f \"${URL[FILE]}\""
+            elif test_yes "${URL[LOCAL]}"
+            then
+                file_delete_local "${URL[FILE]}" || return 1
+            else
+                echo_error_function "Unknown remote protocol for `echo_quote "$URL"`" $ERROR_CODE_DEFAULT
+            fi
+            ;;
+        get)
+            test_yes FILE_REMOTE_CACHE_ENABLED && FILE_REMOTE_CACHE[$1]="$FILE_REMOTE"
+            # echo_debug "CACHE STARTED FOR: $FILE_REMOTE TASK: $TASK"
+
+            file_delete_local "$FILE_REMOTE"
             if test_str "${URL[PROTOCOL]}" "^(ssh|scp|remote)$"
             then
                 $SCPq "${URL[HOST]}":"${URL[FILE]}" "$FILE_REMOTE" || return 1
@@ -1150,6 +1294,8 @@ function file_remote
             fi
             ;;
         put)
+            test_yes FILE_REMOTE_CACHE_ENABLED && echo_warning_function "Cache is enabled but file for put task is not cached"
+
             if test_str "${URL[PROTOCOL]}" "^(ssh|scp|remote)$"
             then
                 $SCPq "$FILE_REMOTE" "${URL[HOST]}":"${URL[FILE]}" || return 1
@@ -1159,9 +1305,10 @@ function file_remote
             else
                 echo_error_function "Unknown transfer protocol for `echo_quote "$URL"`" $ERROR_CODE_DEFAULT
             fi
-            file_delete "$FILE_REMOTE"
+            file_delete_local "$FILE_REMOTE"
             ;;
     esac
+    return 0
 }
 
 function file_line_delete_local
@@ -1178,9 +1325,9 @@ function file_line_delete_local
         if diff "$FILE" "$TEMP_FILE" > /dev/null 2> /dev/null
         then
             $GREP --invert-match --extended-regexp "$REGEXP" "$TEMP_FILE" > "$FILE" 2> /dev/null
-            file_delete "$TEMP_FILE"
+            file_delete_local "$TEMP_FILE"
         else
-            file_delete "$TEMP_FILE"
+            file_delete_local "$TEMP_FILE"
             echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
         fi
     fi
@@ -1217,10 +1364,10 @@ function file_line_add_local
         fi
         if test -s "$FILE"
         then
-            file_delete "$TEMP_FILE"
+            file_delete_local "$TEMP_FILE"
         else
             cat "$TEMP_FILE" > "$FILE"
-            file_delete "$TEMP_FILE"
+            file_delete_local "$TEMP_FILE"
             echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
         fi
     fi
@@ -1280,7 +1427,7 @@ function file_replace
     then
         cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG, temporary file create `echo_quote "$TEMP_FILE"` problem" $ERROR_CODE_DEFAULT
         cat "$TEMP_FILE" | pipe_replace "$@" > "$FILE" || echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
-        file_delete "$TEMP_FILE"
+        file_delete_local "$TEMP_FILE"
     else
         echo_error_function "$ERROR_MSG, file not writable" $ERROR_CODE_DEFAULT
     fi
@@ -1421,10 +1568,10 @@ function file_config
                     END { if (found == 0) { if ("'"$SECTION"'" != "." ) print "['"$SECTION"']"; print opt_val; } }' "$TEMP_FILE" > "$FILE"
                 if test -s "$FILE"
                 then
-                    file_delete "$TEMP_FILE"
+                    file_delete_local "$TEMP_FILE"
                 else
                     cat "$TEMP_FILE" > "$FILE"
-                    file_delete "$TEMP_FILE"
+                    file_delete_local "$TEMP_FILE"
                     echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
                 fi
             else
@@ -1552,7 +1699,7 @@ function ssh_scanid
     done
     cp "$SCAN_USER_HOME_SSH_HOSTS" "${SCAN_USER_HOME_SSH_HOSTS}_orig"
     cat "${SCAN_USER_HOME_SSH_HOSTS}_orig" | sort -u > "$SCAN_USER_HOME_SSH_HOSTS"
-    file_delete "${SCAN_USER_HOME_SSH_HOSTS}_orig"
+    file_delete_local "${SCAN_USER_HOME_SSH_HOSTS}_orig"
 }
 
 function ssh_scanremoteid
@@ -1727,10 +1874,10 @@ function ssh_importid
         if test $? -eq 0
         then
             cat $COPYID_HOME_SSH/id_import.pub >> $COPYID_HOME_SSH_KEYS
-            file_delete $COPYID_HOME_SSH/id_import.pub
+            file_delete_local $COPYID_HOME_SSH/id_import.pub
             cp $COPYID_HOME_SSH_KEYS ${COPYID_HOME_SSH_KEYS}_orig
             cat ${COPYID_HOME_SSH_KEYS}_orig | sort -u > $COPYID_HOME_SSH_KEYS
-            file_delete ${COPYID_HOME_SSH_KEYS}_orig
+            file_delete_local ${COPYID_HOME_SSH_KEYS}_orig
         else
             return 1
         fi
@@ -1741,8 +1888,9 @@ function ssh_importid
 #NAMESPACE/shell/start
 function call_command
 {
+    local SHIFT1=""
     local HOST=""
-    local USER="$CALL_COMMAND_DEFAULT_USER"
+    local USER="$CALL_COMMAND_USER"
     local USER_SET="no"
     local TOPT="-t"
     local QUIET="no"
@@ -1755,6 +1903,7 @@ function call_command
     debug check command && debug check right && LOCAL_DEBUG="right"
     while test $# -gt 0
     do
+        test "$1" = "-1" && SHIFT1="-1" && shift && continue
         test "$1" = "--host" -o "$1" = "-h" && shift && HOST="$1" && shift && continue
         test "${1%%=*}" = "--host" && HOST="${1#*=}" && shift && continue
         test "$1" = "--user" -o "$1" = "-u" && shift && USER="$1" && USER_SET="yes" && shift && continue
@@ -1782,7 +1931,7 @@ function call_command
     if is_localhost "$HOST"
     then
         test_yes "$LOCAL_DEBUG" && echo_debug_custom command "$COMMAND_STRING"
-        test "$LOCAL_DEBUG" = "right" && echo_debug_right "$COMMAND_STRING"
+        test "$LOCAL_DEBUG" = "right" && echo_debug_right $SHIFT1 "$COMMAND_STRING"
         if test_no "$USER_SET" -o "`get_id`" = "$USER"
         then
             #bash -c "$@"
@@ -1796,12 +1945,13 @@ function call_command
         USER_SSH=""
         test -n "$USER" && USER_SSH="$USER@"
         test_yes "$LOCAL_DEBUG" && echo_debug_custom command "$SSH $TOPT $USER_SSH$HOST $COMMAND_STRING"
-        test "$LOCAL_DEBUG" = "right" && echo_debug_right "$SSH $TOPT $USER_SSH$HOST $COMMAND_STRING"
+        test "$LOCAL_DEBUG" = "right" && echo_debug_right $SHIFT1 "$SSH $TOPT $USER_SSH$HOST $COMMAND_STRING"
         $SSH $TOPT $USER_SSH$HOST "$@" 2>&1 | grep --invert-match "Connection to .* closed" | tee "$FILE" | $PIPE > $REDIRECT
         EXIT_CODE=$?
     fi
 
     CALL_COMMAND="`cat "$FILE"`"
+    file_delete_local "$FILE"
     return $EXIT_CODE
 }
 
@@ -1919,7 +2069,7 @@ function performance
             local ELAPSED="`command echo | $AWK '{ printf "%.3f", ('$DATE_NOW' - '${PERFORMANCE_DATA[$VAR]}'); }'`"
             test_yes PERFORMANCE_DETAILS && echo_line "Performance$MSG on date $DATE_NOW_STR timestamp: $DATE_NOW elapsed: ${ELAPSED}s" || echo_line "Performance$MSG: ${ELAPSED}s"
             ;;
-        end)
+        stop|end)
             local ELAPSED="`command echo | $AWK '{ printf "%.3f", ('$DATE_NOW' - '${PERFORMANCE_DATA[$VAR]}'); }'`"
             test_yes PERFORMANCE_DETAILS && echo_line "Performance$MSG ended on date $DATE_NOW_STR timestamp: $DATE_NOW elapsed: ${ELAPSED}s" || echo_line "Performance$MSG: ${ELAPSED}s"
             PERFORMANCE_DATA[$VAR]=0
@@ -2816,6 +2966,10 @@ function echo_debug_variable
                     #eval "VAR_LIST=\"\${VAR_LIST}\$VAR_NAME[\$VAR_ARRAY_INDEX]=\\\"\${$VAR_NAME[$VAR_ARRAY_INDEX]}\"\\\""
                     VAR_LIST="${VAR_LIST}$VAR_NAME[$VAR_ARRAY_INDEX]=${VAR_ARRAY[$VAR_ARRAY_INDEX]}"
                 done
+            elif test -z "${!VAR_NAME+exist}" > /dev/null 2>&1
+            then
+                test -n "$VAR_LIST" && VAR_LIST="$VAR_LIST "
+                VAR_LIST="${VAR_LIST}${VAR_NAME}=<variable not exist>"
             elif ! declare -p "$VAR_NAME" > /dev/null 2>&1
             then
                 test -n "$VAR_LIST" && VAR_LIST="$VAR_LIST "
@@ -3002,6 +3156,44 @@ function echo_warning
 
     test -n "$EXIT_CODE" && exit $EXIT_CODE
     return 0
+}
+
+function echo_warning_function
+{
+    #local ECHO_FUNCTION="${FUNCNAME[@]}"
+    #ECHO_FUNCTION="${ECHO_FUNCTION/echo_error_function /}"
+    ##ECHO_FUNCTION="${ECHO_FUNCTION/ */}"
+    #ECHO_FUNCTION="${ECHO_FUNCTION// / < }"
+
+    debug init_namespaces
+
+    local ECHO_FUNCTION="${FUNCNAME[1]}"
+    test -n "${FUNCTION_NAMESPACES[$ECHO_FUNCTION]}" && ECHO_FUNCTION="${FUNCTION_NAMESPACES[$ECHO_FUNCTION]}"
+    local ECHO_WARNING="Warning in function"
+    local EXIT_CODE=""
+    #if test $# -eq 0
+    #then
+        # predefined output
+    #fi
+    if test $# -eq 1
+    then
+        ECHO_WARNING="$@"
+    fi
+    if test $# -eq 2 && ! test_integer "$2"
+    then
+        ECHO_FUNCTION="$1"
+        shift
+        ECHO_WARNING="$@"
+    fi
+    if test $# -eq 3
+    then
+        ECHO_FUNCTION="$1"
+        shift
+        ECHO_WARNING="$@"
+    fi
+    test_integer "${@:(-1)}" && EXIT_CODE=$2 && ECHO_WARNING="${@:1:${#@}-1}"
+
+    echo_warning "[$ECHO_FUNCTION] $ECHO_WARNING" $EXIT_CODE
 }
 
 #NAMESPACE/history/start
@@ -3246,17 +3438,20 @@ function init_tools
         arguments loop
         arguments check tools "$@"
         arguments shift && shift $ARGUMENTS_SHIFT && continue
-        if test -z "$TOOLS_FILE" -a -f "$1"
-        then
-            TOOLS_FILE="$1"
-            shift && continue
-        fi
-        if test "$1" = "--"
-        then
-            shift
-            command_options fill "$@"
-            break
-        fi
+        # old functionality to get first string argument as tools file name
+        #if test -z "$TOOLS_FILE" -a -f "$1"
+        #then
+        #    TOOLS_FILE="$1"
+        #    shift && continue
+        #fi
+        command_options add "$1"        # add one argument to variables
+        # old functionality to process all arguments after "--"
+        #if test "$1" = "--"
+        #then
+        #    shift
+        #    command_options fill "$@"
+        #    break
+        #fi
         test_no OPTION_IGNORE_UNKNOWN && echo_error "Unknown argument for tools: $1" 1
         shift
     done
@@ -3268,26 +3463,30 @@ function init_tools
     SCRIPT_NAME="`basename "$SCRIPT_FILE"`"
     SCRIPT_NAME_NOEXT="${SCRIPT_NAME%.sh}"
     SCRIPT_NAME_NOEXT="${SCRIPT_NAME_NOEXT%.}"
-    SCRIPT_DIR="`dirname "$SCRIPT_FILE"`"
+    SCRIPT_PATH="`dirname "$SCRIPT_FILE"`"
 
-    test -z "$TOOLS_FILE" -a -f "$SCRIPT_DIR/tools.sh" && TOOLS_FILE="$SCRIPT_DIR/tools.sh"
+    test -z "$TOOLS_FILE" -a -f "$SCRIPT_PATH/tools.sh" && TOOLS_FILE="$SCRIPT_PATH/tools.sh"
     if test -f "$TOOLS_FILE"
     then
         TOOLS_FILE="`readlink --canonicalize "$TOOLS_FILE"`"
         TOOLS_NAME="`basename "$TOOLS_FILE"`"
-        TOOLS_DIR="`dirname "$TOOLS_FILE"`"
+        TOOLS_PATH="`dirname "$TOOLS_FILE"`"
+    else
+        TOOLS_FILE=""
+        TOOLS_NAME=""
+        TOOLS_PATH="$SCRIPT_PATH"
     fi
 }
 
 ### tools exports
 test -z "${TOOLS_FILE+exist}" && declare -x TOOLS_FILE
 declare -x TOOLS_NAME=""
-declare -x TOOLS_DIR=""
+declare -x TOOLS_PATH=""
 declare -x SCRIPT_FILE=""
 declare -x SCRIPT_FILE_NOEXT=""
 declare -x SCRIPT_NAME=""
 declare -x SCRIPT_NAME_NOEXT=""
-declare -x SCRIPT_DIR=""
+declare -x SCRIPT_PATH=""
 
 declare -x REDIRECT_DEBUG=/dev/stderr
 declare -x REDIRECT_ERROR=/dev/stdout
@@ -3348,6 +3547,7 @@ declare -x -f query
 declare -x -f query_yn
 declare -x -f query_ny
 
+declare -x COMMAND_OPTIONS_FILLED=""    # only internal use
 declare -x COMMAND
 declare -x OPTIONS
 declare -x OPTIONS2
@@ -3364,8 +3564,9 @@ declare -x OPTION7
 declare -x OPTION8
 declare -x OPTION9
 declare -a OPTIONS_A
-declare -x -f command_options;  declare -x -f fill_command_options # = command_options fill $@
-                                declare -x -f insert_cmd # = command_options insert $@
+declare -x -f command_options           # add / fill / parse / insert / debug
+declare -x -f fill_command_options      # = command_options fill $@
+declare -x -f insert_cmd                # = command_options insert $@
 
 declare -x -f assign
 declare -x -f function_copy
@@ -3432,11 +3633,16 @@ declare -x -f file_find
 declare -x -f file_loop
 
 declare -x -f file_temporary_name
+declare -x -f file_delete_local
 declare -x -f file_delete
+declare -x    FILE_PREPARE_ROLL="no"
+declare -x -i FILE_PREPARE_COUNT=9      # default 
 declare -x -f file_prepare
 
+declare -x    FILE_REMOTE_CACHE_ENABLED="no"
+declare -x -A FILE_REMOTE_CACHE=()
 declare -x    FILE_REMOTE
-declare -x -f file_remote               # get / put
+declare -x -f file_remote               # cat / get / put / cache init / cache done
 
 declare -x -f file_line_delete_local
 declare -x -f file_line_add_local
@@ -3462,8 +3668,8 @@ declare -x -f ssh_scanremoteid
 declare -x -f ssh_exportid
 declare -x -f ssh_importid
 
-declare -x    CALL_COMMAND_DEFAULT_USER=""
-declare -x    CALL_COMMAND_OUTPUT=""
+declare -x    CALL_COMMAND_USER=""
+declare -x    CALL_COMMAND=""
 declare -x -f call_command
 
 declare -x -f get_pids
@@ -3479,7 +3685,7 @@ declare -x    PERFORMANCE_DETAILS="yes" # show detailed output / show only elaps
 declare -x -A PERFORMANCE_DATA          # only internal use
 declare -x -A PERFORMANCE_MESSAGES      # only internal use
 #PERF_DATA["default"]=0
-declare -x -f performance               # start / now /end
+declare -x -f performance               # start / now / stop|end
 
 declare -x -f set_yes
 declare -x -f test_ne0

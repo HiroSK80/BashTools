@@ -60,7 +60,7 @@ then
     type grep > /dev/null 2>&1 && export GREP="`type -P grep`"
     #export SSH="ssh -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
     export SSH="ssh -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
-    export SSHbq="ssh -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
+    export SSHb="ssh -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
     export SSHq="$SSH -q"
     export SSHbq="$SSHb -q"
     #export SCP="scp -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
@@ -158,10 +158,144 @@ function query_ny
     return 1
 }
 
+function command_options
+{
+    local TASK="$1"
+    shift
+    if test "$TASK" = "fill"
+    then
+        export COMMAND="$1"
+        export OPTIONS="$2 $3 $4 $5 $6 $7 $8 $9"
+        export OPTIONS2="$3 $4 $5 $6 $7 $8 $9 ${10}"
+        export OPTIONS3="$4 $5 $6 $7 $8 $9 $10 ${11}"
+        export OPTIONS4="$5 $6 $7 $8 $9 $10 $11 ${12}"
+        export OPTION="$2"
+        export OPTION1="$2"
+        export OPTION2="$3"
+        export OPTION3="$4"
+        export OPTION4="$5"
+        export OPTION5="$6"
+        export OPTION6="$7"
+        export OPTION7="$8"
+        export OPTION8="$9"
+        export OPTION9="${10}"
+        unset OPTIONS_A
+        declare -a OPTIONS_A=("$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}")
+    fi
+    if test "$TASK" = "parse"
+    then
+        export COMMAND="`str_get_arg "$INPUT" 1`"
+        export OPTIONS="`str_get_arg_from "$INPUT" 2`"
+        export OPTIONS2="`str_get_arg_from "$INPUT" 3`"
+        export OPTIONS3="`str_get_arg_from "$INPUT" 4`"
+        export OPTIONS4="`str_get_arg_from "$INPUT" 5`"
+        export OPTION="`str_get_arg "$INPUT" 2`"
+        export OPTION1="`str_get_arg "$INPUT" 2`"
+        export OPTION2="`str_get_arg "$INPUT" 3`"
+        export OPTION3="`str_get_arg "$INPUT" 4`"
+        export OPTION4="`str_get_arg "$INPUT" 5`"
+        export OPTION5="`str_get_arg "$INPUT" 6`"
+        export OPTION6="`str_get_arg "$INPUT" 7`"
+        export OPTION7="`str_get_arg "$INPUT" 8`"
+        export OPTION8="`str_get_arg "$INPUT" 9`"
+        export OPTION9="`str_get_arg "$INPUT" 10`"
+        unset OPTIONS_A
+        declare -a OPTIONS_A=("$OPTION" "$OPTION2" "$OPTION3" "$OPTION4" "$OPTION5" "$OPTION6" "$OPTION7" "$OPTION8" "$OPTION9")
+    fi
+    if test "$TASK" = "insert" -o "$TASK" = "insert_command"
+    then
+        # $1 command
+        # move command to options, insert new command
+        OPTION9="$OPTION8"
+        OPTION8="$OPTION7"
+        OPTION7="$OPTION6"
+        OPTION6="$OPTION5"
+        OPTION5="$OPTION4"
+        OPTION4="$OPTION3"
+        OPTION3="$OPTION2"
+        OPTION2="$OPTION1"
+        OPTION1="$COMMAND"
+        OPTION="$COMMAND"
+        OPTIONS2="$OPTIONS"
+        OPTIONS="$COMMAND $OPTIONS"
+        COMMAND="$1"
+    fi
+    if test "$TASK" = "debug"
+    then
+        echo_debug_variable COMMAND OPTION OPTION2 OPTION3 OPTION4 OPTION5 OPTION6 OPTION7 OPTION8 OPTION9
+    fi
+}
+
+function fill_command_options
+{
+    command_options fill "$@"
+}
+
+function insert_cmd
+{
+    command_options insert "$@"
+}
+
 function assign
 {
     #export -n "$1"+="$2" !!!WHY?!!!
+    #echo printf -v "$1" '%s' "$2"
     printf -v "$1" '%s' "$2"
+}
+
+# __STRING_FUNCTIONS_START__
+function str_trim
+{
+    local VAR="$@"
+    VAR="${VAR#"${VAR%%[![:space:]]*}"}"   # remove leading whitespace characters
+    VAR="${VAR%"${VAR##*[![:space:]]}"}"   # remove trailing whitespace characters
+    echo -n "$VAR"
+}
+
+function str_parse_url
+# $1 URL
+#   [path/]filename
+#   host:[path/]filename
+#   user@host:[path/]filename
+#   protocol://user@host:[path/]filename
+# $2 AVAR       - associative array variable name to store values in
+#   ${2[PROTOCOL]}
+#   ${2[USER_HOST]}
+#   ${2[HOST]}
+#   ${2[USER]}
+#   ${2[FILE]}
+{
+    PARSE_URL="$1"
+    if test_str "$PARSE_URL" "^([^:/]+):(.*)$"
+    then
+        PARSE_URL_PROTOCOL="ssh"
+        PARSE_URL_USER_HOST="${BASH_REMATCH[1]}"
+        PARSE_URL_FILE="${BASH_REMATCH[2]}"
+        test_str "$PARSE_URL_USER_HOST" "((.*)@)?(.*)$"
+        PARSE_URL_USER="${BASH_REMATCH[2]}"
+        PARSE_URL_HOST="${BASH_REMATCH[3]}"
+    else
+        PARSE_URL_PROTOCOL="file"
+        PARSE_URL_USER_HOST=""
+        PARSE_URL_USER=""
+        PARSE_URL_HOST=""
+        PARSE_URL_FILE="$PARSE_URL"
+    fi
+    #echo "PARSE_URL=$PARSE_URL"
+    #echo "PARSE_URL_PROTOCOL=$PARSE_URL_PROTOCOL"
+    #echo "PARSE_URL_USER_HOST=$PARSE_URL_USER_HOST"
+    #echo "PARSE_URL_HOST=$PARSE_URL_HOST"
+    #echo "PARSE_URL_USER=$PARSE_URL_USER"
+    #echo "PARSE_URL_FILE=$PARSE_URL_FILE"
+    if test -n "$2"
+    then
+        assign "$2[URL]" "$PARSE_URL"
+        assign "$2[PROTOCOL]" "$PARSE_URL_PROTOCOL"
+        assign "$2[USER_HOST]" "$PARSE_URL_USER_HOST"
+        assign "$2[USER]" "$PARSE_URL_USER"
+        assign "$2[HOST]" "$PARSE_URL_HOST"
+        assign "$2[FILE]" "$PARSE_URL_FILE"
+    fi
 }
 
 function str_parse_args
@@ -322,7 +456,7 @@ function check_arg_value
         if test $# -eq 1
         then
             test -n "${ARG_NAME_VAR}" && export ${ARG_NAME_VAR}="$ARG_NAME_VALUE"
-            CHECK_ARG_SHIFT+=1 && return 0 #echo_error "Missing value for argument \"$1\"" $OPTION_DEFAULT_ERROR_CODE
+            CHECK_ARG_SHIFT+=1 && return 0 #echo_error "Missing value for argument \"$1\"" $ERROR_CODE_DEFAULT
         elif test "${2:0:1}" != "-"
         then
             test -n "${ARG_NAME_VAR}" && export ${ARG_NAME_VAR}="$2"
@@ -343,45 +477,24 @@ function check_arg_value
 
     return 1
 }
-
-function str_parse_url
-# $1 URL
-#   [path/]filename
-#   host:[path/]filename
-#   user@host:[path/]filename
-#   protocol://user@host:[path/]filename
-{
-    PARSE_URL="$1"
-    if test_str "$PARSE_URL" "^([^:/]+):(.*)$"
-    then
-        PARSE_URL_PROTOCOL="ssh"
-        PARSE_URL_USER_HOST="${BASH_REMATCH[1]}"
-        PARSE_URL_FILE="${BASH_REMATCH[2]}"
-        test_str "$PARSE_URL_USER_HOST" "((.*)@)?(.*)$"
-        PARSE_URL_USER="${BASH_REMATCH[2]}"
-        PARSE_URL_HOST="${BASH_REMATCH[3]}"
-    else
-        PARSE_URL_PROTOCOL="file"
-        PARSE_URL_USER_HOST=""
-        PARSE_URL_USER=""
-        PARSE_URL_HOST=""
-        PARSE_URL_FILE="$PARSE_URL"
-    fi
-    echo "PARSE_URL=$PARSE_URL"
-    echo "PARSE_URL_PROTOCOL=$PARSE_URL_PROTOCOL"
-    echo "PARSE_URL_USER_HOST=$PARSE_URL_USER_HOST"
-    echo "PARSE_URL_HOST=$PARSE_URL_HOST"
-    echo "PARSE_URL_USER=$PARSE_URL_USER"
-    echo "PARSE_URL_FILE=$PARSE_URL_FILE"
-}
+# __STRING_FUNCTIONS_END__
 
 # __FILE_FUNCTIONS_START__
+function file_temporary_name
+# $1 temporary file prefix
+# $2 source filename to be use as part of temporary filename
+{
+    echo "/tmp/`basename "$2"`.$1.$$.tmp"
+}
+
 function file_delete
 {
     if test -f "$1"
     then
         $RM "$1"
-        test -f "$1" && echo_error_function "Can't delete `echo_quote "$1"` file" $OPTION_DEFAULT_ERROR_CODE
+        test ! -f "$1" || echo_error_function "Can't delete `echo_quote "$1"` file" $ERROR_CODE_DEFAULT
+    else
+        return 0
     fi
 }
 
@@ -416,10 +529,10 @@ function file_prepare
         check_arg_switch "g|group" "GROUP|" "$@"
         check_arg_shift && shift $CHECK_ARG_SHIFT && continue
         test -z "$FILE" && FILE="$1" && shift && continue
-        echo_error_function "Unknown argument: $1" $OPTION_DEFAULT_ERROR_CODE
+        echo_error_function "Unknown argument: $1" $ERROR_CODE_DEFAULT
     done
     check_arg_done
-    test -z "$FILE" && echo_error_function "Filename is not specified" $OPTION_DEFAULT_ERROR_CODE
+    test -z "$FILE" && echo_error_function "Filename is not specified" $ERROR_CODE_DEFAULT
 
     if test_yes "$ROLL" && test -f "$FILE"
     then
@@ -435,7 +548,7 @@ function file_prepare
         touch "$FILE"
         chmod ug+w "$FILE" 2> /dev/null
     fi
-    test -w "$FILE" || echo_error_function "Can't create and prepare file for writting: `echo_quote $FILE`" $OPTION_DEFAULT_ERROR_CODE
+    test -w "$FILE" || echo_error_function "Can't create and prepare file for writting: `echo_quote $FILE`" $ERROR_CODE_DEFAULT
 
     test_yes "$EMPTY" && cat /dev/null > "$FILE"
 
@@ -455,8 +568,8 @@ function file_remote_get
 # $2 local file
 {
     local SSH="${1%%:*}"
-    local FILE="${2#*:}"
-    export FILE_REMOTE="/tmp/file_remote_`basename "$FILE"`.$$"
+    local FILE="${1#*:}"
+    export FILE_REMOTE="`file_temporary_name file_remote "$FILE"`"
     test -n "$2" && FILE_REMOTE="$2"
     file_delete "$FILE_REMOTE"
     $SCPq "$SSH":"$FILE" "$FILE_REMOTE" || return 1
@@ -467,9 +580,9 @@ function file_remote_put
 # $2 local file
 {
     local SSH="${1%%:*}"
-    local FILE="${2#*:}"
-    export FILE_REMOTE="/tmp/file_remote_`basename "$FILE"`.$$"
-    test -n "$3" && FILE_REMOTE="$3"
+    local FILE="${1#*:}"
+    export FILE_REMOTE="`file_temporary_name file_remote "$FILE"`"
+    test -n "$2" && FILE_REMOTE="$2"
     $SCPq "$FILE_REMOTE" "$SSH":"$FILE" || return 1
     file_delete "$FILE_REMOTE"
 }
@@ -479,19 +592,19 @@ function file_line_remove_local
 # $2 remove regexp
 {
     local FILE="$1"
-    local TEMP_FILE="/tmp/`basename "$FILE"`.tmp"
+    local TEMP_FILE="`file_temporary_name file_line_remove_local "$FILE"`"
     local REGEXP="$2"
     local ERROR_MSG="Remove line \"$REGEXP\" from file `echo_quote "$FILE"` fail"
     if test -r "$FILE"
     then
-        cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG" $OPTION_DEFAULT_ERROR_CODE
+        cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
         if diff "$FILE" "$TEMP_FILE" > /dev/null 2> /dev/null
         then
             cat "$TEMP_FILE" 2> /dev/null | $GREP --invert-match "$REGEXP" > "$FILE" 2> /dev/null
             file_delete "$TEMP_FILE"
         else
             file_delete "$TEMP_FILE"
-            echo_error_function "$ERROR_MSG" $OPTION_DEFAULT_ERROR_CODE
+            echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
         fi
     fi
 }
@@ -503,7 +616,7 @@ function file_line_add_local
 # $4 replace this line (or if not found add after $3)
 {
     local FILE="$1"
-    local TEMP_FILE="/tmp/`basename "$FILE"`.tmp.$$"
+    local TEMP_FILE="`file_temporary_name file_line_add_local "$FILE"`"
     local LINE="$2"
     local REGEXP_AFTER="$3"
     local REGEXP_REPLACE="$4"
@@ -513,9 +626,9 @@ function file_line_add_local
 
     if test -z "$REGEXP_AFTER$REGEXP_REPLACE"
     then
-        command echo "$LINE" >> "$FILE" || echo_error_function "$ERROR_MSG" $OPTION_DEFAULT_ERROR_CODE
+        command echo "$LINE" >> "$FILE" || echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
     else
-        cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG" $OPTION_DEFAULT_ERROR_CODE
+        cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
         if test -n "$REGEXP_REPLACE" && `cat "$TEMP_FILE" | $AWK 'BEGIN { f=1; } /'"$REGEXP_REPLACE"'/ { f=0; } END { exit f; }'`
         then
             cat "$TEMP_FILE" | $AWK --assign=line="$LINE" 'BEGIN { p=0; gsub(/\n/, "\\n", line); } p==0&&/'"$REGEXP_REPLACE"'/ { p=1; print line; next } { print; } END { if (p==0) print line; }' > "$FILE"
@@ -531,7 +644,7 @@ function file_line_add_local
         else
             cat "$TEMP_FILE" > "$FILE"
             file_delete "$TEMP_FILE"
-            echo_error_function "$ERROR_MSG" $OPTION_DEFAULT_ERROR_CODE
+            echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
         fi
     fi
 }
@@ -566,18 +679,19 @@ function file_line
 # $* as for file_line_add_local function
 {
     local LINE="$1"
-    test_str "$LINE" "(remove|add|set)" || echo_error_function "Supported only line: remove add set functions and not: $LINE" $OPTION_DEFAULT_ERROR_CODE
-    str_parse_url "$2"
+    test_str "$LINE" "(remove|add|set)" || echo_error_function "Supported only line: remove add set functions and not: $LINE" $ERROR_CODE_DEFAULT
+    local -A URL
+    str_parse_url "$2" URL
     shift 2
-    if test "$PARSE_URL_PROTOCOL" = "file" || is_localhost "$PARSE_URL_HOST"
+    if test "${URL[PROTOCOL]}" = "file" || is_localhost "${URL[HOST]}"
     then
-        file_line_${LINE}_local "$PARSE_URL_FILE" "$@"
+        file_line_${LINE}_local "${URL[FILE]}" "$@"
     else
-        file_remote_get "$PARSE_URL" || echo_error_function "Can't retrieve `echo_quote "$PARSE_URL_FILE"` file from $PARSE_URL_USER_HOST" $OPTION_DEFAULT_ERROR_CODE
+        file_remote_get "${URL[URL]}" || echo_error_function "Can't retrieve `echo_quote "${URL[FILE]}"` file from ${URL[USER_HOST]}" $ERROR_CODE_DEFAULT
         #ls -la "$FILE_REMOTE"
         file_line_${LINE}_local "$FILE_REMOTE" "$@"
         #ls -la "$FILE_REMOTE"
-        file_remote_put "$PARSE_URL"
+        file_remote_put "${URL[URL]}" || echo_error_function "Can't upload `echo_quote "$FILE_REMOTE"` file to ${URL[USER_HOST]}" $ERROR_CODE_DEFAULT
     fi
 }
 
@@ -596,15 +710,15 @@ function file_config_set
 # $3 new value
 {
     local CONFIG_FILE="$1"
-    local CONFIG_TEMP_FILE="/tmp/`basename "$CONFIG_FILE"`.tmp"
+    local CONFIG_TEMP_FILE="`file_temporary_name file_config_set "$CONFIG_FILE"`"
     local OPTION_SECTION="`dirname "$2"`"
     local OPTION_NAME="`basename "$2"`"
     local VALUE="$3"
     local ERROR_MSG="Configuration \"$OPTION_NAME=\"$VALUE\"\" change to file `echo_quote "$CONFIG_FILE"` fail"
     if test -e "$CONFIG_FILE"
     then
-        cat "$CONFIG_FILE" > "$CONFIG_TEMP_FILE" || echo_error_function "$ERROR_MSG, temporary file create `echo_quote "$CONFIG_TEMP_FILE"` problem" $OPTION_DEFAULT_ERROR_CODE
-        test -w "$CONFIG_FILE" || echo_error_function "$ERROR_MSG, file not writable" $OPTION_DEFAULT_ERROR_CODE
+        cat "$CONFIG_FILE" > "$CONFIG_TEMP_FILE" || echo_error_function "$ERROR_MSG, temporary file create `echo_quote "$CONFIG_TEMP_FILE"` problem" $ERROR_CODE_DEFAULT
+        test -w "$CONFIG_FILE" || echo_error_function "$ERROR_MSG, file not writable" $ERROR_CODE_DEFAULT
         $AWK 'BEGIN { opt_val="'"$OPTION_NAME"'=\"'"$VALUE"'\""; found=0; s=0; }
             "'"$OPTION_SECTION"'" != "." && /^[\t ]*\[.*\][\t ]*$/ {
                 s=0; }
@@ -620,14 +734,14 @@ function file_config_set
         else
             cat "$CONFIG_TEMP_FILE" > "$CONFIG_FILE"
             file_delete "$CONFIG_TEMP_FILE"
-            echo_error_function "$ERROR_MSG" $OPTION_DEFAULT_ERROR_CODE
+            echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
         fi
     else
         if test "$OPTION_SECTION" = "."
         then
-            echo "$OPTION_NAME=\"$VALUE\"" > "$CONFIG_FILE" || echo_error_function "$ERROR_MSG, file create problem" $OPTION_DEFAULT_ERROR_CODE
+            echo "$OPTION_NAME=\"$VALUE\"" > "$CONFIG_FILE" || echo_error_function "$ERROR_MSG, file create problem" $ERROR_CODE_DEFAULT
         else
-            echo "[$OPTION_SECTION]" > "$CONFIG_FILE" || echo_error_function "$ERROR_MSG, file create problem" $OPTION_DEFAULT_ERROR_CODE
+            echo "[$OPTION_SECTION]" > "$CONFIG_FILE" || echo_error_function "$ERROR_MSG, file create problem" $ERROR_CODE_DEFAULT
             echo "$OPTION_NAME=\"$VALUE\"" >> "$CONFIG_FILE"
         fi
     fi
@@ -685,14 +799,14 @@ function file_replace
 # $3 replace
 {
     local FILE="$1"
-    local TEMP_FILE="/tmp/`basename "$FILE"`.tmp"
+    local TEMP_FILE="`file_temporary_name file_replace "$FILE"`"
     local SEARCH="$2"
     local REPLACE="$3"
     local ERROR_MSG="File `echo_quote "$FILE"` string \"$SEARCH\" replace fail"
     if test -e "$FILE"
     then
-        cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG, temporary file create `echo_quote "$TEMP_FILE"` problem" $OPTION_DEFAULT_ERROR_CODE
-        cat "$TEMP_FILE" | sed --expression="s|$SEARCH|$REPLACE|g" > "$FILE" || echo_error_function "$ERROR_MSG" $OPTION_DEFAULT_ERROR_CODE
+        cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG, temporary file create `echo_quote "$TEMP_FILE"` problem" $ERROR_CODE_DEFAULT
+        cat "$TEMP_FILE" | sed --expression="s|$SEARCH|$REPLACE|g" > "$FILE" || echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
         file_delete "$TEMP_FILE"
     fi
 }
@@ -1002,8 +1116,8 @@ function call_command
     local USER="$CALL_COMMAND_DEFAULT_USER"
     local USER_SET="no"
     local LOCAL_DEBUG="no"
-    check_debug && LOCAL_DEBUG="yes"
-    check_debug right && LOCAL_DEBUG="right"
+    debug_check && LOCAL_DEBUG="yes"
+    debug_check right && LOCAL_DEBUG="right"
     while test $# -gt 0
     do
         test "$1" = "--debug" && LOCAL_DEBUG="yes" && shift && continue
@@ -1038,9 +1152,9 @@ function call_command
     else
         USER_SSH=""
         test -n "$USER" && USER_SSH="$USER@"
-        test_yes "$LOCAL_DEBUG" && echo_debug 1 "$SSH $TOPT $USER_SSH$HOST \"$COMMAND_STRING\""
-        test "$LOCAL_DEBUG" = "right" && echo_debug_right "$SSH $TOPT $USER_SSH$HOST \"$COMMAND_STRING\""
-        $SSH $TOPT $USER_SSH$HOST "$@"
+        test_yes "$LOCAL_DEBUG" && echo_debug 1 "$SSH $TOPT $USER_SSH$HOST $COMMAND_STRING"
+        test "$LOCAL_DEBUG" = "right" && echo_debug_right "$SSH $TOPT $USER_SSH$HOST $COMMAND_STRING"
+        $SSH $TOPT $USER_SSH$HOST "$@" 2>&1 | grep --invert-match "Connection to .* closed"
         EXIT_CODE=$?
     fi
 
@@ -1136,89 +1250,10 @@ function perf_end
     PERF_DATA[$PERF_VAR]=0
 }
 
-function command_options
-{
-    local TASK="$1"
-    shift
-    if test "$TASK" = "fill"
-    then
-        export COMMAND="$1"
-        export OPTIONS="$2 $3 $4 $5 $6 $7 $8 $9"
-        export OPTIONS2="$3 $4 $5 $6 $7 $8 $9 ${10}"
-        export OPTIONS3="$4 $5 $6 $7 $8 $9 $10 ${11}"
-        export OPTIONS4="$5 $6 $7 $8 $9 $10 $11 ${12}"
-        export OPTION="$2"
-        export OPTION1="$2"
-        export OPTION2="$3"
-        export OPTION3="$4"
-        export OPTION4="$5"
-        export OPTION5="$6"
-        export OPTION6="$7"
-        export OPTION7="$8"
-        export OPTION8="$9"
-        export OPTION9="${10}"
-        unset OPTIONS_A
-        declare -a OPTIONS_A=("$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}")
-    fi
-    if test "$TASK" = "parse"
-    then
-        export COMMAND="`str_get_arg "$INPUT" 1`"
-        export OPTIONS="`str_get_arg_from "$INPUT" 2`"
-        export OPTIONS2="`str_get_arg_from "$INPUT" 3`"
-        export OPTIONS3="`str_get_arg_from "$INPUT" 4`"
-        export OPTIONS4="`str_get_arg_from "$INPUT" 5`"
-        export OPTION="`str_get_arg "$INPUT" 2`"
-        export OPTION1="`str_get_arg "$INPUT" 2`"
-        export OPTION2="`str_get_arg "$INPUT" 3`"
-        export OPTION3="`str_get_arg "$INPUT" 4`"
-        export OPTION4="`str_get_arg "$INPUT" 5`"
-        export OPTION5="`str_get_arg "$INPUT" 6`"
-        export OPTION6="`str_get_arg "$INPUT" 7`"
-        export OPTION7="`str_get_arg "$INPUT" 8`"
-        export OPTION8="`str_get_arg "$INPUT" 9`"
-        export OPTION9="`str_get_arg "$INPUT" 10`"
-        unset OPTIONS_A
-        declare -a OPTIONS_A=("$OPTION" "$OPTION2" "$OPTION3" "$OPTION4" "$OPTION5" "$OPTION6" "$OPTION7" "$OPTION8" "$OPTION9")
-    fi
-    if test "$TASK" = "insert" -o "$TASK" = "insert_command"
-    then
-        # $1 command
-        # move command to options, insert new command
-        OPTION9="$OPTION8"
-        OPTION8="$OPTION7"
-        OPTION7="$OPTION6"
-        OPTION6="$OPTION5"
-        OPTION5="$OPTION4"
-        OPTION4="$OPTION3"
-        OPTION3="$OPTION2"
-        OPTION2="$OPTION1"
-        OPTION1="$COMMAND"
-        OPTION="$COMMAND"
-        OPTIONS2="$OPTIONS"
-        OPTIONS="$COMMAND $OPTIONS"
-        COMMAND="$1"
-    fi
-    if test "$TASK" = "debug"
-    then
-        echo_debug_variable COMMAND OPTION OPTION2 OPTION3 OPTION4 OPTION5 OPTION6 OPTION7 OPTION8 OPTION9
-    fi
-}
-
-function fill_command_options
-{
-    command_options fill "$@"
-}
-
-function insert_cmd
-{
-    command_options insert "$@"
-}
-
-
 function set_yes
 # $1=yes
 {
-    export $1=yes
+    let $1=yes
 }
 
 function test_ne0
@@ -1607,7 +1642,7 @@ function pipe_prefix
         check_arg_switch "l|newline" "NEW_LINE|no" "$@"
         check_arg_shift && shift $CHECK_ARG_SHIFT && continue
         test -z "$HIDELINES" && HIDELINES="$1" && shift && continue
-        echo_error_function "Unknown argument: $1" $OPTION_DEFAULT_ERROR_CODE
+        echo_error_function "Unknown argument: $1" $ERROR_CODE_DEFAULT
     done
     check_arg_done
 
@@ -1784,7 +1819,7 @@ function echo_substep
     return 0
 }
 
-function set_debug
+function debug_set
 {
     test $# = 0 && local OPTIONS="yes" || local OPTIONS="$@"
     local OPTION
@@ -1794,13 +1829,13 @@ function set_debug
     done
 }
 
-function unset_debug
+function debug_unset
 {
     local OPTION="${1:-yes}"
     OPTION_DEBUG="${OPTION_DEBUG/$OPTION?(,)/}"
 }
 
-function check_debug
+function debug_check
 {
     local OPTION="${1:-yes}"
     echo "$OPTION_DEBUG" | $GREP --quiet --word-regexp "$OPTION"
@@ -1808,14 +1843,14 @@ function check_debug
 
 function parse_debug_level
 {
-#OPTION_DEBUGS[ALL]=100
-#OPTION_DEBUGS[TRACE]=90
-#OPTION_DEBUGS[DEBUG]=80
-#OPTION_DEBUGS[INFO]=50
-#OPTION_DEBUGS[WARN]=30
-#OPTION_DEBUGS[ERROR]=20
-#OPTION_DEBUGS[FATAL]=10
-#OPTION_DEBUGS[OFF]=0
+#DEBUG_LEVELS[ALL]=100
+#DEBUG_LEVELS[TRACE]=90
+#DEBUG_LEVELS[DEBUG]=80
+#DEBUG_LEVELS[INFO]=50
+#DEBUG_LEVELS[WARN]=30
+#DEBUG_LEVELS[ERROR]=20
+#DEBUG_LEVELS[FATAL]=10
+#DEBUG_LEVELS[OFF]=0
     if test -z "$1"
     then
         echo ""
@@ -1823,26 +1858,26 @@ function parse_debug_level
     elif test_integer "$1"
     then
         local S
-        for S in ${!OPTION_DEBUGS[@]}
+        for S in ${!DEBUG_LEVELS[@]}
         do
-            test "$1" = "${OPTION_DEBUGS[$S]}" && echo "$1 $S" && return 0
+            test "$1" = "${DEBUG_LEVELS[$S]}" && echo "$1 $S" && return 0
         done
         echo "$1"
     else
-        local I="${OPTION_DEBUGS[$1]}"
+        local I="${DEBUG_LEVELS[$1]}"
         test_integer "$I" || echo_error_function "Unknown error level \"$1\""
         echo "$I $1"
     fi
 }
 
-function set_debug_level
+function debug_level_set
 {
     local LEVEL=( `parse_debug_level "$1"` )
     OPTION_DEBUG_LEVEL=${LEVEL[0]}
     OPTION_DEBUG_LEVEL_STR="${LEVEL[1]}"
 }
 
-function set_debug_level_default
+function debug_level_set_default
 # default level for echo_debug without parameter
 {
     local LEVEL=( `parse_debug_level "$1"` )
@@ -1852,7 +1887,7 @@ function set_debug_level_default
 
 function echo_debug
 {
-    if check_debug
+    if debug_check
     then
         if test $# -ge 2
         then
@@ -1885,7 +1920,7 @@ function echo_debug_right
 {
     local SHIFT1="no"
     local SHIFT1_MIN_FREE="20"
-    if check_debug right
+    if debug_check right
     then
         test "$1" = "-1" && SHIFT1="yes" && shift
         if test_yes "$OPTION_COLOR"
@@ -1934,7 +1969,7 @@ function echo_debug_right
 
 function echo_debug_variable
 {
-    if check_debug variable
+    if debug_check variable
     then
         local VAR_LIST=""
         while test $# -gt 0
@@ -1954,18 +1989,11 @@ function echo_debug_variable
     return 0
 }
 
-function echo_debug_var
-{
-    echo_debug_variable "$@"
-    return 0
-}
-
 function echo_debug_function
 {
-    if check_debug function
+    if debug_check function
     then
         FUNCTION_INFO="${FUNCNAME[@]}"
-        FUNCTION_INFO="${FUNCTION_INFO/echo_debug_funct /}"
         FUNCTION_INFO="${FUNCTION_INFO/echo_debug_function /}"
         FUNCTION_INFO="${FUNCTION_INFO// / < }"
         FUNCTION_INFO="${FUNCTION_INFO/ /($@) }"
@@ -1979,12 +2007,6 @@ function echo_debug_function
 
         echo_log --date "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$FUNCTION_INFO"
     fi
-    return 0
-}
-
-function echo_debug_funct
-{
-    echo_debug_function "$@"
     return 0
 }
 
@@ -2070,13 +2092,17 @@ function echo_warning
     return 0
 }
 
-### history
-
+# __HISTORY_FUNCTIONS_START__
 function history_init
 # [$1] history file
 {
     shopt -u histappend
-    test -z "$1" && export HISTFILE="$TOOLS_DIR/tools.history" || export HISTFILE="$1"
+    if test -z "$1"
+    then
+        HISTFILE="`command echo "$0" | sed --regexp-extended --expression='s:(|\.|\.sh)$:.history:'`"
+    else
+        export HISTFILE="$1"
+    fi
     export HISTCMD=1001
     export HISTCONTROL=ignoredups
     export HISTSIZE=1000
@@ -2107,7 +2133,7 @@ function history_store
     command echo "$1" >> "$HISTFILE"
     history -s "$1"
 }
-
+# __HISTORY_FUNCTIONS_END__
 
 function colors_init
 {
@@ -2274,11 +2300,11 @@ function colors_init
 function check_arg_tools
 {
     check_arg_switch "|ignore-unknown" "OPTION_IGNORE_UNKNOWN|yes" "$@"
-    check_arg_switch "|debug" "" "$@" && set_debug yes
-    check_arg_value "|debug-level" "OPTION_DEBUG_LEVEL|ALL" "$@" && set_debug_level $OPTION_DEBUG_LEVEL
-    check_arg_switch "|debug-right" "" "$@" && set_debug right
-    check_arg_switch "|debug-variable" "" "$@" && set_debug variable
-    check_arg_switch "|debug-function" "" "$@" && set_debug function
+    check_arg_switch "|debug" "" "$@" && debug_set yes
+    check_arg_value "|debug-level" "OPTION_DEBUG_LEVEL|ALL" "$@" && debug_level_set $OPTION_DEBUG_LEVEL
+    check_arg_switch "|debug-right" "" "$@" && debug_set right
+    check_arg_switch "|debug-variable" "" "$@" && debug_set variable
+    check_arg_switch "|debug-function" "" "$@" && debug_set function
     check_arg_value "|term" "OPTION_TERM|xterm" "$@"
     check_arg_value "|prefix" "OPTION_PREFIX|yes" "$@"
     check_arg_value "|color" "OPTION_COLOR|yes" "$@"
@@ -2309,11 +2335,12 @@ function tools_init
     done
     check_arg_done
 
+    test -z "$TOOLS_FILE" -a -f "`dirname $0`/tools.sh" && TOOLS_FILE="`dirname $0`/tools.sh"
     TOOLS_FILE="`readlink --canonicalize "$TOOLS_FILE"`"
     TOOLS_NAME="`basename "$TOOLS_FILE"`"
     TOOLS_DIR="`dirname "$TOOLS_FILE"`"
 
-    set_debug_level ALL
+    debug_level_set ALL
 }
 
 ### tools exports
@@ -2379,6 +2406,24 @@ export -f query
 export -f query_yn
 export -f query_ny
 
+export -f command_options;  export -f fill_command_options # = command_options fill $@
+                            export -f insert_cmd # = command_options insert $@
+
+export -f assign
+
+export S_TAB="`command echo -e "\t"`"
+export S_NEWLINE="`command echo -e "\n"`"
+
+export -f str_trim
+
+export PARSE_URL
+export PARSE_URL_PROTOCOL
+export PARSE_URL_USER_HOST
+export PARSE_URL_USER
+export PARSE_URL_HOST
+export PARSE_URL_FILE
+export -f str_parse_url
+
 declare -a PARSE_ARGS=()
 export PARSE_ARGS=()
 export -f str_parse_args
@@ -2398,14 +2443,7 @@ export -f check_arg_shift
 export -f check_arg_switch
 export -f check_arg_value
 
-export PARSE_URL
-export PARSE_URL_PROTOCOL
-export PARSE_URL_USER_HOST
-export PARSE_URL_USER
-export PARSE_URL_HOST
-export PARSE_URL_FILE
-export -f str_parse_url
-
+export -f file_temporary_name
 export -f file_delete
 export -f file_prepare;     export -f prepare_file
 
@@ -2457,12 +2495,6 @@ export -f perf_now
 export -f perf_end
 
 export -f set_yes
-
-export -f command_options;  export -f fill_command_options # = command_options fill
-                            export -f insert_cmd # = command_options insert
-
-export S_TAB="`command echo -e "\t"`"
-export S_NEWLINE="`command echo -e "\n"`"
 export -f test_ne0
 export -f test_boolean
 export -f test_str_yes
@@ -2518,50 +2550,46 @@ export -f echo_info
 export -f echo_step
 export -f echo_substep
 
-export -f set_debug
-export -f unset_debug
-export -f check_debug
-
 export OPTION_DEBUG_LEVEL
 export OPTION_DEBUG_LEVEL_STR
 export OPTION_DEBUG_LEVEL_DEFAULT=80
 export OPTION_DEBUG_LEVEL_DEFAULT_STR=""
 export ECHO_DEBUG_LEVEL
-declare -A OPTION_DEBUGS
-OPTION_DEBUGS[ALL]=100
-OPTION_DEBUGS[TRACE]=90
-OPTION_DEBUGS[DEBUG]=80
-OPTION_DEBUGS[INFO]=50
-OPTION_DEBUGS[WARN]=30
-OPTION_DEBUGS[ERROR]=20
-OPTION_DEBUGS[FATAL]=10
-OPTION_DEBUGS[OFF]=0
-export -f set_debug_level
-export -f set_debug_level_default
+declare -A DEBUG_LEVELS
+DEBUG_LEVELS[ALL]=100
+DEBUG_LEVELS[TRACE]=90
+DEBUG_LEVELS[DEBUG]=80
+DEBUG_LEVELS[INFO]=50
+DEBUG_LEVELS[WARN]=30
+DEBUG_LEVELS[ERROR]=20
+DEBUG_LEVELS[FATAL]=10
+DEBUG_LEVELS[OFF]=0
+export -f debug_set
+export -f debug_unset
+export -f debug_check
+export -f debug_level_set
+export -f debug_level_set_default
 export -f echo_debug
 export -f echo_debug_right
 export -f echo_debug_variable
-export -f echo_debug_var
 export -f echo_debug_function
-export -f echo_debug_funct
-export OPTION_DEFAULT_ERROR_CODE=99
+export ERROR_CODE_DEFAULT=99
 export -f echo_error
 export -f echo_error_ne0
+declare -A FUNCTION_LABELS
+FUNCTION_LABELS[test_function]="tools/test"
 export -f echo_error_function
 export -f echo_error_exit
 export -f echo_warning
 
-# needed TOOLS_FILE / TOOLS_DIR initialized in case history_init without log file name specified
 export -f history_init
 export -f history_restore
 export -f history_store
 
 export -f colors_init
 
-
 ### tools init
 tools_init "$@"
-
 colors_init
 
 # set echo prefix or uname prefix

@@ -757,8 +757,8 @@ function file_config_get
 # $3 default value
 {
     local DO_EVAL="yes"
-    test_str "$1" "(-e|--eval)" && DO_EVAL="yes" && shift
-    test_str "$1" "(-n|--noeval)" && DO_EVAL="no" && shift
+    test_str "$1" "(-e|--eval)" && set_yes DO_EVAL && shift
+    test_str "$1" "(-n|--noeval)" && set_no DO_EVAL && shift
 
     local CONFIG_FILE="$1"
     local OPTION_SECTION="`dirname "$2"`"
@@ -1119,13 +1119,13 @@ function call_command
     local USER="$CALL_COMMAND_DEFAULT_USER"
     local USER_SET="no"
     local LOCAL_DEBUG="no"
-    debug_check && LOCAL_DEBUG="yes"
-    debug_check right && LOCAL_DEBUG="right"
+    debug_check command && set_yes LOCAL_DEBUG
+    debug_check command && debug_check right && LOCAL_DEBUG="right"
     while test $# -gt 0
     do
-        test "$1" = "--debug" && LOCAL_DEBUG="yes" && shift && continue
+        test "$1" = "--debug" && set_yes LOCAL_DEBUG && shift && continue
         test "$1" = "--debug-right" && LOCAL_DEBUG="right" && shift && continue
-        test "$1" = "--nodebug" && LOCAL_DEBUG="no" && shift && continue
+        test "$1" = "--nodebug" && set_no LOCAL_DEBUG && shift && continue
         test "$1" = "--term" -o "$1" = "-t" && TOPT="-t" && shift && continue
         test "$1" = "--noterm" -o "$1" = "-nt" && TOPT="" && shift && continue
         test "$1" = "--tterm" -o "$1" = "-tt" && TOPT="-tt" && shift && continue
@@ -1141,7 +1141,7 @@ function call_command
     local EXIT_CODE
     if is_localhost "$HOST"
     then
-        test_yes "$LOCAL_DEBUG" && echo_debug 1 "$COMMAND_STRING"
+        test_yes "$LOCAL_DEBUG" && echo_debug_custom command "$COMMAND_STRING"
         test "$LOCAL_DEBUG" = "right" && echo_debug_right "$COMMAND_STRING"
         if test_no "$USER_SET" -o "`get_id`" = "$USER"
         then
@@ -1155,7 +1155,7 @@ function call_command
     else
         USER_SSH=""
         test -n "$USER" && USER_SSH="$USER@"
-        test_yes "$LOCAL_DEBUG" && echo_debug 1 "$SSH $TOPT $USER_SSH$HOST $COMMAND_STRING"
+        test_yes "$LOCAL_DEBUG" && echo_debug_custom command "$SSH $TOPT $USER_SSH$HOST $COMMAND_STRING"
         test "$LOCAL_DEBUG" = "right" && echo_debug_right "$SSH $TOPT $USER_SSH$HOST $COMMAND_STRING"
         $SSH $TOPT $USER_SSH$HOST "$@" 2>&1 | grep --invert-match "Connection to .* closed"
         EXIT_CODE=$?
@@ -1169,7 +1169,6 @@ function get_pids
     ps -ef | $GREP --invert-match $$ | $AWK --assign=p="$1" --assign=s="$$" '$3==s { next; } $0~p { print $2; }'
 }
 
-export ECHO_KILL="no"
 function kill_tree_childs
 {
     local TOPMOST="$1"
@@ -1182,7 +1181,7 @@ function kill_tree_childs
     if test_yes TOPMOST && test "$CHECK_PID" != "$$"
     then
         local FOUND_PID="`ps -ef | $AWK --assign p="$CHECK_PID" '$2==p { print "yes"; }'`"
-        if test_yes ECHO_KILL
+        if test_yes KILL_ECHO
         then
             test_yes FOUND_PID \
                 && ps -ef | $AWK --assign p="$CHECK_PID" '$2==p { print "PID " p " killed: " $0; }' | echo_output \
@@ -1263,6 +1262,12 @@ function set_yes
     let $1=yes
 }
 
+function set_no
+# $1=no
+{
+    let $1=no
+}
+
 function test_ne0
 {
     test $? -ne 0
@@ -1290,7 +1295,7 @@ function test_yes
 }
 
 function test_str_no
-# $1 $1 test string for boolean no string
+# $1 test string for boolean no string
 {
     [[ "$1" =~ ^(n|N|no|No|NO)$ ]]
 }
@@ -1551,7 +1556,7 @@ function log_init
         test "${1:0:1}" = "/" && LOG_FILE="$1" || LOG_TITLE="${1:-$LOG_TITLE}"
         shift
     done
-    test -z "$LOG_FILE" && LOG_FILE="`command echo "$SCRIPT_FILE" | sed --regexp-extended --expression='s:(|\.|\.sh)$:.log:'`"
+    test -z "$LOG_FILE" && LOG_FILE="${SCRIPT_FILE_NOEXT}.log"
 
     file_prepare "$LOG_FILE"
     command echo "$LOG_SECTION" >> "$LOG_FILE"
@@ -1834,6 +1839,16 @@ function echo_substep
 
 function debug_init
 {
+    # in order to speed up script start, namespaces are init in echo_error_function / echo_debug_function
+    #debug_init_namespaces
+    set_no DEBUG_INIT_NAMESPACES
+    return 0
+}
+
+function debug_init_namespaces
+{
+    set_yes DEBUG_INIT_NAMESPACES
+
     FUNCTION_NAMESPACES[main]="$SCRIPT_NAME"
     local SCRIPT
     for SCRIPT in "$TOOLS_FILE" "$SCRIPT_FILE" "$@"
@@ -1861,29 +1876,37 @@ function debug_init
             fi
         done < "$SCRIPT"
     done
+
     return 0
 }
 
 function debug_set
 {
     test $# = 0 && local OPTIONS="yes" || local OPTIONS="$@"
+
     local OPTION
     for OPTION in $OPTIONS
     do
-        echo "$OPTION_DEBUG" | $GREP --quiet --word-regexp "$OPTION" || export OPTION_DEBUG="$OPTION,$OPTION_DEBUG"
+        #echo "$OPTION_DEBUG" | $GREP --quiet --word-regexp "$OPTION" || export OPTION_DEBUG="$OPTION,$OPTION_DEBUG"
+        debug_unset $OPTION
+        test -n "$OPTION_DEBUG" && OPTION_DEBUG="$OPTION_DEBUG "
+        OPTION_DEBUG="$OPTION_DEBUG$OPTION"
     done
 }
 
 function debug_unset
 {
     local OPTION="${1:-yes}"
-    OPTION_DEBUG="${OPTION_DEBUG/$OPTION?(,)/}"
+    #OPTION_DEBUG="${OPTION_DEBUG/$OPTION?(,)/}"
+    OPTION_DEBUG="${OPTION_DEBUG/$OPTION /}"
+    OPTION_DEBUG="${OPTION_DEBUG/ $OPTION/}"
 }
 
 function debug_check
 {
     local OPTION="${1:-yes}"
-    echo "$OPTION_DEBUG" | $GREP --quiet --word-regexp "$OPTION"
+    #echo "$OPTION_DEBUG" | $GREP --quiet --word-regexp "$OPTION"
+    test_str "$OPTION_DEBUG" "\b$OPTION\b"
 }
 
 function debug_level_check
@@ -1903,6 +1926,7 @@ function debug_level_parse
 #DEBUG_LEVELS[WARN]=30
 #DEBUG_LEVELS[ERROR]=20
 #DEBUG_LEVELS[FATAL]=10
+#DEBUG_LEVELS[FORCE]=1
 #DEBUG_LEVELS[OFF]=0
     if test $# = 1
     then
@@ -1939,22 +1963,23 @@ function debug_level_parse
 function debug_level_set
 {
     debug_level_parse "$@"
-    OPTION_DEBUG_LEVEL=${DEBUG_LEVEL_PARSE[0]}
-    OPTION_DEBUG_LEVEL_STR="${DEBUG_LEVEL_PARSE[1]}"
+    DEBUG_LEVEL=${DEBUG_LEVEL_PARSE[0]}
+    DEBUG_LEVEL_STR="${DEBUG_LEVEL_PARSE[1]}"
 }
 
 function debug_level_set_default
 # default level for echo_debug without parameter
 {
     debug_level_parse "$@"
-    OPTION_DEBUG_LEVEL_DEFAULT=${DEBUG_LEVEL_PARSE[0]}
-    OPTION_DEBUG_LEVEL_DEFAULT_STR="${DEBUG_LEVEL_PARSE[1]}"
+    DEBUG_LEVEL_DEFAULT=${DEBUG_LEVEL_PARSE[0]}
+    DEBUG_LEVEL_DEFAULT_STR="${DEBUG_LEVEL_PARSE[1]}"
 }
 
 function echo_debug
 {
     if debug_check
     then
+        local ECHO_DEBUG_LEVEL
         if test $# -ge 2
         then
             debug_level_parse "$1"
@@ -1962,10 +1987,42 @@ function echo_debug
             test -n "${DEBUG_LEVEL_PARSE[1]}" && ECHO_DEBUG_LEVEL="[${DEBUG_LEVEL_PARSE[1]}] "
             shift
         else
-            local LEVEL=$OPTION_DEBUG_LEVEL_DEFAULT
-            test -n "$OPTION_DEBUG_LEVEL_DEFAULT_STR" && ECHO_DEBUG_LEVEL="[$OPTION_DEBUG_LEVEL_DEFAULT_STR] " || ECHO_DEBUG_LEVEL=""
+            local LEVEL=$DEBUG_LEVEL_DEFAULT
+            test -n "$DEBUG_LEVEL_DEFAULT_STR" && ECHO_DEBUG_LEVEL="[$DEBUG_LEVEL_DEFAULT_STR] " || ECHO_DEBUG_LEVEL=""
         fi
-        if test $LEVEL -le $OPTION_DEBUG_LEVEL
+        if test $LEVEL -le $DEBUG_LEVEL
+        then
+            if test_yes "$OPTION_COLOR"
+            then
+                command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_DEBUG$ECHO_DEBUG_LEVEL$@$COLOR_RESET" > $REDIRECT_DEBUG
+            else
+                command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$ECHO_DEBUG_LEVEL$@" > $REDIRECT_DEBUG
+            fi
+
+            echo_log --date "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$ECHO_DEBUG_LEVEL$@"
+        fi
+    fi
+    return 0
+}
+
+function echo_debug_custom
+# $1 debug string to be compared to OPTION_DEBUG
+{
+    if debug_check "$1"
+    then
+        shift
+        local ECHO_DEBUG_LEVEL
+        if test $# -ge 2
+        then
+            debug_level_parse "$1"
+            local LEVEL=${DEBUG_LEVEL_PARSE[0]}
+            test -n "${DEBUG_LEVEL_PARSE[1]}" && ECHO_DEBUG_LEVEL="[${DEBUG_LEVEL_PARSE[1]}] "
+            shift
+        else
+            local LEVEL=$DEBUG_LEVEL_DEFAULT
+            test -n "$DEBUG_LEVEL_DEFAULT_STR" && ECHO_DEBUG_LEVEL="[$DEBUG_LEVEL_DEFAULT_STR] " || ECHO_DEBUG_LEVEL=""
+        fi
+        if test $LEVEL -le $DEBUG_LEVEL
         then
             if test_yes "$OPTION_COLOR"
             then
@@ -2037,8 +2094,8 @@ function echo_debug_variable
 {
     if debug_check variable
     then
-        local DEBUG_LEVEL=""
-        debug_level_check "$1" && DEBUG_LEVEL="$1" && shift
+        local LEVEL=""
+        debug_level_check "$1" && LEVEL="$1" && shift
 
         local VAR_LIST=""
         while test $# -gt 0
@@ -2048,7 +2105,7 @@ function echo_debug_variable
             test -n "$VAR_LIST" && VAR_LIST="$VAR_LIST "
             VAR_LIST="${VAR_LIST}${VAR_NAME}=\"${!VAR_NAME}\""
         done
-        echo_debug $DEBUG_LEVEL "$VAR_LIST"
+        echo_debug_custom variable $LEVEL "$VAR_LIST"
     fi
     return 0
 }
@@ -2057,8 +2114,8 @@ function echo_debug_function
 {
     if debug_check function
     then
-        local DEBUG_LEVEL=""
-        debug_level_check "$1" && DEBUG_LEVEL="$1" && shift
+        local LEVEL=""
+        debug_level_check "$1" && LEVEL="$1" && shift
 
         #FUNCTION_INFO="${FUNCNAME[@]}"
         #FUNCTION_INFO="${FUNCTION_INFO/echo_debug_function /}"
@@ -2067,6 +2124,8 @@ function echo_debug_function
         #FUNCTION_INFO="${FUNCTION_INFO/main/$SCRIPT_NAME}"
         #echo_quote "$@" > /dev/null
         #FUNCTION_INFO="${FUNCTION_INFO/ /($ECHO_QUOTE) }"
+
+        test_no "$DEBUG_INIT_NAMESPACES" && debug_init_namespaces
 
         local F
         echo_quote "$@" > /dev/null
@@ -2081,7 +2140,7 @@ function echo_debug_function
 
         FUNCTION_INFO="<<< $FUNCTION_INFO"
 
-        echo_debug $DEBUG_LEVEL "$FUNCTION_INFO"
+        echo_debug_custom function $LEVEL "$FUNCTION_INFO"
     fi
     return 0
 }
@@ -2122,6 +2181,9 @@ function echo_error_function
     #ECHO_FUNCTION="${ECHO_FUNCTION/echo_error_function /}"
     ##ECHO_FUNCTION="${ECHO_FUNCTION/ */}"
     #ECHO_FUNCTION="${ECHO_FUNCTION// / < }"
+
+    test_no "$DEBUG_INIT_NAMESPACES" && debug_init_namespaces
+
     local ECHO_FUNCTION="${FUNCNAME[1]}"
     test -n "${FUNCTION_NAMESPACES[$ECHO_FUNCTION]}" && ECHO_FUNCTION="${FUNCTION_NAMESPACES[$ECHO_FUNCTION]}"
     local ECHO_ERROR="Error in function"
@@ -2177,7 +2239,7 @@ function history_init
     shopt -u histappend
     if test -z "$1"
     then
-        HISTFILE="`command echo "$0" | sed --regexp-extended --expression='s:(|\.|\.sh)$:.history:'`"
+        HISTFILE="${SCRIPT_FILE_NOEXT}.history"
     else
         export HISTFILE="$1"
     fi
@@ -2379,10 +2441,11 @@ function check_arg_tools
 {
     check_arg_switch "|ignore-unknown" "OPTION_IGNORE_UNKNOWN|yes" "$@"
     check_arg_switch "|debug" "" "$@" && debug_set yes
-    check_arg_value "|debug-level" "OPTION_DEBUG_LEVEL|ALL" "$@" && debug_level_set $OPTION_DEBUG_LEVEL
+    check_arg_value "|debug-level" "DEBUG_LEVEL|ALL" "$@" && debug_level_set $DEBUG_LEVEL
     check_arg_switch "|debug-right" "" "$@" && debug_set right
     check_arg_switch "|debug-variable" "" "$@" && debug_set variable
     check_arg_switch "|debug-function" "" "$@" && debug_set function
+    check_arg_switch "|debug-command" "" "$@" && debug_set command
     check_arg_value "|term" "OPTION_TERM|xterm" "$@"
     check_arg_value "|prefix" "OPTION_PREFIX|yes" "$@"
     check_arg_value "|color" "OPTION_COLOR|yes" "$@"
@@ -2414,7 +2477,11 @@ function tools_init
     check_arg_done
 
     SCRIPT_FILE="`readlink --canonicalize "$0"`"
+    SCRIPT_FILE_NOEXT="${SCRIPT_FILE_NOEXT%.sh}"
+    SCRIPT_FILE_NOEXT="${SCRIPT_FILE%.}"
     SCRIPT_NAME="`basename "$0"`"
+    SCRIPT_FILE_NOEXT="${SCRIPT_NAME_NOEXT%.sh}"
+    SCRIPT_FILE_NOEXT="${SCRIPT_NAME%.}"
     SCRIPT_DIR="`dirname "$SCRIPT_FILE"`"
 
     test -z "$TOOLS_FILE" -a -f "`dirname $0`/tools.sh" && TOOLS_FILE="`dirname $0`/tools.sh"
@@ -2430,8 +2497,6 @@ function tools_init
 export REDIRECT_DEBUG=/dev/stderr
 export REDIRECT_ERROR=/dev/stdout
 export REDIRECT_WARNING=/dev/stdout
-
-export OPTION_IGNORE_UNKNOWN="yes"
 
 export OPTION_TERM="xterm" # default value if TERM is not set
 export OPTION_DEBUG
@@ -2488,6 +2553,22 @@ export -f query
 export -f query_yn
 export -f query_ny
 
+export COMMAND
+export OPTIONS
+export OPTIONS2
+export OPTIONS3
+export OPTIONS4
+export OPTION
+export OPTION1
+export OPTION2
+export OPTION3
+export OPTION4
+export OPTION5
+export OPTION6
+export OPTION7
+export OPTION8
+export OPTION9
+declare -a OPTIONS_A
 export -f command_options;  export -f fill_command_options # = command_options fill $@
                             export -f insert_cmd # = command_options insert $@
 
@@ -2562,6 +2643,7 @@ export CALL_COMMAND_DEFAULT_USER=""
 export -f call_command
 
 export -f get_pids
+export KILL_ECHO="no"
 export -f kill_tree_childs
 export -f kill_tree
 export -f kill_tree_name
@@ -2634,11 +2716,12 @@ export -f echo_step
 export -f echo_substep
 
 export -f debug_init
-export OPTION_DEBUG_LEVEL
-export OPTION_DEBUG_LEVEL_STR
-export OPTION_DEBUG_LEVEL_DEFAULT=80
-export OPTION_DEBUG_LEVEL_DEFAULT_STR=""
-export ECHO_DEBUG_LEVEL
+export DEBUG_INIT_NAMESPACES="no"
+export -f debug_init_namespaces
+export DEBUG_LEVEL
+export DEBUG_LEVEL_STR
+export DEBUG_LEVEL_DEFAULT=80
+export DEBUG_LEVEL_DEFAULT_STR=""
 declare -A DEBUG_LEVELS
 DEBUG_LEVELS[ALL]=100
 DEBUG_LEVELS[TRACE]=90
@@ -2647,15 +2730,18 @@ DEBUG_LEVELS[INFO]=50
 DEBUG_LEVELS[WARN]=30
 DEBUG_LEVELS[ERROR]=20
 DEBUG_LEVELS[FATAL]=10
+DEBUG_LEVELS[FORCE]=1
 DEBUG_LEVELS[OFF]=0
 export -f debug_set
 export -f debug_unset
 export -f debug_check
+export -f debug_level_check
 export -a DEBUG_LEVEL_PARSE
 export -f debug_level_parse
 export -f debug_level_set
 export -f debug_level_set_default
 export -f echo_debug
+export -f echo_debug_custom
 export -f echo_debug_right
 export -f echo_debug_variable
 export -f echo_debug_function
@@ -2671,6 +2757,9 @@ export -f history_init
 export -f history_restore
 export -f history_store
 
+export OPTION_IGNORE_UNKNOWN="no"
+export -f check_arg_tools
+export -f tools_init
 export -f colors_init
 
 ### tools init

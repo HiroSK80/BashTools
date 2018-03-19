@@ -1141,7 +1141,7 @@ function pipe_echo
 
 function show_output
 {
-    pipe_echo_prefix
+    pipe_echo_prefix "$@"
 }
 
 function pipe_echo_prefix
@@ -1295,7 +1295,7 @@ function echo_debug_right
         #test $SHIFT_MESSAGE -ge 15 || cursor_move_down
     fi
 
-    echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@"
+    echo_log --date "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@"
 }
 
 function echo_debug_variable
@@ -1321,7 +1321,9 @@ function echo_debug_function
     if check_debug function
     then
         FUNCTION_INFO="${FUNCNAME[@]}"
+        FUNCTION_INFO="${FUNCTION_INFO/echo_debug_funct /}"
         FUNCTION_INFO="${FUNCTION_INFO/echo_debug_function /}"
+        FUNCTION_INFO="${FUNCTION_INFO// / < }"
         FUNCTION_INFO="${FUNCTION_INFO/ /($@) }"
         FUNCTION_INFO="<<< $FUNCTION_INFO"
         if test_yes "$OPTION_COLOR"
@@ -1332,7 +1334,7 @@ function echo_debug_function
         fi
     fi
 
-    echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}${FUNCTION_INFO}"
+    echo_log --date "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}${FUNCTION_INFO}"
 }
 
 function echo_debug_funct
@@ -1353,7 +1355,7 @@ function echo_error
         echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!" >&$REDIRECT_ERROR
     fi
 
-    #echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!"
+    echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!"
 
     test -n "$EXIT_CODE" && exit $EXIT_CODE
     return 0
@@ -1372,13 +1374,34 @@ function echo_error_exit
 
 function echo_error_function
 {
+    local ECHO_FUNCTION="${FUNCNAME[@]}"
+    ECHO_FUNCTION="${ECHO_FUNCTION/echo_error_function /}"
+    ECHO_FUNCTION="${ECHO_FUNCTION/ */}"
+    local ECHO_ERROR="Error in function"
     local EXIT_CODE=""
-    local ECHO_FUNCTION="$1"
-    shift
-    local ECHO_ERROR="$@"
-    test_integer "${@:(-1)}" && local EXIT_CODE=$2 && ECHO_ERROR="${@:1:${#@}-1}"
+    #if test $# -eq 0
+    #then
+        # predefined output
+    #fi
+    if test $# -eq 1
+    then
+        ECHO_ERROR="$@"
+    fi
+    if test $# -eq 2 && ! test_integer "$2"
+    then
+        ECHO_FUNCTION="$1"
+        shift
+        ECHO_ERROR="$@"
+    fi
+    if test $# -eq 3
+    then
+        ECHO_FUNCTION="$1"
+        shift
+        ECHO_ERROR="$@"
+    fi
+    test_integer "${@:(-1)}" && EXIT_CODE=$2 && ECHO_ERROR="${@:1:${#@}-1}"
 
-    echo_error "[$ECHO_FUNCTION] $ECHO_ERROR" $EXIT_CODE
+    echo_error "[$ECHO_FUNCTION] $ECHO_ERROR" #$EXIT_CODE
 }
 
 function echo_warning
@@ -1389,12 +1412,12 @@ function echo_warning
 
     if test_yes "$OPTION_COLOR"
     then
-        echo -e "$COLOR_WARNING${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}!$COLOR_RESET" >&$REDIRECT_WARNING
+        echo -e "$COLOR_WARNING${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}.$COLOR_RESET" >&$REDIRECT_WARNING
     else
         echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}." >&$REDIRECT_WARNING
     fi
 
-    #echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}."
+    echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}."
 
     test -n "$EXIT_CODE" && exit $EXIT_CODE
 }

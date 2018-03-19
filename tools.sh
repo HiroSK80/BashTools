@@ -1,13 +1,24 @@
 #!/bin/bash
 
-# execute as: ". <thisname> <thisname> [options]"
-# example:
+# execute as: ". <tools.sh> [options]"
+# shortest version:
+#       . "`dirname $0`/tools.sh"
+# shortest version with tools known arguments processed:
+#       . "`dirname $0`/tools.sh" "$@"
+# shortest version with arguments set to variables:
+#       . "`dirname $0`/tools.sh" -- "$@"
+# good version:
 #       export TOOLS_FILE="`dirname $0`/tools.sh"
-#       . "$TOOLS_FILE" --debug-right
+#       . "$TOOLS_FILE" --debug --debug-variable --debug-function --debug-right "$@" || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
+# long version:
+#       unset TOOLS_LOADED
+#       export TOOLS_FILE="`dirname $0`/tools.sh"
+#       . "$TOOLS_FILE" --debug --debug-right --debug-function --debug-variable "$@"
+#       test "$TOOLS_LOADED" != "yes" && echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1
 
 # options:
 # --prefix
-# --color=yes|no
+# --color[=yes|no]
 # --uname=yes|no
 # combinations for example for color:
 # -c
@@ -676,16 +687,16 @@ function arguments
 function arguments_check
 # $1 type: switch
 # $2 argument name: short|long
-# $3 argument store: variable|value|tester
+# $3 argument store: variable[|value[|tester]]
 # $4 arguments: "$@"
 
 # $1 type: value
 # $2 argument name: short|long
-# $3 argument store: variable|tester
+# $3 argument store: variable[|tester] variable|default_value|tester
 # $4 arguments: "$@"
 
 # $1 type: option
-# $2 argument store: variable|tester
+# $2 argument store: variable[|tester]
 # $3 arguments: "$@"
 
 # $1 type: tester
@@ -731,7 +742,13 @@ function arguments_check
                 local ARG_SHORT="$1"
                 local ARG_LONG=""
             fi
-            if test_str "$2" "^.*\|.*$"
+            if test_str "$2" "^.*\|.*\|.*$"
+            then
+                local ARG_VAR="${2%%|*}"
+                local ARG_VALUE="${2#*|}"
+                local ARG_VALUE="${ARG_VALUE%|*}"
+                local ARG_TEST="${2##*|}"
+            elif test_str "$2" "^.*\|.*$"
             then
                 local ARG_VAR="${2%|*}"
                 local ARG_VALUE=""
@@ -789,6 +806,7 @@ function arguments_check
     #echo ARG_VAR=$ARG_VAR ARGUMENTS_VALUE_ORIGINAL=$ARGUMENTS_VALUE_ORIGINAL
 
     local ARG_ASSIGN="no"
+    ARGUMENTS_NAME="$1"
     ARGUMENTS_VALUE=""
     case "$CHECK" in
         switch)
@@ -818,8 +836,12 @@ function arguments_check
         value)
             if test "$1" = "--$ARG_LONG" -o "$1" = "-$ARG_SHORT"
             then
-                test $# -eq 1 -o "${2:0:1}" = "-" && echo_error "Missing value for argument \"$1\"" $ERROR_CODE_DEFAULT
                 ARGUMENTS_VALUE="$2"
+                if test $# -eq 1 -o "${2:0:1}" = "-"
+                then
+                    test -z "$ARG_VALUE" && echo_error "Missing value for argument \"$1\"" $ERROR_CODE_DEFAULT
+                    ARGUMENTS_VALUE="$ARG_VALUE"
+                fi
                 shift && arguments_check tester "$ARG_TEST" "$@" && set_yes ARG_ASSIGN && let ARGUMENTS_SHIFT+=2
             fi
 
@@ -908,9 +930,73 @@ function arguments_tester_increase
     let ARGUMENTS_VALUE_INTEGER++ # increase value in local integer variable
     ARGUMENTS_VALUE=$ARGUMENTS_VALUE_INTEGER
 }
+
+function arguments_tester_yes_no
+{
+    test_yes ARGUMENTS_VALUE && return 0
+    test_no ARGUMENTS_VALUE && return 0
+    echo_error "Argument value: `echo_quote "$ARGUMENTS_VALUE"` in \"$ARGUMENTS_NAME\" need to be \"yes\" or \"no\"" $ERROR_CODE_DEFAULT
+}
+
+function arguments_tester_empty_yes
+{
+    echo "ARGUMENTS_VALUE=$ARGUMENTS_VALUE"
+    test -z "$ARGUMENTS_VALUE" && ARGUMENTS_VALUE="yes"
+    return 0
+}
 #NAMESPACE/string/end
 
 #NAMESPACE/file/start
+function file_find
+# $1 mask|path [with mask]
+# $2 [array to store file names]
+{
+    if test -z "$1"
+    then
+        local FIND_DIR="."
+        local FIND_MASK="*"
+    elif test -d "$1"
+    then
+        local FIND_DIR="$1"
+        local FIND_MASK="*"
+    else
+        local FIND_DIR="`dirname "$1"`"
+        local FIND_MASK="`basename "$1"`"
+    fi
+
+    #echo_debug_variable FIND_DIR FIND_MASK
+
+    #local -a FILES=()
+    FILE_FIND=()
+    local FILE
+    while read -r -d $'\0' FILE
+    do
+        FILE_FIND+=("$FILE")
+    done < <(find "$FIND_DIR" -maxdepth 1 -type f -iname "$FIND_MASK" -printf "%f\0" | sort --zero-terminated)
+
+    test -n "$2" && array_copy FILE_FIND "$2"
+}
+
+function file_loop
+# $1 mask|path [with mask]
+# $@ commands with \$FILE variable
+{
+    local -a FILE_LOOP
+
+    file_find "$1" FILE_LOOP
+    shift
+
+    local FILE_LOOP_CMD
+    test $# -eq 0 && FILE_LOOP_CMD="`cat`"
+
+    # count: echo ${!FILE_LOOP[*]}
+    local FILE
+    for FILE in ${FILE_LOOP[@]}
+    do
+        test $# -eq 0 && eval "$FILE_LOOP_CMD" || eval "$@"
+    done
+}
+
 function file_temporary_name
 # $1 temporary file postfix
 # $2 source filename to be use as part of temporary filename
@@ -956,6 +1042,7 @@ function file_prepare
         arguments loop
         arguments check switch "e|empty" "EMPTY|yes" "$@"
         arguments check switch "r|roll" "ROLL|yes" "$@"
+        arguments check value "c|count" "COUNT" "$@"
         arguments check switch "u|user" "USER|" "$@"
         arguments check switch "g|group" "GROUP|" "$@"
         arguments check option "FILE" "$@"
@@ -2151,7 +2238,12 @@ function pipe_remove_color
 function pipe_join_lines
 # removes new line codes from pipe
 {
-    $AWK '$0=="" { next; } { print; }' | tr '\n' ' ' | xargs
+    if test -z "$PIPE_JOIN_LINES_CHARACTER"
+    then
+        $AWK '$0=="" { next; } { print; }' | tr --delete '\n' | xargs
+    else
+        $AWK '$0=="" { next; } { print; }' | tr '\n' "$PIPE_JOIN_LINES_CHARACTER" | xargs
+    fi
 }
 
 function pipe_from
@@ -2358,6 +2450,7 @@ function echo_quote
 
             if test "$QUOTE" = "D"
             then
+                ARG="${ARG//\\/\\\\}"
                 ARG="${ARG//\"/\\\"}"
                 ARG="${ARG//\$/\\\$}"
                 #command echo -e "$SPACE\"$ARG\"\c"
@@ -2906,10 +2999,10 @@ function arguments_check_tools
     arguments check switch "|debug-function" "" "$@" && debug set function
     arguments check switch "|debug-command" "" "$@" && debug set command
     arguments check switch "|debug-right" "" "$@" && debug set right
-    arguments check value "|debug-level" "DEBUG_LEVEL|ALL" "$@" && debug set_level $DEBUG_LEVEL
-    arguments check value "|term" "OPTION_TERM|xterm" "$@"
+    arguments check value "|debug-level" "DEBUG_LEVEL|ALL|" "$@" && debug set_level $DEBUG_LEVEL
+    arguments check value "|term" "OPTION_TERM|xterm|" "$@"
     arguments check switch "|prefix" "OPTION_PREFIX|yes" "$@"
-    arguments check switch "|color" "OPTION_COLOR|yes" "$@" && init_colors
+    arguments check value "|color" "OPTION_COLOR|yes|yes_no" "$@" && init_colors
     arguments check switch "|no-color" "OPTION_COLOR|no" "$@" && init_colors
     arguments check switch "|uname" "OPTION_UNAME|yes" "$@"
 }
@@ -2938,7 +3031,7 @@ function init_colors
     # init color usage if is not set
     if ! test_yes "$OPTION_COLOR" && ! test_no "$OPTION_COLOR"
     then
-        if test "`command echo "$TERM" | cut -c 1-5`" = "xterm" -o "$TERM" = "rxvt" -o "$TERM" = "konsole" -o "$TERM" = "linux" -o "$TERM" = "putty"
+        if test "${TERM:0:5}" = "xterm" -o "$TERM" = "rxvt" -o "$TERM" = "konsole" -o "$TERM" = "linux" -o "$TERM" = "putty"
         then
             OPTION_COLOR="yes"
             OPTION_COLORS="256"
@@ -3116,13 +3209,24 @@ function init_tools
     SCRIPT_NAME_NOEXT="${SCRIPT_NAME_NOEXT%.}"
     SCRIPT_DIR="`dirname "$SCRIPT_FILE"`"
 
-    test -z "$TOOLS_FILE" -a -f "`dirname $0`/tools.sh" && TOOLS_FILE="`dirname $0`/tools.sh"
-    TOOLS_FILE="`readlink --canonicalize "$TOOLS_FILE"`"
-    TOOLS_NAME="`basename "$TOOLS_FILE"`"
-    TOOLS_DIR="`dirname "$TOOLS_FILE"`"
+    test -z "$TOOLS_FILE" -a -f "$SCRIPT_DIR/tools.sh" && TOOLS_FILE="$SCRIPT_DIR/tools.sh"
+    if test -f "$TOOLS_FILE"
+    then
+        TOOLS_FILE="`readlink --canonicalize "$TOOLS_FILE"`"
+        TOOLS_NAME="`basename "$TOOLS_FILE"`"
+        TOOLS_DIR="`dirname "$TOOLS_FILE"`"
+    fi
 }
 
 ### tools exports
+test -z "${TOOLS_FILE+exist}" && declare -x TOOLS_FILE
+declare -x TOOLS_NAME=""
+declare -x TOOLS_DIR=""
+declare -x SCRIPT_FILE=""
+declare -x SCRIPT_FILE_NOEXT=""
+declare -x SCRIPT_NAME=""
+declare -x SCRIPT_NAME_NOEXT=""
+declare -x SCRIPT_DIR=""
 
 declare -x REDIRECT_DEBUG=/dev/stderr
 declare -x REDIRECT_ERROR=/dev/stdout
@@ -3248,6 +3352,7 @@ declare -x -f arguments_check           # switch / value / option / tools
 declare -x -f arguments_check_info
 declare -x -f arguments_check_tools     # checks for standard tools.sh arguments
 #declare -x -f arguments_tester_${check}
+declare -x    ARGUMENTS_NAME            # current specified switch
 declare -x    ARGUMENTS_VALUE_ORIGINAL  # tester can obtain original value set in variable before
 declare -x    ARGUMENTS_VALUE           # current proposed value from switch / value / option, can be changed
 declare -x    ARGUMENTS_VALUE_DELIMITER=" " # delimiter to use for /append variable
@@ -3258,6 +3363,10 @@ declare -x -f arguments_tester_file_write
 declare -x -f arguments_tester_file_canonicalize
 declare -x -f arguments_tester_ping
 declare -x -f arguments_tester_increase
+
+declare -x -a FILE_FIND
+declare -x -f file_find
+declare -x -f file_loop
 
 declare -x -f file_temporary_name
 declare -x -f file_delete
@@ -3348,6 +3457,7 @@ declare -x -f pipe_replace
 declare -x -f pipe_replace_string
 declare -x -f pipe_replace_section
 declare -x -f pipe_remove_color
+PIPE_JOIN_LINES_CHARACTER=" "
 declare -x -f pipe_join_lines
 declare -x -f pipe_from
 declare -x -f pipe_cut

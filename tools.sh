@@ -234,15 +234,6 @@ function insert_cmd
     command_options insert "$@"
 }
 
-function function_copy
-# $1 original function name
-# $2 new function name with the same content
-{
-    local ORIGINAL=$(declare -f "$1")
-    local NEW="$2${ORIGINAL#$1}"
-    eval "$NEW"
-}
-
 function assign
 {
     #unset -v "$1" || echo_error_function "Invalid variable name: $1" $ERROR_CODE_DEFAULT
@@ -252,7 +243,23 @@ function assign
     echo_error_function "Empty variable name argument" $ERROR_CODE_DEFAULT
 }
 
-function assign_array
+function function_copy
+# $1 original function name
+# $2 new function name with the same content
+{
+    local ORIGINAL=$(declare -f "$1")
+    local NEW="$2${ORIGINAL#$1}"
+    eval "$NEW"
+}
+
+function array_variable
+{
+    local LINE
+    read LINE < <(declare -p "$1" 2> /dev/null) || return 1
+    test_str "$LINE" "^declare -[aA]"
+}
+
+function array_assign
 {
     #unset -v "$1" || echo_error_function "Invalid variable name: $1" $ERROR_CODE_DEFAULT
     test $# = 2 && eval "$1"="$2" && return 0
@@ -261,7 +268,7 @@ function assign_array
     echo_error_function "Empty variable name argument" $ERROR_CODE_DEFAULT
 }
 
-function assign_array_arguments
+function array_assign_arguments
 {
     #unset -v "$1" || echo_error_function "Invalid variable name: $1" $ERROR_CODE_DEFAULT
     test $# = 0 && echo_error_function "Empty variable name argument" $ERROR_CODE_DEFAULT
@@ -279,11 +286,17 @@ function assign_array_arguments
     array_copy ARRAY "$VAR"
 }
 
-function array_variable
+function array_copy_bad
+# $1 original array name
+# $2 new array name with the same content
 {
-    local LINE
-    read LINE < <(declare -p "$1" 2> /dev/null) || return 1
-    test_str "$LINE" "^declare -[aA]"
+    local ORIGINAL=$(declare -p "$1")
+    local NEW="${ORIGINAL/declare -[aA]/}"
+    local NEW="${NEW/$1=\'/$2=}"
+    local NEW="${NEW%\'}"
+    # error processing ' character
+    echo "NEW=$NEW"
+    eval "$NEW"
 }
 
 function array_copy
@@ -301,47 +314,6 @@ function array_copy
         #echo "INDEX=$INDEX    $2[\"$INDEX\"]=${ARRAY_COPY[$INDEX]}"
         eval "$2[\"$INDEX\"]=\"\${ARRAY_COPY[$INDEX]}\""
     done
-#    local ORIGINAL=$(declare -p "$1")
-#    local NEW="${ORIGINAL/$1=/$2=}"
-    # preserve global variable
-#    local NEW="${NEW/declare -[aA] /}"
-#    local NEW="${NEW/[\']/}"
-#    local NEW="${NEW%\'}"
-#    echo "NEW=$NEW"
-#    eval "$NEW"
-}
-
-function array_convert
-{
-    if test $# = 2
-    then
-        local VAR="$1"
-        local TMP="$2"
-    elif test $# = 1
-    then
-        local VAR=""
-        local TMP="$1"
-    else
-        echo_error_function "Wrong arguments count: $#, Arguments: `echo_quote "$@"`" $ERROR_CODE_DEFAULT
-    fi
-
-    if test_str "$TMP" "^[(].*[)]$"
-    then
-        ARRAY_CONVERT="$TMP"
-    elif test_str "$TMP" "^[[].*[]]$"
-    then
-        TMP="${TMP:1:${#TMP}-2}"
-        ARRAY_CONVERT="(\"${TMP//,/\" \"}\")"
-    elif test_str "$TMP" "^[{].*[}]$"
-    then
-        TMP="${TMP:1:${#TMP}-2}"
-        ARRAY_CONVERT="(\"${TMP//:/\" \"}\")"
-    else
-        ARRAY_CONVERT="($TMP)"
-    fi
-
-    test -n "$VAR" && assign "$VAR=$ARRAY_CONVERT" || command echo -n "$ARRAY_CONVERT"
-    return 0
 }
 
 #NAMESPACE/string/start
@@ -424,6 +396,39 @@ function str_word
     esac
 
     test -n "${!2+exist}" && assign "$2" "$STR" || command echo -n "$STR"
+}
+
+function str_array_convert
+{
+    if test $# = 2
+    then
+        local VAR="$1"
+        local TMP="$2"
+    elif test $# = 1
+    then
+        local VAR=""
+        local TMP="$1"
+    else
+        echo_error_function "Wrong arguments count: $#, Arguments: `echo_quote "$@"`" $ERROR_CODE_DEFAULT
+    fi
+
+    if test_str "$TMP" "^[(].*[)]$"
+    then
+        ARRAY_CONVERT="$TMP"
+    elif test_str "$TMP" "^[[].*[]]$"
+    then
+        TMP="${TMP:1:${#TMP}-2}"
+        ARRAY_CONVERT="(\"${TMP//,/\" \"}\")"
+    elif test_str "$TMP" "^[{].*[}]$"
+    then
+        TMP="${TMP:1:${#TMP}-2}"
+        ARRAY_CONVERT="(\"${TMP//:/\" \"}\")"
+    else
+        ARRAY_CONVERT="($TMP)"
+    fi
+
+    test -n "$VAR" && assign "$VAR=$ARRAY_CONVERT" || command echo -n "$ARRAY_CONVERT"
+    return 0
 }
 
 function str_parse_url
@@ -548,6 +553,9 @@ function arguments
     case "$TASK" in
         init)
             ARGUMENTS_STORE[$ARGUMENTS_STORE_I]="$ARGUMENTS_SHIFT|$ARGUMENTS_OPTION_FOUND|$ARGUMENTS_SWITCHES_FOUND"
+            #declare -a ARGUMENTS_CHECK_ALL_STORE
+            #array_copy ARGUMENTS_CHECK_ALL ARGUMENTS_CHECK_ALL_STORE
+            #ARGUMENTS_STORE_CHECK_ALL[$ARGUMENTS_STORE_I]="`declare -p ARGUMENTS_CHECK_ALL_STORE`"
             let ARGUMENTS_STORE_I++
             ;;
         done)
@@ -556,14 +564,20 @@ function arguments
             ARGUMENTS_OPTION_FOUND="${ARGUMENTS_STORE[$ARGUMENTS_STORE_I]#*|}"
             ARGUMENTS_OPTION_FOUND="${ARGUMENTS_OPTION_FOUND%|*}"
             ARGUMENTS_SWITCHES_FOUND="${ARGUMENTS_STORE[$ARGUMENTS_STORE_I]##*|}"
+            #eval "${ARGUMENTS_STORE_CHECK_ALL[$ARGUMENTS_STORE_I]}"
+            #echo s0:${ARGUMENTS_STORE_CHECK_ALL[$ARGUMENTS_STORE_I]}
+            #echo s1:${ARGUMENTS_CHECK_ALL[@]}
+            #echo s2:${ARGUMENTS_CHECK_ALL_STORE[@]}
+            #array_copy ARGUMENTS_CHECK_ALL_STORE ARGUMENTS_CHECK_ALL
             unset ARGUMENTS_STORE[$ARGUMENTS_STORE_I]
+            #unset ARGUMENTS_STORE_CHECK_ALL[$ARGUMENTS_STORE_I]
             ;;
         loop)
             ARGUMENTS_SHIFT=0
             set_no ARGUMENTS_OPTION_FOUND
             ARGUMENTS_SWITCHES_FOUND=""
             ;;
-        shift|shift_all)
+        shift|shift/all)
             if test -n "$ARGUMENTS_SWITCHES_FOUND"
             then # test for unrecognized switches
                 #echo_debug_variable ARGUMENTS_SWITCHES_FOUND
@@ -581,24 +595,49 @@ function arguments
         check)
             arguments_check "$@"
             ;;
-        check_all)
+        check/add)
+            ARGUMENTS_CHECK_ADD+=("`echo_quote "$@"`")
+            ;;
+        check/run)
+            arguments init
+            while test $# -gt 0
+            do
+                arguments loop
+
+                local -a CHECK=()
+                local CHECK_INDEX
+                for CHECK_INDEX in "${!ARGUMENTS_CHECK_ADD[@]}"
+                do
+                    array_assign CHECK "(${ARGUMENTS_CHECK_ADD[$CHECK_INDEX]})"
+                    test ${#CHECK[@]} = 3 && arguments check "${CHECK[0]}" "${CHECK[1]}" "${CHECK[2]}" "$@"
+                    test ${#CHECK[@]} = 2 && arguments check "${CHECK[0]}" "${CHECK[1]}" "$@"
+                    test ${#CHECK[@]} = 1 && arguments check "${CHECK[0]}" "$@"
+                done
+
+                arguments shift && shift $ARGUMENTS_SHIFT && continue
+                echo_error "Unknown argument: $1" 1
+            done
+            arguments done
+            ARGUMENTS_CHECK_ADD=()
+            ;;
+        check/all)
             local TYPE="$1"
             test "$TYPE" = "unknown" && test "${#ARGUMENTS_CHECK_ALL[@]}" -ne 0 && echo_error_function "Unknown argument(s): ${ARGUMENTS_CHECK_ALL[@]}" 1
+            test "$TYPE" = "unknown" && return 0
             test "$TYPE" = "switch" -o "$TYPE" = "value" && local OPT1="$2" && local OPT2="$3" && shift 3
             test "$TYPE" = "option" && local OPT1="$2" && shift 2
 
-            test $# -ne 0 && assign_array_arguments ARGUMENTS_CHECK_ALL "$@" #&& echo "ARGUMENTS_CHECK_ALL=${ARGUMENTS_CHECK_ALL[@]} [NEW] = $@"
+            arguments init
+            test $# -ne 0 && array_assign_arguments ARGUMENTS_CHECK_ALL "$@" #&& echo "ARGUMENTS_CHECK_ALL=${ARGUMENTS_CHECK_ALL[@]} [NEW] = $@"
             #test $# -eq 0 && echo "ARGUMENTS_CHECK_ALL=${ARGUMENTS_CHECK_ALL[@]} [OLD]"
-
             set -- "${ARGUMENTS_CHECK_ALL[@]}"
             ARGUMENTS_CHECK_ALL=()
-            arguments init
             while test $# -gt 0
             do
                 arguments loop
                 test "$TYPE" = "switch" -o "$TYPE" = "value" && arguments check "$TYPE" "$OPT1" "$OPT2" "$@"
                 test "$TYPE" = "option" && arguments check "$TYPE" "$OPT1" "$@"
-                if arguments shift_all
+                if arguments shift/all
                 then # do shift if found and replace unknown switch arguments
                     shift $ARGUMENTS_SHIFT
                     test -n "$SWITCHES_ARGUMENT_UNKNOWN" && ARGUMENTS_CHECK_ALL+=("-$SWITCHES_ARGUMENT_UNKNOWN")
@@ -705,7 +744,7 @@ function arguments_check
             then
                 if test_array "$ARG_TEST"
                 then
-                    array_convert ARG_TEST "$ARG_TEST"
+                    str_array_convert ARG_TEST "$ARG_TEST"
                     ARG_TEST="${ARG_TEST:1:${#ARG_TEST}-2}"
                     #echo_debug "Possible values for test $ARG_TEST vs $ARG_OPTION"
                     str_word check ARG_TEST "$ARG_OPTION" || echo_error "Argument `echo_quote "$ARG_OPTION"` is not supported. Available: $ARG_TEST" $ERROR_CODE_DEFAULT
@@ -1126,21 +1165,22 @@ function file_config
             return 0
             ;;
         get|read|set)
-            arguments check_all switch "e|eval" "DO_EVAL|yes" "$@"
-            arguments check_all switch "n|no-eval" "DO_EVAL|no"
-            arguments check_all option "FILE|file_read"
-            arguments check_all option "SECTION_OPTION"
-            arguments check_all option "VALUE"
-            arguments check_all unknown
+            arguments check/add switch "e|eval" "DO_EVAL|yes"
+            arguments check/add switch "n|no-eval" "DO_EVAL|no"
+            arguments check/add option "FILE|file_read"
+            arguments check/add option "SECTION_OPTION"
+            arguments check/add option "VALUE"
+            arguments check/run "$@"
             SECTION="`dirname "$SECTION_OPTION"`"
             OPTION="`basename "$SECTION_OPTION"`"
             ;;
         load)
             local TO_VARIABLES="no"
             local TO_ARRAY=""
-            arguments check_all switch "v|to-variables" "TO_VARIABLES|yes" "$@"
-            arguments check_all value "a|to-array" "TO_ARRAY"
-            arguments check_all option "FILE|file_read"
+            arguments check/add switch "v|to-variables" "TO_VARIABLES|yes"
+            arguments check/add value "a|to-array" "TO_ARRAY"
+            arguments check/add option "FILE|file_read"
+            arguments check/run "$@"
             ;;
         *)
             echo_error_function "Unknown config file task: $@" $ERROR_CODE_DEFAULT
@@ -1539,6 +1579,7 @@ function call_command
     local USER="$CALL_COMMAND_DEFAULT_USER"
     local USER_SET="no"
     local LOCAL_DEBUG="no"
+    local COMMAND_STRING=""
     debug check command && set_yes LOCAL_DEBUG
     debug check command && debug check right && LOCAL_DEBUG="right"
     while test $# -gt 0
@@ -1546,6 +1587,7 @@ function call_command
         test "$1" = "--debug" && set_yes LOCAL_DEBUG && shift && continue
         test "$1" = "--debug-right" && LOCAL_DEBUG="right" && shift && continue
         test "$1" = "--nodebug" && set_no LOCAL_DEBUG && shift && continue
+        test "$1" = "--command-string" && shift && COMMAND_STRING="$1" && shift && continue
         test "$1" = "--term" -o "$1" = "-t" && TOPT="-t" && shift && continue
         test "$1" = "--noterm" -o "$1" = "-nt" && TOPT="" && shift && continue
         test "$1" = "--tterm" -o "$1" = "-tt" && TOPT="-tt" && shift && continue
@@ -1556,8 +1598,7 @@ function call_command
         break
     done
 
-    local COMMAND_STRING="`echo_quote "$@"`"
-    test $# = 1 && COMMAND_STRING="$@"
+    test -z "$COMMAND_STRING" && COMMAND_STRING="`echo_quote "$@"`"
     local EXIT_CODE
     if is_localhost "$HOST"
     then
@@ -2170,7 +2211,7 @@ function echo_quote
 {
     local ARG
     local SPACE=""
-    local CHECK_NEEDQUOTE=".*[*;() \"'].*"
+    local CHECK_NEEDQUOTE=".*[*;() \"'|].*"
     #local CHECK_NEEDESCAPE="\`"
     local CHECK_VARS=".*[\$].*"
     local CHECK_DOUBLE=".*[\"].*"
@@ -2751,10 +2792,10 @@ function arguments_check_tools
     arguments check switch "|debug-right" "" "$@" && debug set right
     arguments check value "|debug-level" "DEBUG_LEVEL|ALL" "$@" && debug set_level $DEBUG_LEVEL
     arguments check value "|term" "OPTION_TERM|xterm" "$@"
-    arguments check value "|prefix" "OPTION_PREFIX|yes" "$@"
-    arguments check value "|color" "OPTION_COLOR|yes" "$@" && colors_init
-    arguments check value "|no-color" "OPTION_COLOR|no" "$@" && colors_init
-    arguments check value "|uname" "OPTION_UNAME|yes" "$@"
+    arguments check switch "|prefix" "OPTION_PREFIX|yes" "$@"
+    arguments check switch "|color" "OPTION_COLOR|yes" "$@" && init_colors
+    arguments check switch "|no-color" "OPTION_COLOR|no" "$@" && init_colors
+    arguments check switch "|uname" "OPTION_UNAME|yes" "$@"
 }
 
 function init_debug
@@ -3045,21 +3086,23 @@ declare -a OPTIONS_A
 declare -x -f command_options;  declare -x -f fill_command_options # = command_options fill $@
                                 declare -x -f insert_cmd # = command_options insert $@
 
-declare -x -f function_copy
 declare -x -f assign
-declare -x -f assign_array
-declare -x -f assign_array_arguments
-declare -x -a ARRAY_CONVERT=()
+declare -x -f function_copy
 declare -x -f array_variable
+declare -x -f array_assign
+declare -x -f array_assign_arguments
 declare -x -f array_copy
-declare -x -f array_convert
 
 declare -x -r S_TAB="`command echo -e "\t"`"
 #declare -x -r S_NEWLINE="`command echo -e "\n"`"
 declare -x -r S_NEWLINE=$'\n'
 
 declare -x -f str_trim
+declare -x -f str_count_chars
 declare -x -f str_word                  # add / delete / check
+
+declare -x -a ARRAY_CONVERT=()
+declare -x -f str_array_convert
 
 declare -x PARSE_URL
 declare -x PARSE_URL_PROTOCOL
@@ -3075,11 +3118,13 @@ declare -x -f str_get_arg
 declare -x -f str_get_arg_from
 
 declare -x -a ARGUMENTS_STORE=()        # only internal use = "$ARGUMENTS_SHIFT|$ARGUMENTS_OPTION_FOUND|$ARGUMENTS_SWITCHES_FOUND"
+declare -x -a ARGUMENTS_STORE_CHECK_ALL=() # only internal use
 declare -x -i ARGUMENTS_STORE_I=0       # only internal use
 declare -x -i ARGUMENTS_SHIFT=0
 declare -x    ARGUMENTS_OPTION_FOUND    # only internal use
 declare -x    ARGUMENTS_SWITCHES_FOUND  # only internal use
-declare -x -a ARGUMENTS_CHECK_ALL       # cache for check_all, lasting values are unknown arguments
+declare -x -a ARGUMENTS_CHECK_ADD       # cache for check/add
+declare -x -a ARGUMENTS_CHECK_ALL       # cache for check/all, lasting values are unknown arguments
 declare -x -f arguments                 # init / done / loop / shift / check
 #declare -x -f arguments_check_${type}
 declare -x -f arguments_check           # switch / value / option / tools

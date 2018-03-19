@@ -902,7 +902,7 @@ function file_temporary_name
 # $1 temporary file postfix
 # $2 source filename to be use as part of temporary filename
 {
-    echo "/tmp/`basename "$2"`.$1.$$.tmp"
+    test -n "$2" && echo "/tmp/`basename "$2"`.$1.$$.tmp" || echo "/tmp/tools.$1.$$.tmp"
 }
 
 function file_delete
@@ -1581,30 +1581,38 @@ function ssh_importid
 function call_command
 {
     local HOST=""
-    local TOPT="-t"
     local USER="$CALL_COMMAND_DEFAULT_USER"
     local USER_SET="no"
+    local TOPT="-t"
+    local QUIET="no"
+    local REDIRECT=""
     local LOCAL_DEBUG="no"
     local COMMAND_STRING=""
     debug check command && set_yes LOCAL_DEBUG
     debug check command && debug check right && LOCAL_DEBUG="right"
     while test $# -gt 0
     do
-        test "$1" = "--debug" && set_yes LOCAL_DEBUG && shift && continue
-        test "$1" = "--debug-right" && LOCAL_DEBUG="right" && shift && continue
-        test "$1" = "--nodebug" && set_no LOCAL_DEBUG && shift && continue
-        test "$1" = "--command-string" && shift && COMMAND_STRING="$1" && shift && continue
-        test "$1" = "--term" -o "$1" = "-t" && TOPT="-t" && shift && continue
-        test "$1" = "--noterm" -o "$1" = "-nt" && TOPT="" && shift && continue
-        test "$1" = "--tterm" -o "$1" = "-tt" && TOPT="-tt" && shift && continue
         test "$1" = "--host" -o "$1" = "-h" && shift && HOST="$1" && shift && continue
         test "${1%%=*}" = "--host" && HOST="${1#*=}" && shift && continue
         test "$1" = "--user" -o "$1" = "-u" && shift && USER="$1" && USER_SET="yes" && shift && continue
         test "${1%%=*}" = "--user" && USER="${1#*=}" && shift && continue
+
+        test "$1" = "--term" -o "$1" = "-t" && TOPT="-t" && shift && continue
+        test "$1" = "--noterm" -o "$1" = "-nt" && TOPT="" && shift && continue
+        test "$1" = "--tterm" -o "$1" = "-tt" && TOPT="-tt" && shift && continue
+
+        test "$1" = "--verbose" && set_no QUIET && shift && continue
+        test "$1" = "--quiet" && set_yes QUIET && shift && continue
+        test "$1" = "--debug" && set_yes LOCAL_DEBUG && shift && continue
+        test "$1" = "--debug-right" && LOCAL_DEBUG="right" && shift && continue
+        test "$1" = "--nodebug" && set_no LOCAL_DEBUG && shift && continue
+        test "$1" = "--command-string" && shift && COMMAND_STRING="$1" && shift && continue
         break
     done
 
-    test -z "$COMMAND_STRING" && COMMAND_STRING="`echo_quote "$@"`"
+    local FILE="`file_temporary_name call_command`"
+    test_no QUIET && REDIRECT="/dev/stdout" && debug set variable command || REDIRECT="/dev/null"
+    test -z "$COMMAND_STRING" && { test $# -eq 1 && COMMAND_STRING="`echo $1`" || COMMAND_STRING="`echo_quote "$@"`"; }
     local EXIT_CODE
     if is_localhost "$HOST"
     then
@@ -1613,10 +1621,10 @@ function call_command
         if test_no "$USER_SET" -o "`get_id`" = "$USER"
         then
             #bash -c "$@"
-            eval "stdbuf -i0 -o0 -e0 $@"
+            eval "stdbuf -i0 -o0 -e0 $@" 2>&1 | tee "$FILE" > $REDIRECT
             EXIT_CODE=$?
         else
-            su - "$USER" "$@"
+            su - "$USER" "$@" 2>&1 | tee "$FILE" > $REDIRECT
             EXIT_CODE=$?
         fi
     else
@@ -1624,10 +1632,11 @@ function call_command
         test -n "$USER" && USER_SSH="$USER@"
         test_yes "$LOCAL_DEBUG" && echo_debug_custom command "$SSH $TOPT $USER_SSH$HOST $COMMAND_STRING"
         test "$LOCAL_DEBUG" = "right" && echo_debug_right "$SSH $TOPT $USER_SSH$HOST $COMMAND_STRING"
-        $SSH $TOPT $USER_SSH$HOST "$@" 2>&1 | grep --invert-match "Connection to .* closed"
+        $SSH $TOPT $USER_SSH$HOST "$@" 2>&1 | grep --invert-match "Connection to .* closed" | tee "$FILE" > $REDIRECT
         EXIT_CODE=$?
     fi
 
+    CALL_COMMAND="`cat "$FILE"`"
     return $EXIT_CODE
 }
 
@@ -2114,7 +2123,6 @@ function log
 {
     local TASK="$1"
     shift
-    local LOG_TITLE="Log $TASK from $0"
 
     case "$TASK" in
         init)
@@ -2125,7 +2133,7 @@ function log
             test -n "$1" && LOG_TITLE_OPTIONS=" `echo_quote "$@"`"
 
             log section
-            log log "$LOG_TITLE$LOG_TITLE_OPTIONS started on `hostname --fqdn`" >> "$LOG_FILE"
+            log log "Log $TASK started on `hostname --fqdn`, command: $0$LOG_TITLE_OPTIONS" >> "$LOG_FILE"
             ;;
         done)
             test -z "$LOG_FILE" && echo_error_function "Log file is not specified"
@@ -2133,7 +2141,7 @@ function log
             local LOG_DURATION
             let LOG_DURATION="`date -u +%s` - $LOG_START"
 
-            log log "$LOG_TITLE, script runtime $LOG_DURATION seconds" >> "$LOG_FILE"
+            log log "Log $TASK, script runtime $LOG_DURATION seconds" >> "$LOG_FILE"
             log section
             ;;
         section)
@@ -3179,7 +3187,8 @@ declare -x -f ssh_scanremoteid
 declare -x -f ssh_exportid
 declare -x -f ssh_importid
 
-declare -x CALL_COMMAND_DEFAULT_USER=""
+declare -x    CALL_COMMAND_DEFAULT_USER=""
+declare -x    CALL_COMMAND_OUTPUT=""
 declare -x -f call_command
 
 declare -x -f get_pids

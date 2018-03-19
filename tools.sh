@@ -455,33 +455,78 @@ function str_parse_url
 #   ${2[USER]}
 #   ${2[PASSWORD]}
 #   ${2[FILE]}
+#   ${2[LOCAL]}
 {
     PARSE_URL="$1"
+    PARSE_URL_PROTOCOL=""
+    PARSE_URL_USER_HOST=""
+    PARSE_URL_HOST=""
+    PARSE_URL_USER=""
+    PARSE_URL_FILE=""
+    PARSE_URL_LOCAL="yes"
     if test_str --ignore-case "$PARSE_URL" "^([a-z]+):\/\/"
     then
         PARSE_URL_PROTOCOL="${BASH_REMATCH[1]}"
         PARSE_URL="${PARSE_URL#*://}"
+        test "$PARSE_URL_PROTOCOL" = "file" && PARSE_URL_LOCAL="yes" || PARSE_URL_LOCAL="no"
     else
         PARSE_URL_PROTOCOL=""
+        test -e "$PARSE_URL" && PARSE_URL_LOCAL="yes" || PARSE_URL_LOCAL=""
     fi
-    if test_str "$PARSE_URL" "^([^:/]+):?(.*)$"
+    if test_yes PARSE_URL_LOCAL
     then
-        #PARSE_URL_PROTOCOL="ssh"
-        PARSE_URL_USER_HOST="${BASH_REMATCH[1]}"
-        #echo "PARSE_URL_USER_HOST=$PARSE_URL_USER_HOST"
-        PARSE_URL_FILE="${BASH_REMATCH[2]}"
-        #echo "PARSE_URL_FILE=$PARSE_URL_FILE"
-        test_str "$PARSE_URL_USER_HOST" "((.*)@)?(.*)$"
-        PARSE_URL_USER="${BASH_REMATCH[2]}"
-        PARSE_URL_PASSWORD=""
-        PARSE_URL_HOST="${BASH_REMATCH[3]}"
-    else
-        PARSE_URL_PROTOCOL="file"
-        PARSE_URL_USER_HOST=""
-        PARSE_URL_USER=""
-        PARSE_URL_PASSWORD=""
-        PARSE_URL_HOST=""
         PARSE_URL_FILE="$PARSE_URL"
+    elif test_str "$PARSE_URL" "^(.+)@(.+):(.+)$" # user@host:/path/file    user@host:file
+    then
+        test -z "$PARSE_URL_PROTOCOL" && PARSE_URL_PROTOCOL="remote"
+        PARSE_URL_USER_HOST="${BASH_REMATCH[1]}@${BASH_REMATCH[2]}"
+        PARSE_URL_USER="${BASH_REMATCH[1]}"
+        PARSE_URL_HOST="${BASH_REMATCH[2]}"
+        PARSE_URL_FILE="${BASH_REMATCH[3]}"
+        PARSE_URL_LOCAL="no"
+    elif test_str "$PARSE_URL" "^([^:/]+)@([^:/]+)$" # user@host
+    then
+        test -z "$PARSE_URL_PROTOCOL" && PARSE_URL_PROTOCOL="remote"
+        PARSE_URL_USER_HOST="${BASH_REMATCH[1]}@${BASH_REMATCH[2]}"
+        PARSE_URL_USER="${BASH_REMATCH[1]}"
+        PARSE_URL_HOST="${BASH_REMATCH[2]}"
+        PARSE_URL_FILE="${BASH_REMATCH[3]}"
+        PARSE_URL_LOCAL="no"
+    elif test_str "$PARSE_URL" "^(.+)@([^/]*)(/.+)$" # user@host/path/file
+    then
+        test -z "$PARSE_URL_PROTOCOL" && PARSE_URL_PROTOCOL="remote"
+        PARSE_URL_USER_HOST="${BASH_REMATCH[1]}@${BASH_REMATCH[2]}"
+        PARSE_URL_USER="${BASH_REMATCH[1]}"
+        PARSE_URL_HOST="${BASH_REMATCH[2]}"
+        PARSE_URL_FILE="${BASH_REMATCH[3]}"
+        PARSE_URL_LOCAL="no"
+    elif test_str "$PARSE_URL" "^(.+):(/.+)$" # host:/path/file
+    then
+        test -z "$PARSE_URL_PROTOCOL" && PARSE_URL_PROTOCOL="remote"
+        PARSE_URL_USER_HOST="${BASH_REMATCH[1]}"
+        PARSE_URL_HOST="${BASH_REMATCH[1]}"
+        PARSE_URL_FILE="${BASH_REMATCH[2]}"
+        PARSE_URL_LOCAL="no"
+    elif test_str "$PARSE_URL" "^(.+):(.+)$" # host:/path/file    host:file
+    then
+        if test_yes PARSE_URL_PREFER_LOCAL
+        then
+            test -z "$PARSE_URL_PROTOCOL" && PARSE_URL_PROTOCOL="file"
+            PARSE_URL_USER_HOST=""
+            PARSE_URL_HOST=""
+            PARSE_URL_FILE="$PARSE_URL"
+            PARSE_URL_LOCAL="yes"
+        else
+            test -z "$PARSE_URL_PROTOCOL" && PARSE_URL_PROTOCOL="remote"
+            test_str "$PARSE_URL" "^(.+):(.+)$"
+            PARSE_URL_USER_HOST="${BASH_REMATCH[1]}"
+            PARSE_URL_HOST="${BASH_REMATCH[1]}"
+            PARSE_URL_FILE="${BASH_REMATCH[2]}"
+            PARSE_URL_LOCAL="no"
+        fi
+    else
+        PARSE_URL_FILE="$PARSE_URL"
+        PARSE_URL_LOCAL="yes"
     fi
     #echo "PARSE_URL=$PARSE_URL"
     #echo "PARSE_URL_PROTOCOL=$PARSE_URL_PROTOCOL"
@@ -498,6 +543,7 @@ function str_parse_url
         assign "$2[PASSWORD]" "$PARSE_URL_PASSWORD"
         assign "$2[HOST]" "$PARSE_URL_HOST"
         assign "$2[FILE]" "$PARSE_URL_FILE"
+        assign "$2[LOCAL]" "$PARSE_URL_LOCAL"
     fi
 }
 
@@ -1066,7 +1112,7 @@ function file_prepare
         touch "$FILE"
         chmod ug+w "$FILE" 2> /dev/null
     fi
-    test -w "$FILE" || echo_error_function "Can't create and prepare file for writting: `echo_quote $FILE`" $ERROR_CODE_DEFAULT
+    test -w "$FILE" || echo_error_function "Can't create and prepare file for writting: `echo_quote "$FILE"`" $ERROR_CODE_DEFAULT
 
     test_yes "$EMPTY" && cat /dev/null > "$FILE"
 
@@ -1078,27 +1124,42 @@ function file_prepare
 
 function file_remote
 # $1 get
-# $2 user@host:remote_file
+# $2 url with remote file
 # $3 local file
 #
 # $1 put
-# $2 user@host:remote_file
+# $2 url with remote file
 # $3 local file
 {
     local TASK="$1"
-    local SSH_HOST="${2%%:*}"
-    local SSH_FILE="${2#*:}"
-    FILE="`file_temporary_name file_remote "$FILE"`"
-    test -n "$3" && FILE_REMOTE="$3"
+    local -A URL
+    str_parse_url "$2" URL
+    test -n "$3" && FILE_REMOTE="$3" || FILE_REMOTE="`file_temporary_name file_remote "${URL[FILE]}"`"
 
     case "$TASK" in
         get)
-            file_delete "$FILE"
-            $SCPq "$SSH_HOST":"$SSH_FILE" "$FILE" || return 1
+            file_delete "$FILE_REMOTE"
+            if test_str "${URL[PROTOCOL]}" "^(ssh|scp|remote)$"
+            then
+                $SCPq "${URL[HOST]}":"${URL[FILE]}" "$FILE_REMOTE" || return 1
+            elif test_yes "${URL[LOCAL]}"
+            then
+                cp -p "${URL[FILE]}" "$FILE_REMOTE" || return 1
+            else
+                echo_error_function "Unknown transfer protocol for `echo_quote "$URL"`" $ERROR_CODE_DEFAULT
+            fi
             ;;
         put)
-            $SCPq "$FILE" "$SSH_HOST":"$SSH_FILE" || return 1
-            file_delete "$FILE"
+            if test_str "${URL[PROTOCOL]}" "^(ssh|scp|remote)$"
+            then
+                $SCPq "$FILE_REMOTE" "${URL[HOST]}":"${URL[FILE]}" || return 1
+            elif test_yes "${URL[LOCAL]}"
+            then
+                cp -p "$FILE_REMOTE" "${URL[FILE]}" || return 1
+            else
+                echo_error_function "Unknown transfer protocol for `echo_quote "$URL"`" $ERROR_CODE_DEFAULT
+            fi
+            file_delete "$FILE_REMOTE"
             ;;
     esac
 }
@@ -1116,7 +1177,7 @@ function file_line_delete_local
         cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
         if diff "$FILE" "$TEMP_FILE" > /dev/null 2> /dev/null
         then
-            $GREP --invert-match "$REGEXP" "$TEMP_FILE" > "$FILE" 2> /dev/null
+            $GREP --invert-match --extended-regexp "$REGEXP" "$TEMP_FILE" > "$FILE" 2> /dev/null
             file_delete "$TEMP_FILE"
         else
             file_delete "$TEMP_FILE"
@@ -1195,7 +1256,7 @@ function file_line
     local -A URL
     str_parse_url "$2" URL
     shift 2
-    if test "${URL[PROTOCOL]}" = "file" || is_localhost "${URL[HOST]}"
+    if test_yes "${URL[LOCAL]}" || is_localhost "${URL[HOST]}"
     then
         file_line_${TASK}_local "${URL[FILE]}" "$@"
     else
@@ -1714,7 +1775,7 @@ function call_command
     done
 
     local FILE="`file_temporary_name call_command`"
-    test_no QUIET && REDIRECT="/dev/stdout" && debug set variable command || REDIRECT="/dev/null"
+    test_no QUIET && REDIRECT="/dev/stdout" || REDIRECT="/dev/null"
     test_no PREFIX && PIPE="cat" || PIPE="pipe_echo_prefix"
     test -z "$COMMAND_STRING" && { test $# -eq 1 && COMMAND_STRING="`echo "$1"`" || COMMAND_STRING="`echo_quote "$@"`"; }
     local EXIT_CODE
@@ -3324,6 +3385,7 @@ declare -x -f str_word                  # add / delete / check
 declare -x -a ARRAY_CONVERT=()
 declare -x -f str_array_convert
 
+declare -x PARSE_URL_PREFER_LOCAL="yes" # url without protocol like host:file and ifcfg-eth0:1 treat as local file like "/etc/sysconfig/.../ifcfg-eth0:1" or remote file: "scp file host:file"
 declare -x PARSE_URL
 declare -x PARSE_URL_PROTOCOL
 declare -x PARSE_URL_USER_HOST
@@ -3331,6 +3393,7 @@ declare -x PARSE_URL_USER
 declare -x PARSE_URL_PASSWORD
 declare -x PARSE_URL_HOST
 declare -x PARSE_URL_FILE
+declare -x PARSE_URL_LOCAL
 declare -x -f str_parse_url
 
 declare -x -a PARSE_ARGS=()

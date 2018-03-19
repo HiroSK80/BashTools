@@ -307,14 +307,14 @@ function file_line_add
         echo "$LINE" >> "$FILE"
     else
         cat "$FILE" > "$TEMP_FILE"
-        if test -n "$REGEXP_REPLACE" && `cat "$TEMP_FILE" | "$AWK" '/'"$REGEXP_REPLACE"'/ { exit 0; }'`
+        if test -n "$REGEXP_REPLACE" && `cat "$TEMP_FILE" | "$AWK" 'BEGIN { f=1; } /'"$REGEXP_REPLACE"'/ { f=0; } END { exit f; }'`
         then
-            cat "$TEMP_FILE" | "$AWK" 'BEGIN { p=0; } /'"$REGEXP_REPLACE"'/ { p=1; print "'"$LINE"'"; next } { print; } END { if (p==0) print "'"$LINE"'"; }' > "$FILE"
-        elif test -n "$REGEXP_AFTER" && `cat "$TEMP_FILE" | "$AWK" '/'"$REGEXP_AFTER"'/ { exit 0; }'`
+            cat "$TEMP_FILE" | "$AWK" -v line="$LINE" 'BEGIN { p=0; } p==0&&/'"$REGEXP_REPLACE"'/ { p=1; print line; next } { print; } END { if (p==0) print line; }' > "$FILE"
+        elif test -n "$REGEXP_AFTER" && `cat "$TEMP_FILE" | "$AWK" 'BEGIN { f=1; } /'"$REGEXP_AFTER"'/ { f=0; } END { exit f; }'`
         then
-            cat "$TEMP_FILE" | "$AWK" 'BEGIN { p=0; } /'"$REGEXP_AFTER"'/ { print $0; p=1; print "'"$LINE"'"; next } { print; } END { if (p==0) print "'"$LINE"'"; }' > "$FILE"
+            cat "$TEMP_FILE" | "$AWK" -v line="$LINE" 'BEGIN { p=0; } p==0&&/'"$REGEXP_AFTER"'/ { print $0; p=1; print line; next } { print; } END { if (p==0) print line; }' > "$FILE"
         else
-            cat "$TEMP_FILE" | "$AWK" '{ print; } END { print "'"$LINE"'"; }' > "$FILE"
+            cat "$TEMP_FILE" | "$AWK" -v line="$LINE" '{ print; } END { print line; }' > "$FILE"
         fi
         if test -s "$FILE"
         then

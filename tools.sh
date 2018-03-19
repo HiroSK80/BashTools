@@ -1,6 +1,9 @@
 #!/bin/bash
 
 # execute as: ". <thisname> <thisname> [options]"
+# example:
+#       export TOOLS_FILE="`dirname $0`/tools.sh"
+#       . "$TOOLS_FILE" "$TOOLS_FILE" --debug-right
 
 # options:
 # -prefix <prefix_string>
@@ -24,7 +27,7 @@ function fill_unix_type
 fill_unix_type "`uname`" "" ""
 
 test -f "/etc/SuSE-release" && fill_unix_type "SuSE" "`awk 'BEGIN { FS="="; } /^NAME=/ { print $2; }' "/etc/os-release"`"
-test -f "/etc/SuSE-release" && fill_unix_type "SuSE" "`awk '/SUSE Linux Enterprise Server/ { print "SLES"; }' /openSUSE/ { print "openSUSE"; }"/etc/SuSE-release"`"
+test -f "/etc/SuSE-release" && fill_unix_type "SuSE" "`awk '/SUSE Linux Enterprise Server/ { print "SLES"; } /openSUSE/ { print "openSUSE"; }' "/etc/SuSE-release"`"
 test -f "/etc/redhat-release" && fill_unix_type "RedHat" "`awk '/Red Hat Enterprise Linux Server/ { print "RHEL"; }' "/etc/redhat-release"`"
 test -f "/etc/centos-release" && fill_unix_type "RedHat" "CentOS"
 test -f "/etc/OEL-release" && fill_unix_type "RedHat" "OEL"

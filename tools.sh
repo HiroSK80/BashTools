@@ -349,7 +349,7 @@ function prepare_file
         mv "$FILE" "$FILE-1"
     fi
 
-    test_yes "$EMPTY" && file_delete "$FILE"
+    #test_yes "$EMPTY" && file_delete "$FILE"
 
     if test ! -w "$FILE"
     then
@@ -358,8 +358,13 @@ function prepare_file
         chmod ug+w "$FILE" 2> /dev/null
     fi
     test -w "$FILE" || echo_error_function "Can't create and prepare file for writting: `echo_quote $FILE`" $OPTION_DEFAULT_ERROR_CODE
+
+    test_yes "$EMPTY" && cat /dev/null > "$FILE"
+
     test -n "$PREPARE_FILE_USER" && chgrp "$PREPARE_FILE_USER" "$FILE" 2> /dev/null
     test -n "$PREPARE_FILE_GROUP" && chown "$PREPARE_FILE_GROUP" "$FILE" 2> /dev/null
+
+    return 0
 }
 
 function get_remote_file
@@ -422,7 +427,7 @@ function file_line_add
 
     if test -z "$REGEXP_AFTER$REGEXP_REPLACE"
     then
-        echo "$LINE" >> "$FILE"
+        command echo "$LINE" >> "$FILE"
     else
         cat "$FILE" > "$TEMP_FILE"
         if test -n "$REGEXP_REPLACE" && `cat "$TEMP_FILE" | $AWK 'BEGIN { f=1; } /'"$REGEXP_REPLACE"'/ { f=0; } END { exit f; }'`
@@ -481,7 +486,7 @@ function lr_file_line_add
     local LINE="$2"
     local REGEXP="$3"
     
-    if is_localhost "`echo "$REMOTE_SSH" | sed 's/^.*@//'`"
+    if is_localhost "`command echo "$REMOTE_SSH" | sed 's/^.*@//'`"
     then
         file_line_add1 "$FILE" "$LINE" "$REGEXP"
     else
@@ -504,7 +509,7 @@ function lr_file_line_add1
     local LINE="$2"
     local REGEXP="$3"
     
-    if is_localhost "`echo "$REMOTE_SSH" | sed 's/^.*@//'`"
+    if is_localhost "`command echo "$REMOTE_SSH" | sed 's/^.*@//'`"
     then
         file_line_add1 "$FILE" "$LINE" "$REGEXP"
     else
@@ -525,21 +530,62 @@ function file_config_set
     local CONFIG_TEMP_FILE="/tmp/`basename "$CONFIG_FILE"`.tmp"
     local OPTION="$2"
     local VALUE="$3"
+    local ERROR_MSG="Configuration \"$OPTION=\"$VALUE\"\" change to file `echo_quote "$CONFIG_FILE"` fail"
     if test -e "$CONFIG_FILE"
     then
-        cat "$CONFIG_FILE" > "$CONFIG_TEMP_FILE"
-        cat "$CONFIG_TEMP_FILE" | $AWK 'BEGIN { found=0; } /^'$OPTION'=/ { print "'"$OPTION"'=\"'"$VALUE"'\""; found=1; next; } { print; } END { if (found == 0) print "'"$OPTION"'=\"'"$VALUE"'\""; }' > "$CONFIG_FILE"
+        cat "$CONFIG_FILE" > "$CONFIG_TEMP_FILE" || echo_error_function "$ERROR_MSG, temporary file create `echo_quote "$CONFIG_TEMP_FILE"` problem" $OPTION_DEFAULT_ERROR_CODE
+        test ! -w "$CONFIG_FILE" || echo_error_function "$ERROR_MSG, file not writable" $OPTION_DEFAULT_ERROR_CODE
+        $AWK 'BEGIN { opt_val="'"$OPTION"'=\"'"$VALUE"'\""; found=0; } /^[\t ]*'$OPTION'[\t ]*=[\t ]*/ { print opt_val; found=1; next; } { print; } END { if (found == 0) print opt_val; }' "$CONFIG_TEMP_FILE" > "$CONFIG_FILE"
         if test -s "$CONFIG_FILE"
         then
             file_delete "$CONFIG_TEMP_FILE"
         else
             cat "$CONFIG_TEMP_FILE" > "$CONFIG_FILE"
             file_delete "$CONFIG_TEMP_FILE"
-            echo_error_function "Configuration \"$OPTION=\"$VALUE\"\" change to file `echo_quote "$CONFIG_FILE"` fail" $OPTION_DEFAULT_ERROR_CODE
+            echo_error_function "$ERROR_MSG" $OPTION_DEFAULT_ERROR_CODE
         fi
     else
-        echo "$OPTION=\"$VALUE\"" > "$CONFIG_FILE"
+        echo "$OPTION=\"$VALUE\"" > "$CONFIG_FILE" || echo_error_function "$ERROR_MSG, file create problem" $OPTION_DEFAULT_ERROR_CODE
     fi
+}
+
+function file_config_get
+# Read and output value from option
+# -n|--noeval - do not evaluate readed value
+# $1 filename
+# $2 option
+# $3 default value
+{
+    local DO_EVAL="yes"
+    test_str "$1" "(-e|--eval)" && DO_EVAL="yes" && shift
+    test_str "$1" "(-n|--noeval)" && DO_EVAL="no" && shift
+
+    local CONFIG_FILE="$1"
+    local OPTION_SECTION="`dirname "$2"`"
+    local OPTION_NAME="`basename "$2"`"
+    local VALUE="$3"
+    if test -r "$CONFIG_FILE"
+    then
+#A="  A = \"\$USER \" "; echo "-$A-"; B="`echo "$A" | awk '/^[\t ]*A[\t ]*=[\t ]*/ { sub(/^[\t ]*A[\t ]*=[\t ]*/, ""); sub(/^["]/, ""); sub(/["]*[\t ]*$/, ""); print; }'`"; eval "set O=\"$B\""; echo "-$B-$O-"
+        VALUE="`$AWK '/^[\t ]*'"$OPTION_NAME"'[\t ]*=[\t ]*/ { sub(/^[\t ]*'"$OPTION_NAME"'[\t ]*=[\t ]*/, ""); sub(/^["]/, ""); sub(/["][\t ]*$/, ""); print; }' "$CONFIG_FILE"`"
+    fi
+    test_yes DO_EVAL && eval "echo \"$VALUE\"" || echo "$VALUE"
+}
+
+function file_config_read
+# Read and store value into option variable
+# -n|--noeval - do not evaluate readed value
+# $1 filename
+# $2 option
+# $3 default value
+{
+    local VALUE="`file_config_get "$@"`"
+    test_str "$1" "(-e|--eval|-n|--noeval)" && shift
+    local OPTION_SECTION="`dirname "$2"`"
+    local OPTION_NAME="`basename "$2"`"
+
+    test "$OPTION_SECTION" != "." && export ${OPTION_SECTION}_${OPTION_NAME}="$VALUE"
+    export $OPTION_NAME="$VALUE"
 }
 
 function file_replace
@@ -548,21 +594,15 @@ function file_replace
 # $3 replace
 {
     local FILE="$1"
-    local TEMP_FILE="/tmp/`basename "$CONFIG_FILE"`.tmp"
+    local TEMP_FILE="/tmp/`basename "$FILE"`.tmp"
     local SEARCH="$2"
     local REPLACE="$3"
+    local ERROR_MSG="File `echo_quote "$FILE"` string \"$SEARCH\" replace fail"
     if test -e "$FILE"
     then
-        cat "$FILE" > "$TEMP_FILE"
-        cat "$TEMP_FILE" | sed --expression="s|$SEARCH|$REPLACE|g" > "$FILE"
-        if test -s "$FILE"
-        then
-            file_delete "$TEMP_FILE"
-        else
-            cat "$TEMP_FILE" > "$FILE"
-            file_delete "$TEMP_FILE"
-            echo_error_function "file $FILE string $SEARCH replace fail" $OPTION_DEFAULT_ERROR_CODE
-        fi
+        cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG, temporary file create `echo_quote "$TEMP_FILE"` problem" $OPTION_DEFAULT_ERROR_CODE
+        cat "$TEMP_FILE" | sed --expression="s|$SEARCH|$REPLACE|g" > "$FILE" || echo_error_function "$ERROR_MSG" $OPTION_DEFAULT_ERROR_CODE
+        file_delete "$TEMP_FILE"
     fi
 }
 
@@ -598,7 +638,7 @@ function get_ip_arp
     then
         GET_IP_ARP="`arp -n "$1" | $AWK '/ether/ { print $1; }'`"
     fi
-    echo "$GET_IP_ARP"
+    command echo "$GET_IP_ARP"
 }
 
 function get_ip_ping
@@ -614,7 +654,7 @@ function get_ip
 
     local GET_IP="`get_ip_arp "$HOST"`"
     test -z "$GET_IP" && GET_IP="`get_ip_ping "$HOST"`"
-    echo "$GET_IP"
+    command echo "$GET_IP"
 }
 
 function is_localhost
@@ -929,7 +969,7 @@ function kill_tree_childs
         then
             test_yes FOUND_PID \
                 && ps -ef | $AWK --assign p="$CHECK_PID" '$2==p { print "PID " p " killed: " $0; }' | echo_output \
-                || echo "PID $CHECK_PID already killed" | echo_output
+                || echo_line "PID $CHECK_PID already killed" | echo_output
         fi
         kill -9 "$CHECK_PID" 2>/dev/null
     fi
@@ -948,7 +988,7 @@ function kill_tree_name
 # $2 exclude PIDs
 {
     local PID_LIST="`get_pids "$1"`"
-    test -n "$2" && PID_LIST="`echo "$PID_LIST" | $GREP --invert-match $2`"
+    test -n "$2" && PID_LIST="`command echo "$PID_LIST" | $GREP --invert-match $2`"
     kill_tree $PID_LIST
 }
 
@@ -966,7 +1006,24 @@ function fd_find_free
     do
         fd_check $FILE_FD || break
     done
-    echo $FILE_FD
+    command echo $FILE_FD
+}
+
+declare -A PERF_DATA
+#PERF_DATA["default"]=0
+function perf_start
+{
+    local PERF_VAR="${1:-default}"
+    PERF_DATA[$PERF_VAR]="`date "+%s.%N"`"
+    echo_line "Performance started on date `date +"%Y-%m-%d %H:%M:%S"` time: ${PERF_DATA[$PERF_VAR]}"
+}
+
+function perf_end
+{
+    local PERF_VAR="${1:-default}"
+    local PERF_DATA_NOW="`date "+%s.%N"`"
+    echo_line "Performance ended on date `date +"%Y-%m-%d %H:%M:%S"` time: $PERF_DATA_NOW elapsed: `command echo | $AWK "{ print $PERF_DATA_NOW - ${PERF_DATA[$PERF_VAR]}; }"`s"
+    PERF_DATA[$PERF_VAR]=0
 }
 
 function set_yes
@@ -1113,7 +1170,7 @@ function test_cmd
         shift
     fi
 
-    echo "$CMD" | $GREP --extended-regexp --quiet "$1"
+    command echo "$CMD" | $GREP --extended-regexp --quiet "$1"
     return $?
 }
 
@@ -1231,7 +1288,7 @@ function log_init
         test "${1:0:1}" = "/" && LOG_FILE="$1" || LOG_TITLE="${1:-$LOG_TITLE}"
         shift
     done
-    test -z "$LOG_FILE" && LOG_FILE="`echo "$0" | sed --regexp-extended --expression='s:(|\.|\.sh)$:.log:'`"
+    test -z "$LOG_FILE" && LOG_FILE="`command echo "$0" | sed --regexp-extended --expression='s:(|\.|\.sh)$:.log:'`"
 
     prepare_file "$LOG_FILE"
     command echo "$LOG_SECTION" >> "$LOG_FILE"
@@ -1396,12 +1453,12 @@ function echo_quote
             if test "$QUOTE" = "D"
             then
                 ARG="${ARG//\"/\\\\\"}"
-                echo -e "$SPACE\"$ARG\"\c"
+                command echo -e "$SPACE\"$ARG\"\c"
             else
-                echo -e "$SPACE'$ARG'\c"
+                command echo -e "$SPACE'$ARG'\c"
             fi
         else
-            echo -e "$SPACE$ARG\c"
+            command echo -e "$SPACE$ARG\c"
         fi
         SPACE=" "
     done
@@ -1477,8 +1534,8 @@ function echo_step
     echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}${STEP_NUMBER_STR}$@"
 
     test_integer "$STEP_NUMBER" && let STEP_NUMBER++ && let $STEP_VARIABLE=$STEP_NUMBER
-    test_str "$STEP_NUMBER" "^[a-z]$" && export $STEP_VARIABLE="`echo "$STEP_NUMBER" | tr "a-z" "b-z_"`"
-    test_str "$STEP_NUMBER" "^[A-Z]$" && export $STEP_VARIABLE="`echo "$STEP_NUMBER" | tr "A-Z" "B-Z_"`"
+    test_str "$STEP_NUMBER" "^[a-z]$" && export $STEP_VARIABLE="`command echo "$STEP_NUMBER" | tr "a-z" "b-z_"`"
+    test_str "$STEP_NUMBER" "^[A-Z]$" && export $STEP_VARIABLE="`command echo "$STEP_NUMBER" | tr "A-Z" "B-Z_"`"
     return 0
 }
 
@@ -1626,7 +1683,7 @@ function echo_debug_right
             cursor_get_position
             let SHIFT_MESSAGE=$SHIFT_MESSAGE+1
 #echo -en "\\033[1A"
-            test_yes "$SHIFT1" && test $SHIFT_MESSAGE -le $SHIFT1_MIN_FREE && echo -e "\r" > "${REDIRECT_DEBUG}"
+            test_yes "$SHIFT1" && test $SHIFT_MESSAGE -le $SHIFT1_MIN_FREE && command echo -e "\r" > "${REDIRECT_DEBUG}"
             command echo -en "\\033[${SHIFT_MESSAGE}G" > "${REDIRECT_DEBUG}"
             test_yes "$SHIFT1" && echo -en "\\033[1A" > "${REDIRECT_DEBUG}"
             command echo -e "${COLOR_DEBUG}$DEBUG_MESSAGE${COLOR_RESET}\c" > "${REDIRECT_DEBUG}"
@@ -1705,9 +1762,9 @@ function echo_error
 
     if test_yes "$OPTION_COLOR"
     then
-        echo -e "$COLOR_ERROR${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!$COLOR_RESET" >&$REDIRECT_ERROR
+        command echo -e "$COLOR_ERROR${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!$COLOR_RESET" >&$REDIRECT_ERROR
     else
-        echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!" >&$REDIRECT_ERROR
+        command echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!" >&$REDIRECT_ERROR
     fi
 
     echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!"
@@ -1813,7 +1870,7 @@ function history_store
     test -z "$1" -o "$1" = "${HISTORY[0]}" && return 0
 
     HISTORY=("$1" "${HISTORY[@]}")
-    echo "$1" >> "$HISTFILE"
+    command echo "$1" >> "$HISTFILE"
     history -s "$1"
 }
 
@@ -1836,7 +1893,7 @@ function colors_init
     # init color usage if is not set
     if ! test_yes "$OPTION_COLOR" && ! test_no "$OPTION_COLOR"
     then
-        if test "`echo "$TERM" | cut -c 1-5`" = "xterm" -o "$TERM" = "rxvt" -o "$TERM" = "konsole" -o "$TERM" = "linux" -o "$TERM" = "putty"
+        if test "`command echo "$TERM" | cut -c 1-5`" = "xterm" -o "$TERM" = "rxvt" -o "$TERM" = "konsole" -o "$TERM" = "linux" -o "$TERM" = "putty"
         then
             OPTION_COLOR="yes"
             OPTION_COLORS="256"
@@ -2102,6 +2159,8 @@ export -f lr_file_line_add
 export -f lr_file_line_add1
 
 export -f file_config_set
+export -f file_config_get
+export -f file_config_read
 export -f file_replace
 
 export -f check_ssh
@@ -2130,10 +2189,13 @@ export -f kill_tree_name
 export -f fd_check
 export -f fd_find_free
 
+export -f perf_start
+export -f perf_end
+
 export -f set_yes
 
-export S_TAB="`echo -e "\t"`"
-export S_NEWLINE="`echo -e "\n"`"
+export S_TAB="`command echo -e "\t"`"
+export S_NEWLINE="`command echo -e "\n"`"
 export -f test_ne0
 export -f fill_command_options
 export -f test_boolean

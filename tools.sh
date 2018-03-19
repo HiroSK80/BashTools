@@ -247,11 +247,24 @@ function assign
 function str_trim
 {
     local STR="$@"
-    test -n "${@:+exist}" && STR="${!@}"
+    test -n "${!@:+exist}" && STR="${!@}"
     #echo "STR=$STR"
     STR="${STR#"${STR%%[![:space:]]*}"}"   # remove leading whitespace characters
     STR="${STR%"${STR##*[![:space:]]}"}"   # remove trailing whitespace characters
-    test -n "${@:+exist}" && assign "${@}" "$STR" || echo -n "$STR"
+    test -n "${!@:+exist}" && assign "${!@}" "$STR" || echo -n "$STR"
+}
+
+function str_delete_word
+# delete word delimited by spaces from string or variable
+# $1 variable or string
+# $2 word
+{
+    local STR="$1"
+    test -n "${!1:+exist}" && STR="${!1}"
+    STR="${STR% $2}"
+    STR="${STR#$2 }"
+    STR="${STR/ $2 / }"
+    test -n "${!1:+exist}" && assign "$1" "$STR" || echo -n "$STR"
 }
 
 function str_parse_url
@@ -1772,6 +1785,7 @@ function echo_title
         command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_INFO$TITLE_HEAD$COLOR_RESET"
         command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_INFO$TITLE_MSG$COLOR_RESET"
         command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_INFO$TITLE_TAIL$COLOR_RESET"
+        command echo -e "$COLOR_RESET\c"
     else
         command echo "$ECHO_PREFIX$ECHO_UNAME$TITLE_HEAD"
         command echo "$ECHO_PREFIX$ECHO_UNAME$TITLE_MSG"
@@ -1789,6 +1803,7 @@ function echo_info
     if test_yes "$OPTION_COLOR"
     then
         command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_INFO$@$COLOR_RESET"
+        command echo -e "$COLOR_RESET\c"
     else
         command echo "$ECHO_PREFIX$ECHO_UNAME$@"
     fi
@@ -1812,6 +1827,7 @@ function echo_step
     if test_yes "$OPTION_COLOR"
     then
         command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_STEP$ECHO_PREFIX_STEP$STEP_NUMBER_STR$@$COLOR_RESET"
+        command echo -e "$COLOR_RESET\c"
     else
         command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_STEP$STEP_NUMBER_STR$@"
     fi
@@ -1829,6 +1845,7 @@ function echo_substep
     if test_yes "$OPTION_COLOR"
     then
         command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_SUBSTEP$ECHO_PREFIX_SUBSTEP$@$COLOR_RESET"
+        command echo -e "$COLOR_RESET\c"
     else
         command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_SUBSTEP$@"
     fi
@@ -1898,8 +1915,7 @@ function debug_unset
 {
     local OPTION="${1:-yes}"
     #OPTION_DEBUG="${OPTION_DEBUG/$OPTION?(,)/}"
-    OPTION_DEBUG="${OPTION_DEBUG/$OPTION /}"
-    OPTION_DEBUG="${OPTION_DEBUG/ $OPTION/}"
+    str_delete_word OPTION_DEBUG "$OPTION"
 }
 
 function debug_check
@@ -2427,7 +2443,7 @@ function colors_init
     COLOR_TITLE_BORDER="$COLOR_YELLOW"
     COLOR_INFO="$COLOR_LIGHT_YELLOW"
     COLOR_STEP="$COLOR_WHITE"
-    COLOR_SUBSTEP="$COLOR_WHITE"
+    COLOR_SUBSTEP="$COLOR_LIGHT_GREY"
     test $OPTION_COLORS -gt 8 && COLOR_DEBUG="$COLOR_CHARCOAL" || COLOR_DEBUG="$COLOR_BLUE"
     COLOR_ERROR="$COLOR_LIGHT_RED"
     COLOR_WARNING="$COLOR_CYAN"
@@ -2578,6 +2594,7 @@ export S_TAB="`command echo -e "\t"`"
 export S_NEWLINE="`command echo -e "\n"`"
 
 export -f str_trim
+export -f str_delete_word
 
 export PARSE_URL
 export PARSE_URL_PROTOCOL

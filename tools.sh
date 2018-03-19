@@ -782,6 +782,7 @@ function call_command
     return $TOOL_EXEC_EXIT_CODE
 }
 
+export ECHO_KILL="no"
 function kill_tree_childs
 {
     local TOPMOST="$1"
@@ -793,17 +794,22 @@ function kill_tree_childs
     done
     if test "$TOPMOST" = "yes" -a "$CHECK_PID" != "$$"
     then
+        test "$ECHO_KILL" = "yes" && echo "Killing process with $CHECK_PID PID" && ps -ef | awk --assign p="$CHECK_PID" '$2==p { print "Killed: "$0; }'
         kill -9 "$CHECK_PID" 2>/dev/null
     fi
 }
 
 function kill_tree
 {
-    KILL_LIST=""
     for I in $*
     do
         kill_tree_childs "yes" $I
     done
+}
+
+function kill_tree_name
+{
+    kill_tree `ps -ef | awk --assign p="postgres.*/usr/share/its/db" --assign s="$$" '$3==s { next; } $0~p { print $2; }'`
 }
 
 function fd_check

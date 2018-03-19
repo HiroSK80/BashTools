@@ -595,6 +595,10 @@ function arguments
         check)
             arguments_check "$@"
             ;;
+
+        onestep)
+            test "$1" = "run" && shift && arguments check/run "$@" || arguments check/add "$@"
+            ;;
         check/add)
             ARGUMENTS_CHECK_ADD+=("`echo_quote "$@"`")
             ;;
@@ -620,7 +624,8 @@ function arguments
             arguments done
             ARGUMENTS_CHECK_ADD=()
             ;;
-        check/all)
+
+        check/all|oneline)
             local TYPE="$1"
             test "$TYPE" = "unknown" && test "${#ARGUMENTS_CHECK_ALL[@]}" -ne 0 && echo_error_function "Unknown argument(s): ${ARGUMENTS_CHECK_ALL[@]}" 1
             test "$TYPE" = "unknown" && return 0
@@ -1165,22 +1170,22 @@ function file_config
             return 0
             ;;
         get|read|set)
-            arguments check/add switch "e|eval" "DO_EVAL|yes"
-            arguments check/add switch "n|no-eval" "DO_EVAL|no"
-            arguments check/add option "FILE|file_read"
-            arguments check/add option "SECTION_OPTION"
-            arguments check/add option "VALUE"
-            arguments check/run "$@"
+            arguments onestep switch "e|eval" "DO_EVAL|yes"
+            arguments onestep switch "n|no-eval" "DO_EVAL|no"
+            arguments onestep option "FILE|file_read"
+            arguments onestep option "SECTION_OPTION"
+            arguments onestep option "VALUE"
+            arguments onestep run "$@"
             SECTION="`dirname "$SECTION_OPTION"`"
             OPTION="`basename "$SECTION_OPTION"`"
             ;;
         load)
             local TO_VARIABLES="no"
             local TO_ARRAY=""
-            arguments check/add switch "v|to-variables" "TO_VARIABLES|yes"
-            arguments check/add value "a|to-array" "TO_ARRAY"
-            arguments check/add option "FILE|file_read"
-            arguments check/run "$@"
+            arguments onestep switch "v|to-variables" "TO_VARIABLES|yes"
+            arguments onestep value "a|to-array" "TO_ARRAY"
+            arguments onestep option "FILE|file_read"
+            arguments onestep run "$@"
             ;;
         *)
             echo_error_function "Unknown config file task: $@" $ERROR_CODE_DEFAULT
@@ -1207,7 +1212,8 @@ function file_config
             local VARIABLE
             local VALUE
             local LINE
-            test_no TO_VARIABLES -a -z "$TO_ARRAY" && TO_ARRAY="CONFIG"
+            echo TO_ARRAY=$TO_ARRAY
+            test_no TO_VARIABLES && test -z "$TO_ARRAY" && TO_ARRAY="CONFIG"
             while read LINE
             do
                 #echo "LINE: $LINE"

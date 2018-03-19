@@ -10,9 +10,7 @@
 # -color yes|no
 # -uname yes|no
 
-export INCLUDE_TOOLS="yes"
-
-#!/bin/bash
+export TOOLS_LOADED="yes"
 
 #"Linux RedHat CentOS"
 #"Linux SuSE openSUSE"
@@ -535,6 +533,12 @@ function check_internet
     return $?
 }
 
+function check_ping
+{
+    ping -c 1 -W 1 "$1" > /dev/null 2>&1
+    return $?
+}
+
 function get_ip_arp
 {
     local GET_IP_ARP="`arp "$1" 2> /dev/null | "$AWK" 'BEGIN { FS="[()]"; } { print $2; }'`"
@@ -548,7 +552,7 @@ function get_ip_arp
 function get_ip_ping
 {
     test "$UNIX_TYPE" = "SunOS" && ping -s "$1" 1 1 | grep "bytes from" | "$AWK" 'BEGIN { FS="[()]"; } { print $2; }'
-    test "$UNIX_TYPE" = "Linux" && ping -q -c 1 -t 1 "$1" | grep PING | "$AWK" 'BEGIN { FS="[()]"; } { print $2; }'
+    test "$UNIX_TYPE" = "Linux" && ping -q -c 1 -t 1 -W 1 "$1" | grep PING | "$AWK" 'BEGIN { FS="[()]"; } { print $2; }'
 }
 
 function get_ip
@@ -1527,6 +1531,7 @@ export -f file_replace
 export -f check_ssh
 export -f check_internet
 
+export -f check_ping
 export -f get_ip_arp
 export -f get_ip_ping
 export -f get_ip

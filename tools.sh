@@ -234,6 +234,15 @@ function insert_cmd
     command_options insert "$@"
 }
 
+function function_copy
+# $1 original function name
+# $2 new function name with the same content
+{
+    local ORIGINAL=$(declare -f "$1")
+    local NEW="$2${ORIGINAL#$1}"
+    eval "$NEW"
+}
+
 function assign
 {
     #unset -v "$1" || echo_error_function "Invalid variable name: $1" $ERROR_CODE_DEFAULT
@@ -254,6 +263,7 @@ function assign_array
 
 function array_variable
 {
+    local LINE
     read LINE < <(declare -p "$1")
     test_str "$LINE" "^declare -[aA]"
 }
@@ -360,8 +370,13 @@ function str_word
             done
             ;;
         check)
-            test_str "$STR" "\b$3\b"
-            return $?
+            local -i RESULT=0
+            for W in "${@:3}"
+            do
+                test_str "$STR" "\b$3\b"
+                let RESULT=$RESULT+$?
+            done
+            return $RESULT
             ;;
     esac
 
@@ -374,7 +389,7 @@ function str_parse_url
 #   host:[path/]filename
 #   user@host:[path/]filename
 #   protocol://user@host:[path/]filename
-# $2 AVAR       - associative array variable name to store values in
+# $2 VAR_ARRAY       - associative array variable name to store values in
 #   ${2[PROTOCOL]}
 #   ${2[USER_HOST]}
 #   ${2[HOST]}
@@ -751,7 +766,6 @@ function arguments_tester_increase
     let ARGUMENTS_VALUE_INTEGER++ # increase value in local integer variable
     ARGUMENTS_VALUE=$ARGUMENTS_VALUE_INTEGER
 }
-
 #NAMESPACE/string/end
 
 #NAMESPACE/file/start
@@ -942,11 +956,6 @@ function file_line_set_local
     fi
 }
 
-function file_line_add1
-{
-    file_line_set "$@"
-}
-
 function file_line
 # $1 task - add / delete / set
 # $2 can be [[user@]host:][path/]filename
@@ -969,104 +978,6 @@ function file_line
     fi
 }
 
-function file_config_format
-# $1 filename
-{
-    local CONFIG_FILE="$1"
-    local FORMAT="standard"
-    test -e "$CONFIG_FILE" && $GREP "^[\t ]\[" "$CONFIG_FILE" && FORMAT="extended"
-    echo "$FORMAT"
-}
-
-function file_config_set
-# $1 filename
-# $2 option
-# $3 new value
-{
-    local CONFIG_FILE="$1"
-    local CONFIG_TEMP_FILE="`file_temporary_name file_config_set "$CONFIG_FILE"`"
-    local OPTION_SECTION="`dirname "$2"`"
-    local OPTION_NAME="`basename "$2"`"
-    local VALUE="$3"
-    local ERROR_MSG="Configuration \"$OPTION_NAME=\"$VALUE\"\" change to file `echo_quote "$CONFIG_FILE"` fail"
-    if test -e "$CONFIG_FILE"
-    then
-        cat "$CONFIG_FILE" > "$CONFIG_TEMP_FILE" || echo_error_function "$ERROR_MSG, temporary file create `echo_quote "$CONFIG_TEMP_FILE"` problem" $ERROR_CODE_DEFAULT
-        test -w "$CONFIG_FILE" || echo_error_function "$ERROR_MSG, file not writable" $ERROR_CODE_DEFAULT
-        $AWK 'BEGIN { opt_val="'"$OPTION_NAME"'=\"'"$VALUE"'\""; found=0; s=0; }
-            "'"$OPTION_SECTION"'" != "." && /^[\t ]*\[.*\][\t ]*$/ {
-                s=0; }
-            "'"$OPTION_SECTION"'" != "." && /^[\t ]*\['"$OPTION_SECTION"'\][\t ]*$/ {
-                s=1; }
-            s==1 && /^[\t ]*'$OPTION_NAME'[\t ]*=[\t ]*/ {
-                print opt_val; found=1; next; }
-            { print; }
-            END { if (found == 0) { if ("'"$OPTION_SECTION"'" != "." ) print "['"$OPTION_SECTION"']"; print opt_val; } }' "$CONFIG_TEMP_FILE" > "$CONFIG_FILE"
-        if test -s "$CONFIG_FILE"
-        then
-            file_delete "$CONFIG_TEMP_FILE"
-        else
-            cat "$CONFIG_TEMP_FILE" > "$CONFIG_FILE"
-            file_delete "$CONFIG_TEMP_FILE"
-            echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
-        fi
-    else
-        if test "$OPTION_SECTION" = "."
-        then
-            echo "$OPTION_NAME=\"$VALUE\"" > "$CONFIG_FILE" || echo_error_function "$ERROR_MSG, file create problem" $ERROR_CODE_DEFAULT
-        else
-            echo "[$OPTION_SECTION]" > "$CONFIG_FILE" || echo_error_function "$ERROR_MSG, file create problem" $ERROR_CODE_DEFAULT
-            echo "$OPTION_NAME=\"$VALUE\"" >> "$CONFIG_FILE"
-        fi
-    fi
-}
-
-function file_config_get
-# Read and output value from option
-# -n|--noeval - do not evaluate readed value
-# $1 filename
-# $2 option
-# $3 default value
-{
-    local DO_EVAL="yes"
-    test_str "$1" "(-e|--eval)" && set_yes DO_EVAL && shift
-    test_str "$1" "(-n|--noeval)" && set_no DO_EVAL && shift
-
-    local CONFIG_FILE="$1"
-    local OPTION_SECTION="`dirname "$2"`"
-    local OPTION_NAME="`basename "$2"`"
-    local VALUE="$3"
-    if test -r "$CONFIG_FILE"
-    then
-#A="  A = \"\$USER \" "; echo "-$A-"; B="`echo "$A" | awk '/^[\t ]*A[\t ]*=[\t ]*/ { sub(/^[\t ]*A[\t ]*=[\t ]*/, ""); sub(/^["]/, ""); sub(/["]*[\t ]*$/, ""); print; }'`"; eval "set O=\"$B\""; echo "-$B-$O-"
-        VALUE="`$AWK 'BEGIN { if ("'"$OPTION_SECTION"'" == ".") s=1; else s=0; }
-            /* { print "LINE=" $0; } */
-            "'"$OPTION_SECTION"'" != "." && /^[\t ]*\[.*\][\t ]*$/ {
-                s=0; }
-            "'"$OPTION_SECTION"'" != "." && /^[\t ]*\['"$OPTION_SECTION"'\][\t ]*$/ {
-                s=1; next; }
-            s==1 && /^[\t ]*'"$OPTION_NAME"'[\t ]*=[\t ]*/ {
-                sub(/^[\t ]*'"$OPTION_NAME"'[\t ]*=[\t ]*/, ""); sub(/^["]/, ""); sub(/["][\t ]*$/, ""); print; }' "$CONFIG_FILE"`"
-    fi
-    test_yes DO_EVAL && eval "command echo \"$VALUE\"" || command echo "$VALUE"
-}
-
-function file_config_read
-# Read and store value into option variable
-# -n|--noeval - do not evaluate readed value
-# $1 filename
-# $2 option
-# $3 default value
-{
-    local VALUE="`file_config_get "$@"`"
-    test_str "$1" "(-e|--eval|-n|--noeval)" && shift
-    local OPTION_SECTION="`dirname "$2"`"
-    local OPTION_NAME="`basename "$2"`"
-
-    test "$OPTION_SECTION" != "." && export ${OPTION_SECTION}_${OPTION_NAME}="$VALUE"
-    export $OPTION_NAME="$VALUE"
-}
-
 function file_replace
 # $1 filename
 # $2 search
@@ -1083,6 +994,139 @@ function file_replace
         sed --expression="s|$SEARCH|$REPLACE|g" "$TEMP_FILE" > "$FILE" || echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
         file_delete "$TEMP_FILE"
     fi
+}
+
+function file_config
+# $1 format
+# $2 filename
+#
+# read and output value from option
+# -n|--noeval - do not evaluate readed value
+# $1 get
+# $2 filename
+# $3 option
+# $4 default value
+#
+# read and store value into option variable
+# $1 read
+# $2 filename
+# $3 option
+# $4 default value
+#
+# read and store all values into variables
+# $1 read
+# $2 filename
+#
+# $1 set
+# $2 filename
+# $3 option
+# $4 new value
+{
+    local TASK="$1"
+    shift
+    local CONFIG_FILE="$1"
+    local SECTION
+    local OPTION
+    local VALUE
+    local DO_EVAL="yes"
+    case "$TASK" in
+        format)
+            local FORMAT="standard"
+            test -e "$CONFIG_FILE" && $GREP "^[\t ]\[" "$CONFIG_FILE" && FORMAT="extended"
+            echo "$FORMAT"
+            return 0
+            ;;
+        get|read|set)
+            test_str "$1" "(-e|--eval)" && set_yes DO_EVAL && shift
+            test_str "$1" "(-n|--noeval)" && set_no DO_EVAL && shift
+            SECTION="`dirname "$2"`"
+            OPTION="`basename "$2"`"
+            VALUE="$3"
+            ;;
+        *)
+            echo_error_function "Unknown config file task: $@" $ERROR_CODE_DEFAULT
+    esac
+    case "$TASK" in
+        get)
+            if test -r "$CONFIG_FILE"
+            then
+                #A="  A = \"\$USER \" "; echo "-$A-"; B="`echo "$A" | awk '/^[\t ]*A[\t ]*=[\t ]*/ { sub(/^[\t ]*A[\t ]*=[\t ]*/, ""); sub(/^["]/, ""); sub(/["]*[\t ]*$/, ""); print; }'`"; eval "set O=\"$B\""; echo "-$B-$O-"
+                VALUE="`$AWK 'BEGIN { if ("'"$SECTION"'" == ".") s=1; else s=0; }
+                    /* { print "LINE=" $0; } */
+                    "'"$SECTION"'" != "." && /^[\t ]*\[.*\][\t ]*$/ {
+                        s=0; }
+                    "'"$SECTION"'" != "." && /^[\t ]*\['"$SECTION"'\][\t ]*$/ {
+                        s=1; next; }
+                    s==1 && /^[\t ]*'"$OPTION"'[\t ]*=[\t ]*/ {
+                        sub(/^[\t ]*'"$OPTION"'[\t ]*=[\t ]*/, ""); sub(/^["]/, ""); sub(/["][\t ]*$/, ""); print; }' "$CONFIG_FILE"`"
+            fi
+            test_yes DO_EVAL && eval "command echo \"$VALUE\"" || command echo "$VALUE"
+            ;;
+        read)
+            if test $# -eq 1
+            then
+                if test -r "$CONFIG_FILE"
+                then
+                    local VARIABLE
+                    while read LINE
+                    do
+                        #VARIABLE="${LINE%%=*}"
+                        #VARIABLE="${!VARIABLE+exist}"
+                        eval "$LINE"
+                    done < <( $AWK '/* { print "LINE=" $0; } */
+                            /^[\t ]*#/ { next; }
+                            /^[\t ]*$/ { next; }
+                            /^[\t ]*\[.*\][\t ]*$/ {
+                                gsub(/^.*\[/, ""); gsub(/\].*$/, "");
+                                s=$0; next; }
+                            { sub(/^[\t ]*/, "");
+                              sub(/[\t ]*=[\t ]*/, "=");
+                              sub(/[\t ]*$/, "");
+                              print $0;
+                              print s "_" $0; }
+                            ' "$CONFIG_FILE")
+                fi
+            else
+                VALUE="`file_config get "$@"`"
+                test "$SECTION" != "." && assign "${SECTION}_${OPTION}" "$VALUE"
+                assign "$OPTION" "$VALUE"
+            fi
+            ;;
+        set)
+            local CONFIG_TEMP_FILE="`file_temporary_name file_config_set "$CONFIG_FILE"`"
+            local ERROR_MSG="Configuration \"$OPTION=\"$VALUE\"\" change to file `echo_quote "$CONFIG_FILE"` fail"
+            if test -e "$CONFIG_FILE"
+            then
+                cat "$CONFIG_FILE" > "$CONFIG_TEMP_FILE" || echo_error_function "$ERROR_MSG, temporary file create `echo_quote "$CONFIG_TEMP_FILE"` problem" $ERROR_CODE_DEFAULT
+                test -w "$CONFIG_FILE" || echo_error_function "$ERROR_MSG, file not writable" $ERROR_CODE_DEFAULT
+                $AWK 'BEGIN { opt_val="'"$OPTION"'=\"'"$VALUE"'\""; found=0; s=0; }
+                    "'"$SECTION"'" != "." && /^[\t ]*\[.*\][\t ]*$/ {
+                        s=0; }
+                    "'"$SECTION"'" != "." && /^[\t ]*\['"$SECTION"'\][\t ]*$/ {
+                        s=1; }
+                    s==1 && /^[\t ]*'$OPTION'[\t ]*=[\t ]*/ {
+                        print opt_val; found=1; next; }
+                    { print; }
+                    END { if (found == 0) { if ("'"$SECTION"'" != "." ) print "['"$SECTION"']"; print opt_val; } }' "$CONFIG_TEMP_FILE" > "$CONFIG_FILE"
+                if test -s "$CONFIG_FILE"
+                then
+                    file_delete "$CONFIG_TEMP_FILE"
+                else
+                    cat "$CONFIG_TEMP_FILE" > "$CONFIG_FILE"
+                    file_delete "$CONFIG_TEMP_FILE"
+                    echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
+                fi
+            else
+                if test "$SECTION" = "."
+                then
+                    echo "$OPTION=\"$VALUE\"" > "$CONFIG_FILE" || echo_error_function "$ERROR_MSG, file create problem" $ERROR_CODE_DEFAULT
+                else
+                    echo "[$SECTION]" > "$CONFIG_FILE" || echo_error_function "$ERROR_MSG, file create problem" $ERROR_CODE_DEFAULT
+                    echo "$OPTION=\"$VALUE\"" >> "$CONFIG_FILE"
+                fi
+            fi
+            ;;
+    esac
 }
 #NAMESPACE/file/end
 
@@ -1917,7 +1961,7 @@ function log
 # $1 [log file pathname]
 # $2 "$@"
 {
-    TASK="$1"
+    local TASK="$1"
     shift
     local LOG_TITLE="Log $TASK from $0"
 
@@ -2166,7 +2210,7 @@ function echo_substep
 #NAMESPACE/debug/start
 function debug
 {
-    TASK="$1"
+    local TASK="$1"
     shift
     case "$TASK" in
         init)
@@ -2545,7 +2589,7 @@ function history
 # restore
 # store <item> - store item into history (if is not empty and same as previous)
 {
-    TASK="$1"
+    local TASK="$1"
     shift
     case "$TASK" in
         init)
@@ -2891,6 +2935,7 @@ declare -a OPTIONS_A
 declare -x -f command_options;  declare -x -f fill_command_options # = command_options fill $@
                                 declare -x -f insert_cmd # = command_options insert $@
 
+declare -x -f function_copy
 declare -x -f assign
 declare -x -f assign_array
 declare -x -a ARRAY_CONVERT=()
@@ -2901,7 +2946,7 @@ declare -x -r S_TAB="`command echo -e "\t"`"
 declare -x -r S_NEWLINE="`command echo -e "\n"`"
 
 declare -x -f str_trim
-declare -x -f str_word      # add / delete / check
+declare -x -f str_word                  # add / delete / check
 
 declare -x PARSE_URL
 declare -x PARSE_URL_PROTOCOL
@@ -2921,11 +2966,11 @@ declare -x -i ARGUMENTS_STORE_I=0       # only internal use
 declare -x -i ARGUMENTS_SHIFT=0
 declare -x    ARGUMENTS_OPTION_FOUND    # only internal use
 declare -x    ARGUMENTS_SWITCHES_FOUND  # only internal use
-declare -x -f arguments             # init / done / loop / shift / check
+declare -x -f arguments                 # init / done / loop / shift / check
 #declare -x -f arguments_check_${type}
-declare -x -f arguments_check       # switch / value / option / tools
+declare -x -f arguments_check           # switch / value / option / tools
 declare -x -f arguments_check_info
-declare -x -f arguments_check_tools # checks for standard tools.sh arguments
+declare -x -f arguments_check_tools     # checks for standard tools.sh arguments
 #declare -x -f arguments_tester_${check}
 declare -x    ARGUMENTS_VALUE_ORIGINAL  # tester can obtain original value set in variable before
 declare -x    ARGUMENTS_VALUE           # current proposed value from switch / value / option, can be changed
@@ -2943,17 +2988,14 @@ declare -x -f file_delete
 declare -x -f file_prepare
 
 declare -x    FILE_REMOTE
-declare -x -f file_remote   # get / put
+declare -x -f file_remote               # get / put
 
 declare -x -f file_line_delete_local
 declare -x -f file_line_add_local
 declare -x -f file_line_set_local
-declare -x -f file_line     # add / delete / set
-
-declare -x -f file_config_set
-declare -x -f file_config_get
-declare -x -f file_config_read
+declare -x -f file_line                 # add / delete / set
 declare -x -f file_replace
+declare -x -f file_config               # format / get / read / set
 
 declare -x -f check_ssh
 declare -x -f check_internet
@@ -2982,11 +3024,11 @@ declare -x -f kill_tree
 declare -x -f fd_check
 declare -x -f fd_find_free
 
-declare -x    PERFORMANCE_DETAILS="yes"
-declare -x -A PERFORMANCE_DATA
-declare -x -A PERFORMANCE_MESSAGES
+declare -x    PERFORMANCE_DETAILS="yes" # show detailed output / show only elapsed time
+declare -x -A PERFORMANCE_DATA          # only internal use
+declare -x -A PERFORMANCE_MESSAGES      # only internal use
 #PERF_DATA["default"]=0
-declare -x -f performance       # start / now /end
+declare -x -f performance               # start / now /end
 
 declare -x -f set_yes
 declare -x -f test_ne0
@@ -3016,7 +3058,7 @@ declare -x -f cursor_get_position
 declare -x -f cursor_move_down
 
 declare -x PIPE_PREFIX="  >  "
-declare -x PIPE_PREFIX_HIDELINES="" # regexp to hide lines
+declare -x PIPE_PREFIX_HIDELINES=""     # regexp to hide lines
 declare -x PIPE_PREFIX_COMMAND=""
 declare -x PIPE_PREFIX_DEDUPLICATE="yes" ### !!!TODO!!!
 declare -x -f pipe_prefix
@@ -3032,7 +3074,7 @@ declare -x LOG_DATE="%Y-%m-%d %H:%M:%S"
 declare -x LOG_SECTION="=============================================================================="
 declare -x LOG_SPACE=""
 declare -x LOG_START="`date -u +%s`"
-declare -x -f log   # init / done / section / log | echo
+declare -x -f log                       # init / done / section / log | echo
 
 declare -x -f pipe_log;         declare -x -f log_output
 declare -x -f pipe_echo;        declare -x -f echo_output
@@ -3067,7 +3109,8 @@ DEBUG_LEVELS[ERROR]=20
 DEBUG_LEVELS[FATAL]=10
 DEBUG_LEVELS[FORCE]=1
 DEBUG_LEVELS[OFF]=0
-declare -x -f debug     # init / init_namespaces / reinit_namespaces / set / unset / check / set_level / set_level_default / check_level / parse_level
+declare -x -f debug                     # init / init_namespaces / reinit_namespaces
+                                        # set / unset / check / set_level / set_level_default / check_level / parse_level
 declare -x    DEBUG_PARSE_LEVEL
 declare -x    DEBUG_PARSE_LEVEL_STR
 
@@ -3084,7 +3127,7 @@ declare -x -f echo_error_function
 declare -x -f echo_error_exit
 declare -x -f echo_warning
 
-declare -x -f history   # init / restore / store
+declare -x -f history                   # init / restore / store
 
 declare -x OPTION_IGNORE_UNKNOWN="yes"
 declare -x -f arguments_check_tools

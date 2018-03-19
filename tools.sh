@@ -1086,10 +1086,27 @@ function echo_error_exit
     exit "$2"
 }
 
+function echo_warning
+{
+    local EXIT_CODE=""
+    local ECHO_WARNING="$@"
+    test_integer "${@:(-1)}" && local EXIT_CODE=$2 && ECHO_WARNING="${@:1:${#@}-1}"
+
+    if test "$OPTION_COLOR" = "yes"
+    then
+        echo -e "$COLOR_WARNING${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}!$COLOR_RESET" >&$REDIRECT_WARNING
+    else
+        echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}." >&$REDIRECT_WARNING
+    fi
+
+    test -n "$EXIT_CODE" && exit $EXIT_CODE
+}
+
 ### tools exports
 
 export REDIRECT_DEBUG=2
 export REDIRECT_ERROR=1
+export REDIRECT_WARNING=1
 
 export OPTION_DEBUG
 export OPTION_PREFIX="no"
@@ -1101,6 +1118,7 @@ export ECHO_PREFIX_STEP="  "
 export ECHO_PREFIX_SUBSTEP="    - "
 export ECHO_PREFIX_DEBUG="@@@ "
 export ECHO_PREFIX_ERROR="Error: "
+export ECHO_PREFIX_WARNING="Warning: "
 export ECHO_UNAME
 
 export COLOR_BLACK COLOR_BLACK_E
@@ -1129,6 +1147,7 @@ export COLOR_STEP
 export COLOR_SUBSTEP
 export COLOR_DEBUG
 export COLOR_ERROR
+export COLOR_WARNING
 
 export -f query
 export -f query_yn
@@ -1211,6 +1230,7 @@ export -f echo_debug_function
 export -f echo_debug_funct
 export -f echo_error
 export -f echo_error_exit
+export -f echo_warning
 
 ### tools init
 
@@ -1295,6 +1315,7 @@ then
     COLOR_SUBSTEP="$COLOR_WHITE"
     COLOR_DEBUG="$COLOR_X"
     COLOR_ERROR="$COLOR_LIGHT_RED"
+    COLOR_WARNING="$COLOR_CYAN"
 
     # definitions for readline / awk / prompt
     COLOR_RESET_E="\001${COLOR_RESET}\002"

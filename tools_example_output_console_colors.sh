@@ -1,0 +1,35 @@
+#!/bin/bash
+
+export TOOLS_FILE="`dirname $0`/tools.sh"
+. "$TOOLS_FILE" "$@" || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
+
+echo_info "Testing colors"
+echo_step "${COLOR_BLACK}BLACK${COLOR_RESET} (BLACK)"
+echo_step "${COLOR_RED}RED${COLOR_RESET}"
+echo_step "${COLOR_GREEN}GREEN${COLOR_RESET}"
+echo_step "${COLOR_YELLOW}YELLOW${COLOR_RESET}"
+echo_step "${COLOR_BLUE}BLUE${COLOR_RESET}"
+echo_step "${COLOR_MAGENTA}MAGENTA${COLOR_RESET}"
+echo_step "${COLOR_CYAN}CYAN${COLOR_RESET}"
+echo_step "${COLOR_LIGHT_GRAY}LIGHT_GRAY${COLOR_RESET}"
+echo_line
+echo_step "${COLOR_DARK_GRAY}DARK_GRAY${COLOR_RESET}"
+echo_step "${COLOR_LIGHT_RED}LIGHT_RED${COLOR_RESET}"
+echo_step "${COLOR_LIGHT_GREEN}LIGHT_GREEN${COLOR_RESET}"
+echo_step "${COLOR_LIGHT_YELLOW}LIGHT_YELLOW${COLOR_RESET}"
+echo_step "${COLOR_LIGHT_BLUE}LIGHT_BLUE${COLOR_RESET}"
+echo_step "${COLOR_LIGHT_MAGENTA}LIGHT_MAGENTA${COLOR_RESET}"
+echo_step "${COLOR_LIGHT_CYAN}LIGHT_CYAN${COLOR_RESET}"
+echo_step "${COLOR_WHITE}WHITE${COLOR_RESET}"
+echo_line
+echo_step "${COLOR_ORANGE}ORANGE${COLOR_RESET}"
+echo_step "${COLOR_CHARCOAL}CHARCOAL${COLOR_RESET}"
+echo_line
+echo_step "${COLOR_INFO}INFO${COLOR_RESET}"
+echo_step "${COLOR_STEP}STEP${COLOR_RESET}"
+echo_step "${COLOR_SUBSTEP}SUBSTEP${COLOR_RESET}"
+echo_step "${COLOR_DEBUG}DEBUG${COLOR_RESET}"
+echo_step "${COLOR_ERROR}ERROR${COLOR_RESET}"
+
+#echo_step "${COLOR_}${COLOR_RESET}"
+#echo_step "${COLOR_}${COLOR_RESET}"

@@ -945,18 +945,21 @@ function cursor_move_down
 function show_output
 {
     local PREFIX="$SHOW_OUTPUT_PREFIX"
-    test -n "$1" && PREFIX="$1"
+    local HIDELINES="$SHOW_OUTPUT_HIDELINES"
+    test -n "$1" && HIDELINES="$1"
 
     #while read LINE
     #do
     #    echo "$PREFIX$LINE"
-        awk --assign=x="$PREFIX" '
-            BEGIN { l=""; c=0; }
-            $0==l { c++; }
-            c==0 && $0!=l { l=$0; c++; }
-            c!=0 && $0!=l { if (c>1) p=" ("c"x)"; else p=""; print x l p; l=$0; c=1; }
-            END { if (c>1) p=" ("c"x)"; else p=""; print x l p; }'
     #done
+
+    awk --assign=x="$PREFIX" --assign=h="$HIDELINES" '
+        BEGIN { l=""; c=0; }
+        h!="" && $0~h { next; }
+        $0==l { c++; }
+        c==0 && $0!=l { l=$0; c++; }
+        c!=0 && $0!=l { if (c>1) p=" ("c"x)"; else p=""; print x l p; l=$0; c=1; }
+        END { if (c>1) p=" ("c"x)"; else p=""; print x l p; }'
 }
 
 # echo $TERM
@@ -1243,6 +1246,8 @@ export -f cursor_get_position
 export -f cursor_move_down
 
 export SHOW_OUTPUT_PREFIX="  >  "
+export SHOW_OUTPUT_HIDELINES="" # regexp to hide lines
+export SHOW_OUTPUT_DEDUPLICATE="yes"
 export -f show_output
 
 export -f echo_info

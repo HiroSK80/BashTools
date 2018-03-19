@@ -12,6 +12,9 @@
 
 export TOOLS_LOADED="yes"
 
+shopt -s extglob
+#export LC_ALL=C
+
 #"Linux RedHat CentOS"
 #"Linux SuSE openSUSE"
 
@@ -166,7 +169,7 @@ function str_get_arg
 {
     local FROM="${2-1}"
     local EVAL="`printf '%q\n' "$1"`"
-    EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\\":":g' --expression='s:\`:_:g')"
+    EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\\":":g' --expression='s:`:_:g')"
     #echo_debug_variable EVAL
 
     eval "set -- $EVAL"
@@ -180,7 +183,7 @@ function str_get_arg_from
 {
     local FROM="${2-1}"
     local EVAL="`printf '%q\n' "$1"`"
-    EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\\":":g' --expression='s:\`:_:g')"
+    EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\\":":g' --expression='s:`:_:g')"
     #EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\`:_:g')"
     #echo_debug "$EVAL"
 
@@ -903,8 +906,35 @@ function fill_command_options
     export OPTION="$2"
     export OPTION2="$3"
     export OPTION3="$4"
+    export OPTION4="$4"
+    export OPTION5="$5"
+    export OPTION6="$6"
+    export OPTION7="$7"
+    export OPTION8="$8"
+    export OPTION9="$9"
     unset OPTIONS_A
     declare -a OPTIONS_A=("$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9")
+}
+
+function insert_cmd
+# $1 command
+# move command to options, insert new command
+{
+    OPTION9="$OPTION8"
+    OPTION8="$OPTION7"
+    OPTION7="$OPTION6"
+    OPTION6="$OPTION5"
+    OPTION5="$OPTION4"
+    OPTION4="$OPTION3"
+    OPTION3="$OPTION2"
+    OPTION2="$OPTION1"
+    OPTION1="$COMMAND"
+    OPTION="$COMMAND"
+    OPTIONS2="$OPTIONS"
+    OPTIONS="$COMMAND $OPTIONS"
+    COMMAND="$1"
+    INPUT_C="$1"
+    INPUT_N="$INPUT_N"
 }
 
 function test_boolean
@@ -954,7 +984,7 @@ function test_str
 # $2 regexp
 {
     local IGNORE_CASE=""
-    test "$1" = "-i" && IGNORE_CASE="--ignore-case" && shift
+    test "$1" = "-i" -o "$1" = "--ignore-case" && IGNORE_CASE="--ignore-case" && shift
     test "$#" != "2" && echo_error_function "test_str" "Wrong parameters count"
 
     /bin/echo "$1" | grep --quiet --extended-regexp $IGNORE_CASE "$2"
@@ -1035,8 +1065,12 @@ function cursor_get_position
 {
     if test -t 1
     then
-        /bin/echo -en "\033[6n"
-        read -s -d "R" CURSOR_POSITION
+        exec < /dev/tty
+        OLD_stty=$(stty -g)
+        stty raw -echo min 0
+        /bin/echo -en "\033[6n" > /dev/tty
+        read -r -s -d "R" CURSOR_POSITION
+        stty $OLD_stty
         CURSOR_POSITION="${CURSOR_POSITION#*[}"
     else
         CURSOR_POSITION="0;0"
@@ -1244,14 +1278,28 @@ function echo_info
 
 function echo_step
 {
-    if test_yes "$OPTION_COLOR"
+    local STEP_NUMBER=""
+    local STEP_NUMBER_STR=""
+    if test $# -ge 2
     then
-        /bin/echo -e "${COLOR_STEP}${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}$@${COLOR_RESET}"
-    else
-        /bin/echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}$@"
+        STEP_VARIABLE="$1"
+        shift
+        STEP_NUMBER="${!STEP_VARIABLE}"
+        STEP_NUMBER_STR="${STEP_NUMBER}. "
     fi
 
-    echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}$@"
+    if test_yes "$OPTION_COLOR"
+    then
+        /bin/echo -e "${COLOR_STEP}${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}${STEP_NUMBER_STR}$@${COLOR_RESET}"
+    else
+        /bin/echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}${STEP_NUMBER_STR}$@"
+    fi
+
+    echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}${STEP_NUMBER_STR}$@"
+
+    test_integer "$STEP_NUMBER" && let STEP_NUMBER++ && let $STEP_VARIABLE=$STEP_NUMBER
+    test_str "$STEP_NUMBER" "^[a-z]$" && eval $STEP_VARIABLE="`echo "$STEP_NUMBER" | tr "a-z" "b-z_"`"
+    test_str "$STEP_NUMBER" "^[A-Z]$" && eval $STEP_VARIABLE="`echo "$STEP_NUMBER" | tr "A-Z" "B-Z_"`"
 }
 
 function echo_substep
@@ -1275,7 +1323,7 @@ function set_debug
 function unset_debug
 {
     local OPTION="${1:-yes}"
-    OPTION_DEBUG="${OPTION/$OPTION?(,)/}"
+    OPTION_DEBUG="${OPTION_DEBUG/$OPTION?(,)/}"
 }
 
 function check_debug
@@ -1290,19 +1338,24 @@ function echo_debug
     then
         if test_yes "$OPTION_COLOR"
         then
-            echo -e "${COLOR_DEBUG}${ECHO_PREFIX}${ECHO_UNAME}$@${COLOR_RESET}" >&$REDIRECT_DEBUG
+            echo -e "${COLOR_DEBUG}${ECHO_PREFIX}${ECHO_UNAME}$@${COLOR_RESET}" > "${REDIRECT_DEBUG}"
         else
-            echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@" >&$REDIRECT_DEBUG
+            echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@" > "${REDIRECT_DEBUG}"
         fi
-    fi
 
-    echo_log --date "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@"
+        echo_log --date "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@"
+    fi
 }
 
 function echo_debug_right
+# -1 shift to previous line
+# $@ message
 {
+    local SHIFT1="no"
+    local SHIFT1_MIN_FREE="20"
     if check_debug right
     then
+        test "$1" = "-1" && SHIFT1="yes" && shift
         if test_yes "$OPTION_COLOR"
         then
             local DEBUG_MESSAGE="${ECHO_PREFIX}${ECHO_UNAME}$@"
@@ -1312,18 +1365,36 @@ function echo_debug_right
         local SHIFT_MESSAGE="`tput cols`"
         let SHIFT_MESSAGE="$SHIFT_MESSAGE-${#DEBUG_MESSAGE}"
 
-        cursor_get_position
-        #tput sc
-        /bin/echo -e "\r\c" >&$REDIRECT_DEBUG
-        test $SHIFT_MESSAGE -ge 25 && tput cuu1 >&$REDIRECT_DEBUG && tput cuf $SHIFT_MESSAGE >&$REDIRECT_DEBUG
-        /bin/echo -e "${COLOR_DEBUG}$DEBUG_MESSAGE${COLOR_RESET}" >&$REDIRECT_DEBUG
-        #tput rc
-        let CURSOR_COLUMN--
-        test $CURSOR_COLUMN -ge 1 && tput cuf $CURSOR_COLUMN >&$REDIRECT_DEBUG
-        #test $SHIFT_MESSAGE -ge 15 || cursor_move_down
-    fi
+##############OLD
+        #cursor_get_position
+#tput sc
+        #/bin/echo -e "\r\c" > "${REDIRECT_DEBUG}"
+        #test $SHIFT_MESSAGE -ge 25 && tput cuu1 > "${REDIRECT_DEBUG}" && tput cuf $SHIFT_MESSAGE > "${REDIRECT_DEBUG}"
+        #/bin/echo -e "${COLOR_DEBUG}$DEBUG_MESSAGE${COLOR_RESET}" > "${REDIRECT_DEBUG}"
+#tput rc
+        #let CURSOR_COLUMN--
+        #test $CURSOR_COLUMN -ge 1 && tput cuf $CURSOR_COLUMN > "${REDIRECT_DEBUG}"
+#test $SHIFT_MESSAGE -ge 15 || cursor_move_down
+##############OLD
 
-    echo_log --date "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@"
+
+        if test $SHIFT_MESSAGE -gt 0
+        then
+            cursor_get_position
+            let SHIFT_MESSAGE=$SHIFT_MESSAGE+1
+#echo -en "\\033[1A"
+            test_yes "$SHIFT1" && test $SHIFT_MESSAGE -le $SHIFT1_MIN_FREE && echo -e "\r" > "${REDIRECT_DEBUG}"
+            echo -en "\\033[${SHIFT_MESSAGE}G" > "${REDIRECT_DEBUG}"
+            test_yes "$SHIFT1" && echo -en "\\033[1A" > "${REDIRECT_DEBUG}"
+            /bin/echo -e "${COLOR_DEBUG}$DEBUG_MESSAGE${COLOR_RESET}\c" > "${REDIRECT_DEBUG}"
+            echo -en "\\033[${CURSOR_COLUMN}G" > "${REDIRECT_DEBUG}"
+            test_yes "$SHIFT1" && echo -en "\\033[1B" > "${REDIRECT_DEBUG}"
+        else
+            /bin/echo -e "\r${COLOR_DEBUG}$DEBUG_MESSAGE${COLOR_RESET}" > "${REDIRECT_DEBUG}"
+        fi
+
+        echo_log --date "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@"
+    fi
 }
 
 function echo_debug_variable
@@ -1356,13 +1427,13 @@ function echo_debug_function
         FUNCTION_INFO="<<< $FUNCTION_INFO"
         if test_yes "$OPTION_COLOR"
         then
-            echo -e "${COLOR_DEBUG}${ECHO_PREFIX}${ECHO_UNAME}${FUNCTION_INFO}${COLOR_RESET}" >&$REDIRECT_DEBUG
+            echo -e "${COLOR_DEBUG}${ECHO_PREFIX}${ECHO_UNAME}${FUNCTION_INFO}${COLOR_RESET}" > "${REDIRECT_DEBUG}"
         else
-            echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}${FUNCTION_INFO}" >&$REDIRECT_DEBUG
+            echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}${FUNCTION_INFO}" > "${REDIRECT_DEBUG}"
         fi
-    fi
 
-    echo_log --date "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}${FUNCTION_INFO}"
+        echo_log --date "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}${FUNCTION_INFO}"
+    fi
 }
 
 function echo_debug_funct
@@ -1450,15 +1521,54 @@ function echo_warning
     test -n "$EXIT_CODE" && exit $EXIT_CODE
 }
 
+### history
+
+function history_init
+# $1 history file
+{
+    shopt -u histappend
+    test -z "$1" && export HISTFILE="$TOOLS_DIR/tools.history" || export HISTFILE="$1"
+    export HISTCMD=1001
+    export HISTCONTROL=ignoredups
+    export HISTSIZE=1000
+    export HISTFILESIZE=1000
+    touch "$HISTFILE"
+    #set -o history
+
+    history_restore
+}
+
+function history_restore
+{
+    history -r
+
+    export HISTORY=()
+    while read FILE_LINE
+    do
+        test -n "$FILE_LINE" && HISTORY+=("$FILE_LINE")
+    done <<< "`tac "$HISTFILE"`"
+}
+
+function history_store
+# $1 store item into history (if is not empty and same as previous)
+{
+    test -z "$1" -o "$1" = "${HISTORY[0]}" && return 0
+
+    HISTORY=("$1" "${HISTORY[@]}")
+    echo "$1" >> "$HISTFILE"
+    history -s "$1"
+}
+
 ### tools exports
 
-export REDIRECT_DEBUG=2
-export REDIRECT_ERROR=1
-export REDIRECT_WARNING=1
+export REDIRECT_DEBUG=/dev/stderr
+export REDIRECT_ERROR=/dev/stdout
+export REDIRECT_WARNING=/dev/stdout
 
 export OPTION_DEBUG
 export OPTION_PREFIX="no"
 export OPTION_COLOR
+export OPTION_COLORS
 export OPTION_UNAME
 
 export ECHO_PREFIX
@@ -1521,6 +1631,7 @@ export -f put_remote_file
 
 export -f file_line_remove
 export -f file_line_add
+export -f file_line_set
 export -f file_line_add1
 export -f lr_file_line_add
 export -f lr_file_line_add1
@@ -1600,6 +1711,11 @@ export -f echo_line
 export -f echo_info
 export -f echo_step
 export -f echo_substep
+
+export -f set_debug
+export -f unset_debug
+export -f check_debug
+
 export -f echo_debug
 export -f echo_debug_right
 export -f echo_debug_variable
@@ -1611,6 +1727,10 @@ export -f echo_error_ne0
 export -f echo_error_function
 export -f echo_error_exit
 export -f echo_warning
+
+export -f history_init
+export -f history_restore
+export -f history_store
 
 ### tools init
 
@@ -1624,9 +1744,9 @@ do
     check_arg_switch "c|color" "OPTION_COLOR|yes" "$@"
     check_arg_switch "u|uname" "OPTION_UNAME|yes" "$@"
     check_arg_shift && shift $CHECK_ARG_SHIFT && continue
-    if test -z "$TOOLS_FILE" -o -f "$1"
+    if test -n "$TOOLS_FILE" -o -f "$1"
     then
-        TOOLS_FILE="$1"
+        test -f "$1" && TOOLS_FILE="$1"
         TOOLS_NAME="`basename $TOOLS_FILE`"
         TOOLS_DIR="`dirname $TOOLS_FILE`"
         shift && continue
@@ -1653,14 +1773,18 @@ test_yes "$OPTION_PREFIX" && ECHO_PREFIX="### "
 
 test_yes "$OPTION_UNAME" && ECHO_UNAME="`uname -n`: " || ECHO_UNAME=""
 
+#echo "Color is \"$OPTION_COLOR - $OPTION_COLORS\"; setting..."
+test_integer "$OPTION_COLORS" || OPTION_COLORS="2"
 if ! test_yes "$OPTION_COLOR" -a ! test_no "$OPTION_COLOR"
 then
-    #echo "Color is \"$OPTION_COLOR\"; setting..."
-    if test "`echo "$TERM" | cut -c 1-5`" = "xterm" -o "$TERM" = "rxvt" -o "$TERM" = "konsole" -o "$TERM" = "linux"
+    if test "`echo "$TERM" | cut -c 1-5`" = "xterm" -o "$TERM" = "rxvt" -o "$TERM" = "konsole" -o "$TERM" = "linux" -o "$TERM" = "putty"
     then
         OPTION_COLOR="yes"
+        OPTION_COLORS="256"
+        test "$TERM" = "linux" && OPTION_COLORS="8"
     else
         OPTION_COLOR="no"
+        OPTION_COLORS="2"
     fi
     #echo "Color is $OPTION_COLOR"
 fi
@@ -1677,24 +1801,40 @@ then
     COLOR_BLUE="\033[34m"
     COLOR_MAGENTA="\033[35m"
     COLOR_CYAN="\033[36m"
+    COLOR_GRAY="\033[37m"
     COLOR_LIGHT_GRAY="\033[37m"
 
-    COLOR_DARK_GRAY="\033[90m"
-    COLOR_LIGHT_RED="\033[91m"
-    COLOR_LIGHT_GREEN="\033[92m"
-    COLOR_LIGHT_YELLOW="\033[93m"
-    COLOR_LIGHT_BLUE="\033[94m"
-    COLOR_LIGHT_MAGENTA="\033[95m"
-    COLOR_LIGHT_CYAN="\033[96m"
-    COLOR_WHITE="\033[97m"
+    if test $OPTION_COLORS -gt 8
+    then
+        COLOR_DARK_GRAY="\033[90m"
+        COLOR_LIGHT_RED="\033[91m"
+        COLOR_LIGHT_GREEN="\033[92m"
+        COLOR_LIGHT_YELLOW="\033[93m"
+        COLOR_LIGHT_BLUE="\033[94m"
+        COLOR_LIGHT_MAGENTA="\033[95m"
+        COLOR_LIGHT_CYAN="\033[96m"
+        COLOR_WHITE="\033[97m"
 
-    COLOR_ORANGE="\033[38;5;208m"
+        COLOR_ORANGE="\033[38;5;208m"
+        COLOR_CHARCOAL="\033[38;5;236m"
+    else
+        COLOR_DARK_GRAY="$COLOR_GRAY"
+        COLOR_LIGHT_RED="$COLOR_RED"
+        COLOR_LIGHT_GREEN="$COLOR_GREEN"
+        COLOR_LIGHT_YELLOW="$COLOR_YELLOW"
+        COLOR_LIGHT_BLUE="$COLOR_BLUE"
+        COLOR_LIGHT_MAGENTA="$COLOR_MAGENTA"
+        COLOR_LIGHT_CYAN="$COLOR_CYAN"
+        COLOR_WHITE="$COLOR_LIGHT_GRAY"
 
-    COLOR_X="\033[38;5;236m"
+        COLOR_ORANGE="$COLOR_RED"
+        COLOR_CHARCOAL="$COLOR_GRAY"
+    fi
+
     COLOR_INFO="$COLOR_LIGHT_YELLOW"
     COLOR_STEP="$COLOR_WHITE"
     COLOR_SUBSTEP="$COLOR_WHITE"
-    COLOR_DEBUG="$COLOR_X"
+    test $OPTION_COLORS -gt 8 && COLOR_DEBUG="$COLOR_CHARCOAL" || COLOR_DEBUG="$COLOR_BLUE"
     COLOR_ERROR="$COLOR_LIGHT_RED"
     COLOR_WARNING="$COLOR_CYAN"
 
@@ -1721,7 +1861,7 @@ then
 
     COLOR_ORANGE_E="\001${COLOR_ORANGE}\002"
 
-    COLOR_X_E="\001${COLOR_X}\002"
+    COLOR_CHARCOAL_E="\001${COLOR_CHARCOAL}\002"
     COLOR_DEBUG_E="$COLOR_X_E"
 else
     COLOR_RESET=""

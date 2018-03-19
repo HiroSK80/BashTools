@@ -942,6 +942,23 @@ function cursor_move_down
     test $CURSOR_COLUMN -gt 0 && tput cuf $CURSOR_COLUMN
 }
 
+function show_output
+{
+    local PREFIX="$SHOW_OUTPUT_PREFIX"
+    test -n "$1" && PREFIX="$1"
+
+    #while read LINE
+    #do
+    #    echo "$PREFIX$LINE"
+        awk --assign=x="$PREFIX" '
+            BEGIN { l=""; c=0; }
+            $0==l { c++; }
+            c==0 && $0!=l { l=$0; c++; }
+            c!=0 && $0!=l { if (c>1) p=" ("c"x)"; else p=""; print x l p; l=$0; c=1; }
+            END { if (c>1) p=" ("c"x)"; else p=""; print x l p; }'
+    #done
+}
+
 # echo $TERM
 # ok xterm/rxvt/konsole/linux
 # no dumb/sun
@@ -1224,6 +1241,9 @@ declare -i CURSOR_ROW=0
 export CURSOR_ROW
 export -f cursor_get_position
 export -f cursor_move_down
+
+export SHOW_OUTPUT_PREFIX="  >  "
+export -f show_output
 
 export -f echo_info
 export -f echo_step

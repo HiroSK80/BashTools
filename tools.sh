@@ -418,7 +418,7 @@ function lr_file_line_add1
     fi
 }
 
-function set_config_option
+function file_config_set
 # $1 filename
 # $2 option
 # $3 new value
@@ -441,6 +441,30 @@ function set_config_option
         fi
     else
         echo "$OPTION=\"$VALUE\"" > "$CONFIG_FILE"
+    fi
+}
+
+function file_replace
+# $1 filename
+# $2 search
+# $3 replace
+{
+    local FILE="$1"
+    local TEMP_FILE="/tmp/`basename "$CONFIG_FILE"`.tmp"
+    local SEARCH="$2"
+    local REPLACE="$3"
+    if test -e "$FILE"
+    then
+        cat "$FILE" > "$TEMP_FILE"
+        cat "$TEMP_FILE" | sed --expression="s|$SEARCH|$REPLACE|g" > "$FILE"
+        if test -s "$FILE"
+        then
+            /bin/rm -f "$TEMP_FILE"
+        else
+            cat "$TEMP_FILE" > "$FILE"
+            /bin/rm -f "$TEMP_FILE"
+            echo_error "file $FILE string $SEARCH replace fail" 99
+        fi
     fi
 }
 
@@ -1030,7 +1054,8 @@ export -f file_line_add1
 export -f lr_file_line_add
 export -f lr_file_line_add1
 
-export -f set_config_option
+export -f file_config_set
+export -f file_replace
 
 export -f check_ssh
 export -f check_internet
@@ -1156,8 +1181,8 @@ then
 
     COLOR_X="\033[38;5;236m"
     COLOR_DEBUG="$COLOR_X"
-    COLOR_STEP="$COLOR_LIGHT_YELLOW"
-    COLOR_INFO="$COLOR_YELLOW"
+    COLOR_STEP="$COLOR_WHITE"
+    COLOR_INFO="$COLOR_LIGHT_YELLOW"
     COLOR_ERROR="$COLOR_LIGHT_RED"
 
     # definitions for readline / awk / prompt

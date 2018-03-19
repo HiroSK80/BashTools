@@ -824,13 +824,13 @@ function fd_find_free
 
 function fill_command_options
 {
-	export COMMAND="$1"
-	export OPTIONS="$2 $3 $4 $5 $6 $7 $8 $9"
-	export OPTIONS2="$3 $4 $5 $6 $7 $8 $9"
-	export OPTION="$2"
-	export OPTION2="$3"
-	unset OPTIONS_A
-	declare -a OPTIONS_A=("$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9")
+    export COMMAND="$1"
+    export OPTIONS="$2 $3 $4 $5 $6 $7 $8 $9"
+    export OPTIONS2="$3 $4 $5 $6 $7 $8 $9"
+    export OPTION="$2"
+    export OPTION2="$3"
+    unset OPTIONS_A
+    declare -a OPTIONS_A=("$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9")
 }
 
 function test_integer
@@ -843,6 +843,16 @@ function test_ip
 # $1 ip
 {
     [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
+}
+
+function test_str
+# $1 string to test
+# $2 regexp
+{
+    test "$#" != "2" && echo_error "tools: test_str function wrong parameters count"
+
+    echo "$1" | egrep --quiet "$2"
+    return "$?"
 }
 
 function test_cmd
@@ -864,31 +874,31 @@ function test_cmd
 function test_cmd_z
 # $1 regexp
 {
-    test_cmd "$COMMAND" "^\$"
+    test_cmd "^\$"
 }
 
 function test_opt
 # $1 regexp
 {
-    test_cmd "$OPTION" "$1"
+    test_str "$OPTION" "$1"
 }
 
 function test_opt2
 # $1 regexp
 {
-    test_cmd "$OPTION2" "$1"
+    test_str "$OPTION2" "$1"
 }
 
 function test_opt_z
 # $1 regexp
 {
-    test_cmd "$OPTION" "^\$"
+    test_str "$OPTION" "^\$"
 }
 
 function test_opt2_z
 # $1 regexp
 {
-    test_cmd "$OPTION2" "^\$"
+    test_str "$OPTION2" "^\$"
 }
 
 function test_opt_i
@@ -901,12 +911,6 @@ function test_opt2_i
 # $1 regexp
 {
     test_integer "$OPTION2"
-}
-
-function test_param
-# $1 regexp
-{
-    test_cmd "$1" "$2"
 }
 
 function cursor_get_position
@@ -936,16 +940,6 @@ function cursor_move_down
 # ok xterm/rxvt/konsole/linux
 # no dumb/sun
 
-function echo_step
-{
-    if test "$OPTION_COLOR" = "yes"
-    then
-        echo -e "${COLOR_STEP}${ECHO_PREFIX}${ECHO_UNAME}$@${COLOR_RESET}"
-    else
-        echo "${ECHO_PREFIX}${ECHO_UNAME}$@"
-    fi
-}
-
 function echo_info
 {
     if test "$OPTION_COLOR" = "yes"
@@ -953,6 +947,26 @@ function echo_info
         echo -e "${COLOR_INFO}${ECHO_PREFIX}${ECHO_UNAME}$@${COLOR_RESET}"
     else
         echo "${ECHO_PREFIX}${ECHO_UNAME}$@"
+    fi
+}
+
+function echo_step
+{
+    if test "$OPTION_COLOR" = "yes"
+    then
+        echo -e "${COLOR_STEP}${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}$@${COLOR_RESET}"
+    else
+        echo "${ECHO_PREFIX}${ECHO_UNAME}$@"
+    fi
+}
+
+function echo_substep
+{
+    if test "$OPTION_COLOR" = "yes"
+    then
+        echo -e "${COLOR_SUBSTEP}${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_SUBSTEP}$@${COLOR_RESET}"
+    else
+        echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_SUBSTEP}$@"
     fi
 }
 
@@ -982,7 +996,7 @@ function echo_debug
         then
             echo -e "${COLOR_DEBUG}${ECHO_PREFIX}${ECHO_UNAME}$@${COLOR_RESET}" >&$REDIRECT_DEBUG
         else
-            echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_DEBUG_PREFIX}$@" >&$REDIRECT_DEBUG
+            echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@" >&$REDIRECT_DEBUG
         fi
     fi
 }
@@ -995,7 +1009,7 @@ function echo_debug_right
         then
             local DEBUG_MESSAGE="${ECHO_PREFIX}${ECHO_UNAME}$@"
         else
-            local DEBUG_MESSAGE="${ECHO_PREFIX}${ECHO_UNAME}${ECHO_DEBUG_PREFIX}$@"
+            local DEBUG_MESSAGE="${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@"
         fi
         local SHIFT_MESSAGE="`tput cols`"
         let SHIFT_MESSAGE="$SHIFT_MESSAGE-${#DEBUG_MESSAGE}"
@@ -1040,7 +1054,7 @@ function echo_debug_function
         then
             echo -e "${COLOR_DEBUG}${ECHO_PREFIX}${ECHO_UNAME}${FUNCTION_INFO}${COLOR_RESET}" >&$REDIRECT_DEBUG
         else
-            echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_DEBUG_PREFIX}${FUNCTION_INFO}" >&$REDIRECT_DEBUG
+            echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}${FUNCTION_INFO}" >&$REDIRECT_DEBUG
         fi
     fi
 }
@@ -1058,9 +1072,9 @@ function echo_error
 
     if test "$OPTION_COLOR" = "yes"
     then
-        echo -e "$COLOR_ERROR${ECHO_PREFIX}${ECHO_UNAME}${ECHO_ERROR_PREFIX}${ECHO_ERROR}!$COLOR_RESET" >&$REDIRECT_ERROR
+        echo -e "$COLOR_ERROR${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!$COLOR_RESET" >&$REDIRECT_ERROR
     else
-        echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_ERROR_PREFIX}${ECHO_ERROR}!" >&$REDIRECT_ERROR
+        echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!" >&$REDIRECT_ERROR
     fi
 
     test -n "$EXIT_CODE" && exit $EXIT_CODE
@@ -1083,8 +1097,10 @@ export OPTION_COLOR
 export OPTION_UNAME
 
 export ECHO_PREFIX
-export ECHO_DEBUG_PREFIX="@@@ "
-export ECHO_ERROR_PREFIX="Error: "
+export ECHO_PREFIX_STEP="  "
+export ECHO_PREFIX_SUBSTEP="    - "
+export ECHO_PREFIX_DEBUG="@@@ "
+export ECHO_PREFIX_ERROR="Error: "
 export ECHO_UNAME
 
 export COLOR_BLACK COLOR_BLACK_E
@@ -1108,9 +1124,10 @@ export COLOR_WHITE COLOR_WHITE_E
 
 export COLOR_ORANGE COLOR_ORANGE_E
 
-export COLOR_DEBUG
-export COLOR_STEP
 export COLOR_INFO
+export COLOR_STEP
+export COLOR_SUBSTEP
+export COLOR_DEBUG
 export COLOR_ERROR
 
 export -f query
@@ -1164,6 +1181,7 @@ export -f fd_find_free
 
 export -f fill_command_options
 export -f test_integer
+export -f test_str
 export -f test_cmd
 export -f test_cmd_z
 export -f test_opt
@@ -1172,7 +1190,6 @@ export -f test_opt_z
 export -f test_opt2_z
 export -f test_opt_i
 export -f test_opt2_i
-export -f test_param
 
 declare CURSOR_POSITION="0;0"
 export CURSOR_POSITION
@@ -1183,8 +1200,9 @@ export CURSOR_ROW
 export -f cursor_get_position
 export -f cursor_move_down
 
-export -f echo_step
 export -f echo_info
+export -f echo_step
+export -f echo_substep
 export -f echo_debug
 export -f echo_debug_right
 export -f echo_debug_variable
@@ -1215,14 +1233,14 @@ do
     echo_error "Unknown argument: $1" 1
 done
 
-#if test -z "$ECHO_DEBUG_PREFIX"
+#if test -z "$ECHO_PREFIX_DEBUG"
 #then
-#    ECHO_DEBUG_PREFIX="@@@ "
+#    ECHO_PREFIX_DEBUG="@@@ "
 #fi
 
-#if test -z "$ECHO_ERROR_PREFIX"
+#if test -z "$ECHO_PREFIX_ERROR"
 #then
-#    ECHO_ERROR_PREFIX="error: "
+#    ECHO_PREFIX_ERROR="error: "
 #fi
 
 #if test -z "$OPTION_PREFIX"
@@ -1272,9 +1290,10 @@ then
     COLOR_ORANGE="\033[38;5;208m"
 
     COLOR_X="\033[38;5;236m"
-    COLOR_DEBUG="$COLOR_X"
-    COLOR_STEP="$COLOR_WHITE"
     COLOR_INFO="$COLOR_LIGHT_YELLOW"
+    COLOR_STEP="$COLOR_WHITE"
+    COLOR_SUBSTEP="$COLOR_WHITE"
+    COLOR_DEBUG="$COLOR_X"
     COLOR_ERROR="$COLOR_LIGHT_RED"
 
     # definitions for readline / awk / prompt

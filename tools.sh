@@ -40,7 +40,9 @@ fi
 if test "$UNIX_TYPE" = "Linux"
 then
     export AWK="/bin/awk"
+    type awk > /dev/null 2>&1 && export AWK="`type -P awk`"
     export GREP="/bin/grep"
+    type grep > /dev/null 2>&1 && export GREP="`type -P grep`"
 fi
 
 function query
@@ -286,7 +288,9 @@ function prepare_file
         test -z "$FILE" && FILE="$1" && shift && continue
         echo_error_function "prepare_file" "Unknown argument: $1" 1
     done
-    test -z "$FILE" && echo_error_function "prepare_file" "Filename is not specified: $1" 1
+    test -z "$FILE" && echo_error_function "prepare_file" "Filename is not specified" 1
+
+    mkdir -p "`dirname $FILE`"
 
     if test_yes "$ROLL"
     then
@@ -884,6 +888,7 @@ function fill_command_options
     export OPTIONS2="$3 $4 $5 $6 $7 $8 $9"
     export OPTION="$2"
     export OPTION2="$3"
+    export OPTION3="$4"
     unset OPTIONS_A
     declare -a OPTIONS_A=("$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9")
 }
@@ -922,9 +927,11 @@ function test_str
 # $1 string to test
 # $2 regexp
 {
+    local IGNORE_CASE=""
+    test "$1" = "-i" && IGNORE_CASE="--ignore-case" && shift
     test "$#" != "2" && echo_error_function "test_str" "Wrong parameters count"
 
-    /bin/echo "$1" | grep --quiet --extended-regexp "$2"
+    /bin/echo "$1" | grep --quiet --extended-regexp $IGNORE_CASE "$2"
     return $?
 }
 
@@ -933,6 +940,8 @@ function test_file
 # $2 regexp
 {
     test "$#" != "2" && echo_error_function "test_file" "Wrong parameters count"
+
+    test -f "$2" || return 1
 
     grep --quiet --extended-regexp "$1" "$2"
     return $?
@@ -1020,13 +1029,124 @@ function cursor_move_down
 }
 
 function pipe_remove_color
+# removes color control codes from pipe
 {
     sed --regexp-extended \
         --expression="s/\x1B\[([0-9]{1,3}((;[0-9]{1,3})*)?)?[m|K]//g" \
         --expression="s/\\\\033\[([0-9]{1,3}((;[0-9]{1,3})*)?)?[m|K]//g"
 }
 
+function pipe_from
+# command | pipe_from "from this line"
+{
+    "$AWK" --assign=from="$1" '
+        BEGIN { show=0; }
+        show==1 { print; next; }
+        $0~from { show=1; print; }
+    '
+}
+
+LOG_FILE=""
+LOG_DATE="%Y-%m-%d %H:%M:%S"
+LOG_SECTION="=============================================================================="
+LOG_SPACE=""
+LOG_START="`date -u +%s`"
+
+function log_file_init
+{
+    log_init "$@"
+}
+
+function log_init
+{
+    local LOG_TITLE="$0 - Log init"
+
+    while test $# -gt 0
+    do
+        test "${1:0:1}" = "/" && LOG_FILE="$1" || LOG_TITLE="$1"
+        shift
+    done
+    test -z "$LOG_FILE" && LOG_FILE="`echo "$0" | sed --regexp-extended --expression='s:(|\.|\.sh)$:.log:'`"
+
+    prepare_file "$LOG_FILE"
+    /bin/echo "$LOG_SECTION" >> "$LOG_FILE"
+    /bin/echo "`date +"$LOG_DATE"` $LOG_TITLE" >> "$LOG_FILE"
+}
+
+function log_file_done
+{
+    log_done "$@"
+}
+
+function log_done
+{
+    local LOG_TITLE="$0 - Log done"
+    test $# -eq 2 && LOG_TITLE="$1" && shift
+    test -z "$LOG_FILE" && echo_error_function "log_done" "Log file is not specified"
+
+    local LOG_DURATION
+    let LOG_DURATION=`date -u +%s`-$LOG_START
+
+    prepare_file "$LOG_FILE"
+    /bin/echo "`date +"$LOG_DATE"` $LOG_TITLE, script runtime $LOG_DURATION seconds" >> "$LOG_FILE"
+    /bin/echo "$LOG_SECTION" >> "$LOG_FILE"
+}
+
+function echo_log
+# echoes arguments only to log file
+{
+    test -z "$LOG_FILE" && return
+
+    local LOG_DATE_STRING=""
+    test_str "$1" "(-d|--date)" && LOG_DATE_STRING="`date +"$LOG_DATE"` " && shift
+
+    prepare_file "$LOG_FILE"
+    #echo "${LOG_SPACE}$@" | sed --expression='s/\\n/\n                    /g' --expression='s/^/                    /g' >> "$LOG_FILE"
+    /bin/echo "${LOG_SPACE}${LOG_DATE_STRING}$@" | pipe_remove_color >> "$LOG_FILE"
+}
+
+function log_output
+{
+    pipe_log
+}
+
+function pipe_log
+# pipe with command echo_log
+{
+    BACKUP_IFS="$IFS"
+    IFS=''
+    while read LINE
+    do
+        echo_log "$LINE"
+    done
+    IFS="$BACKUP_IFS"
+}
+
+function echo_output
+{
+    pipe_echo
+}
+
+function pipe_echo
+# pipe with echo_line
+{
+    BACKUP_IFS="$IFS"
+    IFS=''
+    while read LINE
+    do
+        echo_line "$LINE"
+    done
+    IFS="$BACKUP_IFS"
+}
+
 function show_output
+{
+    pipe_echo_prefix
+}
+
+function pipe_echo_prefix
+# pipe with pipe_echo and nice output
+# command | show_output
 # -c <command> | --command=<command>
 # -p <prefix> | --prefix=<prefix>
 {
@@ -1049,7 +1169,7 @@ function show_output
     #    echo "$PREFIX$LINE"
     #done
 
-    awk --assign=prefix="$PREFIX" --assign=hideline="$HIDELINES" --assign=command="$COMMAND" '
+    "$AWK" --assign=prefix="$PREFIX" --assign=hideline="$HIDELINES" --assign=command="$COMMAND" '
         BEGIN { line=""; count=0; }
         command=="" { current=$0; }
         command!="" {
@@ -1067,70 +1187,7 @@ function show_output
         count==0 { line=current; count++; next; }
         count==1 { print prefix line; line=current; count=1; next; }
         count>1 { print prefix line " ("count"x)"; line=current; count=1; next; }
-        END { if (count>1) p=" ("count"x)"; else p=""; print prefix line p; }' | echo_output
-}
-
-function log_output
-{
-    BACKUP_IFS="$IFS"
-    IFS=''
-    while read LINE
-    do
-        echo_log "$LINE"
-    done
-    IFS="$BACKUP_IFS"
-}
-
-function echo_output
-{
-    BACKUP_IFS="$IFS"
-    IFS=''
-    while read LINE
-    do
-        echo_line "$LINE"
-    done
-    IFS="$BACKUP_IFS"
-}
-
-LOG_FILE=""
-LOG_DATE="%Y-%m-%d %H:%M:%S"
-LOG_SECTION="=============================================================================="
-LOG_SPACE=""
-
-function log_file_init
-{
-    local LOG_TITLE="$0 - Log file init"
-
-    while test $# -gt 0
-    do
-        test "${1:0:1}" = "/" && LOG_FILE="$1" || LOG_TITLE="$1"
-        shift
-    done
-    test -z "$LOG_FILE" && LOG_FILE="`echo "$0" | sed --regexp-extended --expression='s:(|\.|\.sh)$:.log:'`"
-
-    prepare_file "$LOG_FILE"
-    /bin/echo "$LOG_SECTION" >> "$LOG_FILE"
-    /bin/echo "`date +"$LOG_DATE"` $LOG_TITLE" >> "$LOG_FILE"
-}
-
-function log_file_done
-{
-    local LOG_TITLE="$0 - Log file done"
-    test $# -eq 2 && LOG_TITLE="$1" && shift
-    test -z "$LOG_FILE" && echo_error_function "log_file_done" "Log file is not specified"
-
-    prepare_file "$LOG_FILE"
-    /bin/echo "`date +"$LOG_DATE"` $LOG_TITLE" >> "$LOG_FILE"
-    /bin/echo "$LOG_SECTION" >> "$LOG_FILE"
-}
-
-function echo_log
-{
-    test -z "$LOG_FILE" && return
-
-    prepare_file "$LOG_FILE"
-    #echo "${LOG_SPACE}$@" | sed --expression='s/\\n/\n                    /g' --expression='s/^/                    /g' >> "$LOG_FILE"
-    /bin/echo "${LOG_SPACE}$@" | pipe_remove_color >> "$LOG_FILE"
+        END { if (count>1) p=" ("count"x)"; else p=""; print prefix line p; }' | pipe_echo
 }
 
 # echo $TERM
@@ -1138,6 +1195,8 @@ function echo_log
 # no dumb/sun
 
 function echo_line
+# usage as standard echo
+# echoes arguments to standard output and log to the file
 {
     /bin/echo "$@"
     echo_log "$@"
@@ -1147,9 +1206,9 @@ function echo_info
 {
     if test_yes "$OPTION_COLOR"
     then
-        echo -e "${COLOR_INFO}${ECHO_PREFIX}${ECHO_UNAME}$@${COLOR_RESET}"
+        /bin/echo -e "${COLOR_INFO}${ECHO_PREFIX}${ECHO_UNAME}$@${COLOR_RESET}"
     else
-        echo "${ECHO_PREFIX}${ECHO_UNAME}$@"
+        /bin/echo "${ECHO_PREFIX}${ECHO_UNAME}$@"
     fi
 
     echo_log "${ECHO_PREFIX}${ECHO_UNAME}$@"
@@ -1159,9 +1218,9 @@ function echo_step
 {
     if test_yes "$OPTION_COLOR"
     then
-        echo -e "${COLOR_STEP}${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}$@${COLOR_RESET}"
+        /bin/echo -e "${COLOR_STEP}${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}$@${COLOR_RESET}"
     else
-        echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}$@"
+        /bin/echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}$@"
     fi
 
     echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}$@"
@@ -1171,9 +1230,9 @@ function echo_substep
 {
     if test_yes "$OPTION_COLOR"
     then
-        echo -e "${COLOR_SUBSTEP}${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_SUBSTEP}$@${COLOR_RESET}"
+        /bin/echo -e "${COLOR_SUBSTEP}${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_SUBSTEP}$@${COLOR_RESET}"
     else
-        echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_SUBSTEP}$@"
+        /bin/echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_SUBSTEP}$@"
     fi
 
     echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_SUBSTEP}$@"
@@ -1209,7 +1268,7 @@ function echo_debug
         fi
     fi
 
-    echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@"
+    echo_log --date "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@"
 }
 
 function echo_debug_right
@@ -1467,17 +1526,21 @@ export CURSOR_ROW
 export -f cursor_get_position
 export -f cursor_move_down
 
+export -f pipe_remove_color
+export -f pipe_from
+
 export SHOW_OUTPUT_PREFIX="  >  "
 export SHOW_OUTPUT_HIDELINES="" # regexp to hide lines
 export SHOW_OUTPUT_COMMAND=""
 export SHOW_OUTPUT_DEDUPLICATE="yes"
-export -f show_output
-export -f log_output
-export -f echo_output
 
-export -f log_file_init
-export -f log_file_done
+export -f log_init;         export -f log_file_init
+export -f log_done;         export -f log_file_done
 export -f echo_log
+
+export -f pipe_log;         export -f log_output
+export -f pipe_echo;        export -f echo_output
+export -f pipe_echo_prefix; export -f show_output
 
 export -f echo_line
 export -f echo_info

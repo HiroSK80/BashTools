@@ -442,21 +442,33 @@ function str_parse_url
 #   ${2[USER_HOST]}
 #   ${2[HOST]}
 #   ${2[USER]}
+#   ${2[PASSWORD]}
 #   ${2[FILE]}
 {
     PARSE_URL="$1"
-    if test_str "$PARSE_URL" "^([^:/]+):(.*)$"
+    if test_str --ignore-case "$PARSE_URL" "^([a-z]+):\/\/"
     then
-        PARSE_URL_PROTOCOL="ssh"
+        PARSE_URL_PROTOCOL="${BASH_REMATCH[1]}"
+        PARSE_URL="${PARSE_URL#*://}"
+    else
+        PARSE_URL_PROTOCOL=""
+    fi
+    if test_str "$PARSE_URL" "^([^:/]+):?(.*)$"
+    then
+        #PARSE_URL_PROTOCOL="ssh"
         PARSE_URL_USER_HOST="${BASH_REMATCH[1]}"
+        #echo "PARSE_URL_USER_HOST=$PARSE_URL_USER_HOST"
         PARSE_URL_FILE="${BASH_REMATCH[2]}"
+        #echo "PARSE_URL_FILE=$PARSE_URL_FILE"
         test_str "$PARSE_URL_USER_HOST" "((.*)@)?(.*)$"
         PARSE_URL_USER="${BASH_REMATCH[2]}"
+        PARSE_URL_PASSWORD=""
         PARSE_URL_HOST="${BASH_REMATCH[3]}"
     else
         PARSE_URL_PROTOCOL="file"
         PARSE_URL_USER_HOST=""
         PARSE_URL_USER=""
+        PARSE_URL_PASSWORD=""
         PARSE_URL_HOST=""
         PARSE_URL_FILE="$PARSE_URL"
     fi
@@ -472,6 +484,7 @@ function str_parse_url
         assign "$2[PROTOCOL]" "$PARSE_URL_PROTOCOL"
         assign "$2[USER_HOST]" "$PARSE_URL_USER_HOST"
         assign "$2[USER]" "$PARSE_URL_USER"
+        assign "$2[PASSWORD]" "$PARSE_URL_PASSWORD"
         assign "$2[HOST]" "$PARSE_URL_HOST"
         assign "$2[FILE]" "$PARSE_URL_FILE"
     fi
@@ -3138,6 +3151,7 @@ declare -x PARSE_URL
 declare -x PARSE_URL_PROTOCOL
 declare -x PARSE_URL_USER_HOST
 declare -x PARSE_URL_USER
+declare -x PARSE_URL_PASSWORD
 declare -x PARSE_URL_HOST
 declare -x PARSE_URL_FILE
 declare -x -f str_parse_url

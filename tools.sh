@@ -56,6 +56,15 @@ then
     type grep > /dev/null 2>&1 && export GREP="`type -P grep`"
 fi
 
+function file_delete
+{
+    if test -f "$1"
+    then
+        $RM "$1"
+        test -f "$1" && echo_error_function "Can't delete `echo_quote "$1"` file" $OPTION_DEFAULT_ERROR_CODE
+    fi
+}
+
 function query
 {
     local QUESTION="$1"
@@ -285,7 +294,7 @@ function check_arg_value
 
     if test "$1" = "--$ARG_NAME_LONG" -o "$1" = "-$ARG_NAME_SHORT"
     then
-        test $# -eq 1 && export ${ARG_NAME_VAR}="$ARG_NAME_VALUE" && CHECK_ARG_SHIFT+=1 && return 0 #echo_error "Missing value for argument \"$1\"" 99
+        test $# -eq 1 && export ${ARG_NAME_VAR}="$ARG_NAME_VALUE" && CHECK_ARG_SHIFT+=1 && return 0 #echo_error "Missing value for argument \"$1\"" $OPTION_DEFAULT_ERROR_CODE
         test "${2:0:1}" != "-" && export ${ARG_NAME_VAR}="$2" && CHECK_ARG_SHIFT+=1 || export ${ARG_NAME_VAR}="$ARG_NAME_VALUE"
         CHECK_ARG_SHIFT+=1
         return 0
@@ -310,7 +319,7 @@ function prepare_file_move
     let N1=N+1
 
     test $N1 -ne $C -a -f "$F-$N" -a -f "$F-$N1" && prepare_file_move "$1" $N1 $C
-    test -f "$F-$N1" && $RM "$F-$N1"
+    file_delete "$F-$N1"
     mv "$F-$N" "$F-$N1"
 }
 
@@ -330,9 +339,9 @@ function prepare_file
         check_arg_switch "c|count" "COUNT|9" "$@"
         check_arg_shift && shift $CHECK_ARG_SHIFT && continue
         test -z "$FILE" && FILE="$1" && shift && continue
-        echo_error_function "prepare_file" "Unknown argument: $1" 1
+        echo_error_function "Unknown argument: $1" $OPTION_DEFAULT_ERROR_CODE
     done
-    test -z "$FILE" && echo_error_function "prepare_file" "Filename is not specified" 1
+    test -z "$FILE" && echo_error_function "Filename is not specified" $OPTION_DEFAULT_ERROR_CODE
 
     if test_yes "$ROLL" && test -f "$FILE"
     then
@@ -340,7 +349,7 @@ function prepare_file
         mv "$FILE" "$FILE-1"
     fi
 
-    test_yes "$EMPTY" && $RM "$FILE"
+    test_yes "$EMPTY" && file_delete "$FILE"
 
     if test ! -w "$FILE"
     then
@@ -348,7 +357,7 @@ function prepare_file
         touch "$FILE"
         chmod ug+w "$FILE" 2> /dev/null
     fi
-    test -w "$FILE" || echo_error_function "prepare_file" "Can't create and prepare file for writting: $FILE" 1
+    test -w "$FILE" || echo_error_function "Can't create and prepare file for writting: `echo_quote $FILE`" $OPTION_DEFAULT_ERROR_CODE
     test -n "$PREPARE_FILE_USER" && chgrp "$PREPARE_FILE_USER" "$FILE" 2> /dev/null
     test -n "$PREPARE_FILE_GROUP" && chown "$PREPARE_FILE_GROUP" "$FILE" 2> /dev/null
 }
@@ -360,7 +369,7 @@ function get_remote_file
     local REMOTE_SSH="$1"
     local REMOTE_FILE="$2"
     LOCAL_TEMP_FILE="/tmp/`basename "$REMOTE_FILE"`.$$"
-    $RM "$LOCAL_TEMP_FILE"
+    file_delete "$LOCAL_TEMP_FILE"
     scp -q "$REMOTE_SSH":"$REMOTE_FILE" "$LOCAL_TEMP_FILE" || return 1
     #echo "$LOCAL_TEMP_FILE"
 }
@@ -373,7 +382,7 @@ function put_remote_file
     local REMOTE_FILE="$2"
     LOCAL_TEMP_FILE="/tmp/`basename "$REMOTE_FILE"`.$$"
     scp -q "$LOCAL_TEMP_FILE" "$REMOTE_SSH":"$REMOTE_FILE" || return 1
-    $RM "$LOCAL_TEMP_FILE"
+    file_delete "$LOCAL_TEMP_FILE"
 }
 
 function file_line_remove
@@ -389,10 +398,10 @@ function file_line_remove
         if diff "$FILE" "$TEMP_FILE" > /dev/null 2> /dev/null
         then
             cat "$TEMP_FILE" 2> /dev/null | $GREP --invert-match "$REGEXP" > "$FILE" 2> /dev/null
-            $RM "$TEMP_FILE"
+            file_delete "$TEMP_FILE"
         else
-            $RM "$TEMP_FILE"
-            echo_error "$FILE line \"$REGEXP\" remove fail" 99
+            file_delete "$TEMP_FILE"
+            echo_error_function "$FILE line \"$REGEXP\" remove fail" $OPTION_DEFAULT_ERROR_CODE
         fi
     fi
 }
@@ -427,11 +436,11 @@ function file_line_add
         fi
         if test -s "$FILE"
         then
-            $RM "$TEMP_FILE"
+            file_delete "$TEMP_FILE"
         else
             cat "$TEMP_FILE" > "$FILE"
-            $RM "$TEMP_FILE"
-            echo_error "$FILE add \"$LINE\" fail" 99
+            file_delete "$TEMP_FILE"
+            echo_error_function "Add \"$LINE\" to `echo_quote "$FILE"` fail" $OPTION_DEFAULT_ERROR_CODE
         fi
     fi
 }
@@ -522,11 +531,11 @@ function file_config_set
         cat "$CONFIG_TEMP_FILE" | $AWK 'BEGIN { found=0; } /^'$OPTION'=/ { print "'"$OPTION"'=\"'"$VALUE"'\""; found=1; next; } { print; } END { if (found == 0) print "'"$OPTION"'=\"'"$VALUE"'\""; }' > "$CONFIG_FILE"
         if test -s "$CONFIG_FILE"
         then
-            $RM "$CONFIG_TEMP_FILE"
+            file_delete "$CONFIG_TEMP_FILE"
         else
             cat "$CONFIG_TEMP_FILE" > "$CONFIG_FILE"
-            $RM "$CONFIG_TEMP_FILE"
-            echo_error "file $CONFIG_FILE new configuration \"$OPTION=\"$VALUE\"\" change fail" 99
+            file_delete "$CONFIG_TEMP_FILE"
+            echo_error_function "Configuration \"$OPTION=\"$VALUE\"\" change to file `echo_quote "$CONFIG_FILE"` fail" $OPTION_DEFAULT_ERROR_CODE
         fi
     else
         echo "$OPTION=\"$VALUE\"" > "$CONFIG_FILE"
@@ -548,11 +557,11 @@ function file_replace
         cat "$TEMP_FILE" | sed --expression="s|$SEARCH|$REPLACE|g" > "$FILE"
         if test -s "$FILE"
         then
-            $RM "$TEMP_FILE"
+            file_delete "$TEMP_FILE"
         else
             cat "$TEMP_FILE" > "$FILE"
-            $RM "$TEMP_FILE"
-            echo_error "file $FILE string $SEARCH replace fail" 99
+            file_delete "$TEMP_FILE"
+            echo_error_function "file $FILE string $SEARCH replace fail" $OPTION_DEFAULT_ERROR_CODE
         fi
     fi
 }
@@ -661,7 +670,7 @@ function ssh_scanid
     done
     cp "$SCAN_USER_HOME_SSH_HOSTS" "${SCAN_USER_HOME_SSH_HOSTS}_orig"
     cat "${SCAN_USER_HOME_SSH_HOSTS}_orig" | sort -u > "$SCAN_USER_HOME_SSH_HOSTS"
-    $RM "${SCAN_USER_HOME_SSH_HOSTS}_orig"
+    file_delete "${SCAN_USER_HOME_SSH_HOSTS}_orig"
 }
 
 function ssh_scanremoteid
@@ -836,10 +845,10 @@ function ssh_importid
         if test $? -eq 0
         then
             cat $COPYID_HOME_SSH/id_import.pub >> $COPYID_HOME_SSH_KEYS
-            $RM $COPYID_HOME_SSH/id_import.pub
+            file_delete $COPYID_HOME_SSH/id_import.pub
             cp $COPYID_HOME_SSH_KEYS ${COPYID_HOME_SSH_KEYS}_orig
             cat ${COPYID_HOME_SSH_KEYS}_orig | sort -u > $COPYID_HOME_SSH_KEYS
-            $RM ${COPYID_HOME_SSH_KEYS}_orig
+            file_delete ${COPYID_HOME_SSH_KEYS}_orig
         else
             return 1
         fi
@@ -1074,7 +1083,7 @@ function test_str
 {
     local IGNORE_CASE=""
     test "$1" = "-i" -o "$1" = "--ignore-case" && IGNORE_CASE="--ignore-case" && shift
-    test $# != 2 && echo_error_function "test_str" "Wrong parameters count"
+    test $# != 2 && echo_error_function "Wrong parameters count"
 
     command echo "$1" | $GREP --quiet --extended-regexp $IGNORE_CASE "$2"
     return $?
@@ -1084,7 +1093,7 @@ function test_file
 # $1 regexp string to test
 # $2 filename
 {
-    test $# != 2 && echo_error_function "test_file" "Wrong parameters count"
+    test $# != 2 && echo_error_function "Wrong parameters count"
 
     test -f "$2" || return 1
 
@@ -1238,7 +1247,7 @@ function log_done
 {
     local LOG_TITLE="$0 - Log done"
     test $# -eq 2 && LOG_TITLE="$1" && shift
-    test -z "$LOG_FILE" && echo_error_function "log_done" "Log file is not specified"
+    test -z "$LOG_FILE" && echo_error_function "Log file is not specified"
 
     local LOG_DURATION
     let LOG_DURATION=`date -u +%s`-$LOG_START
@@ -1320,7 +1329,7 @@ function pipe_echo_prefix
         check_arg_switch "l|newline" "NEW_LINE|no" "$@"
         check_arg_shift && shift $CHECK_ARG_SHIFT && continue
         test -z "$HIDELINES" && HIDELINES="$1" && shift && continue
-        echo_error_function "show_output" "Unknown argument: $1" 1
+        echo_error_function "Unknown argument: $1" $OPTION_DEFAULT_ERROR_CODE
     done
 
     #while read LINE
@@ -1532,7 +1541,7 @@ function parse_debug_level
         echo "$1"
     else
         local I="${OPTION_DEBUGS[$1]}"
-        test_integer "$I" || echo_error_function "parse_debug_level" "Unknown error level \"$1\""
+        test_integer "$I" || echo_error_function "Unknown error level \"$1\""
         echo "$I $1"
     fi
 }
@@ -1722,7 +1731,8 @@ function echo_error_function
 {
     local ECHO_FUNCTION="${FUNCNAME[@]}"
     ECHO_FUNCTION="${ECHO_FUNCTION/echo_error_function /}"
-    ECHO_FUNCTION="${ECHO_FUNCTION/ */}"
+    #ECHO_FUNCTION="${ECHO_FUNCTION/ */}"
+    ECHO_FUNCTION="${ECHO_FUNCTION// / < }"
     local ECHO_ERROR="Error in function"
     local EXIT_CODE=""
     #if test $# -eq 0
@@ -1747,7 +1757,7 @@ function echo_error_function
     fi
     test_integer "${@:(-1)}" && EXIT_CODE=$2 && ECHO_ERROR="${@:1:${#@}-1}"
 
-    echo_error "[$ECHO_FUNCTION] $ECHO_ERROR" #$EXIT_CODE
+    echo_error "[$ECHO_FUNCTION] $ECHO_ERROR" $EXIT_CODE
 }
 
 function echo_warning
@@ -2203,6 +2213,7 @@ export -f echo_debug_variable
 export -f echo_debug_var
 export -f echo_debug_function
 export -f echo_debug_funct
+export OPTION_DEFAULT_ERROR_CODE=99
 export -f echo_error
 export -f echo_error_ne0
 export -f echo_error_function

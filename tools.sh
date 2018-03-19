@@ -46,6 +46,10 @@ then
     export RM="rm"
     export AWK="/usr/bin/nawk"
     export GREP="/usr/xpg4/bin/grep"
+    export SSH="ssh -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
+    export SSHq="$SSH -q"
+    export SCP="scp -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
+    export SCPq="$SCP -q"
 fi
 if test "$UNIX_TYPE" = "Linux"
 then
@@ -54,16 +58,17 @@ then
     type awk > /dev/null 2>&1 && export AWK="`type -P awk`"
     export GREP="/bin/grep"
     type grep > /dev/null 2>&1 && export GREP="`type -P grep`"
+    #export SSH="ssh -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
+    export SSH="ssh -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
+    export SSHbq="ssh -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
+    export SSHq="$SSH -q"
+    export SSHbq="$SSHb -q"
+    #export SCP="scp -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
+    export SCP="scp -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
+    export SCPb="scp -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
+    export SCPq="$SCP -q"
+    export SCPbq="$SCPb -q"
 fi
-
-function file_delete
-{
-    if test -f "$1"
-    then
-        $RM "$1"
-        test -f "$1" && echo_error_function "Can't delete `echo_quote "$1"` file" $OPTION_DEFAULT_ERROR_CODE
-    fi
-}
 
 function query
 {
@@ -322,6 +327,16 @@ function check_arg_value
     return 1
 }
 
+# __FILE_FUNCTIONS_START__
+function file_delete
+{
+    if test -f "$1"
+    then
+        $RM "$1"
+        test -f "$1" && echo_error_function "Can't delete `echo_quote "$1"` file" $OPTION_DEFAULT_ERROR_CODE
+    fi
+}
+
 function file_prepare_move
 {
     local F="$1"
@@ -384,51 +399,57 @@ function prepare_file
     file_prepare "$@"
 }
 
-function get_remote_file
+export FILE_REMOTE
+
+function file_remote_get
 # $1 ssh connect: user@host
 # $2 remote file
+# $3 local file
 {
-    local REMOTE_SSH="$1"
-    local REMOTE_FILE="$2"
-    LOCAL_TEMP_FILE="/tmp/`basename "$REMOTE_FILE"`.$$"
-    file_delete "$LOCAL_TEMP_FILE"
-    scp -q "$REMOTE_SSH":"$REMOTE_FILE" "$LOCAL_TEMP_FILE" || return 1
-    #echo "$LOCAL_TEMP_FILE"
+    local SSH="$1"
+    local FILE="$2"
+    export FILE_REMOTE="/tmp/`basename "$FILE"`.$$"
+    test -n "$3" && FILE_REMOTE="$3"
+    file_delete "$FILE_REMOTE"
+    $SCPq "$SSH":"$FILE" "$FILE_REMOTE" || return 1
 }
 
-function put_remote_file
+function file_remote_put
 # $1 ssh connect: user@host
 # $2 remote file
+# $3 local file
 {
-    local REMOTE_SSH="$1"
-    local REMOTE_FILE="$2"
-    LOCAL_TEMP_FILE="/tmp/`basename "$REMOTE_FILE"`.$$"
-    scp -q "$LOCAL_TEMP_FILE" "$REMOTE_SSH":"$REMOTE_FILE" || return 1
-    file_delete "$LOCAL_TEMP_FILE"
+    local SSH="$1"
+    local FILE="$2"
+    export FILE_REMOTE="/tmp/`basename "$FILE"`.$$"
+    test -n "$3" && FILE_REMOTE="$3"
+    $SCPq "$FILE_REMOTE" "$SSH":"$FILE" || return 1
+    file_delete "$FILE_REMOTE"
 }
 
-function file_line_remove
+function file_line_remove_local
 # $1 filename
 # $2 remove regexp
 {
     local FILE="$1"
     local TEMP_FILE="/tmp/`basename "$FILE"`.tmp"
     local REGEXP="$2"
+    local ERROR_MSG="Remove line \"$REGEXP\" from file `echo_quote "$FILE"` fail"
     if test -r "$FILE"
     then
-        cat "$FILE" > "$TEMP_FILE"
+        cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG" $OPTION_DEFAULT_ERROR_CODE
         if diff "$FILE" "$TEMP_FILE" > /dev/null 2> /dev/null
         then
             cat "$TEMP_FILE" 2> /dev/null | $GREP --invert-match "$REGEXP" > "$FILE" 2> /dev/null
             file_delete "$TEMP_FILE"
         else
             file_delete "$TEMP_FILE"
-            echo_error_function "$FILE line \"$REGEXP\" remove fail" $OPTION_DEFAULT_ERROR_CODE
+            echo_error_function "$ERROR_MSG" $OPTION_DEFAULT_ERROR_CODE
         fi
     fi
 }
 
-function file_line_add
+function file_line_add_local
 # $1 filename
 # $2 add this line
 # $3 add after this regexp line (or if not found put at end of file)
@@ -439,14 +460,15 @@ function file_line_add
     local LINE="$2"
     local REGEXP_AFTER="$3"
     local REGEXP_REPLACE="$4"
+    local ERROR_MSG="Add line \"$LINE\" to file `echo_quote "$FILE"` fail"
 
     test -e "$FILE" || touch "$FILE"
 
     if test -z "$REGEXP_AFTER$REGEXP_REPLACE"
     then
-        command echo "$LINE" >> "$FILE"
+        command echo "$LINE" >> "$FILE" || echo_error_function "$ERROR_MSG" $OPTION_DEFAULT_ERROR_CODE
     else
-        cat "$FILE" > "$TEMP_FILE"
+        cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG" $OPTION_DEFAULT_ERROR_CODE
         if test -n "$REGEXP_REPLACE" && `cat "$TEMP_FILE" | $AWK 'BEGIN { f=1; } /'"$REGEXP_REPLACE"'/ { f=0; } END { exit f; }'`
         then
             cat "$TEMP_FILE" | $AWK --assign=line="$LINE" 'BEGIN { p=0; gsub(/\n/, "\\n", line); } p==0&&/'"$REGEXP_REPLACE"'/ { p=1; print line; next } { print; } END { if (p==0) print line; }' > "$FILE"
@@ -462,12 +484,12 @@ function file_line_add
         else
             cat "$TEMP_FILE" > "$FILE"
             file_delete "$TEMP_FILE"
-            echo_error_function "Add \"$LINE\" to `echo_quote "$FILE"` fail" $OPTION_DEFAULT_ERROR_CODE
+            echo_error_function "$ERROR_MSG" $OPTION_DEFAULT_ERROR_CODE
         fi
     fi
 }
 
-function file_line_set
+function file_line_set_local
 # $1 filename
 # $2 add this line (and check before if there is not present)
 # $3 add after this regexp line (or if not found put at end of file)
@@ -489,52 +511,81 @@ function file_line_set
 
 function file_line_add1
 {
-    file_line_set "$1" "$2" "$3" "$4"
+    file_line_set "$@"
 }
 
-function lr_file_line_add
-# $1 ssh connect: user@host
-# $* as for file_line_add1 function
+function file_line_remove
+# [--host <host>|-h <host>] - ssh connect: [user@]host
+# $* as for file_line_add_local function
 {
-    local REMOTE_SSH="$1"
-    shift
+    local HOST=""
+    if test "$1" = "-h" -o "$1" = "--host"
+    then
+        local HOST="$2"
+        shift 2
+    fi
 
     local FILE="$1"
-    local LINE="$2"
-    local REGEXP="$3"
-    
-    if is_localhost "`command echo "$REMOTE_SSH" | sed 's/^.*@//'`"
+    if is_localhost "${HOST#*@}"
     then
-        file_line_add1 "$FILE" "$LINE" "$REGEXP"
+        file_line_remove_local "$@"
     else
-        get_remote_file "$REMOTE_SSH" "$FILE"
-        #ls -la "$LOCAL_TEMP_FILE"
-        file_line_add "$FILE" "$LINE" "$REGEXP"
-        #ls -la "$LOCAL_TEMP_FILE"
-        put_remote_file "$REMOTE_SSH" "$FILE"
+        file_remote_get "$HOST" "$FILE" || echo_error_function "Can't retrieve `echo_quote "$FILE"` file from $HOST" $OPTION_DEFAULT_ERROR_CODE
+        #ls -la "$FILE_REMOTE"
+        shift
+        file_line_remove_local "$FILE_REMOTE" "$@"
+        #ls -la "$FILE_REMOTE"
+        file_remote_put "$HOST" "$FILE"
     fi
 }
 
-function lr_file_line_add1
-# $1 ssh connect: user@host
-# $* as for file_line_add1 function
+function file_line_add
+# [--host <host>|-h <host>] - ssh connect: [user@]host
+# $* as for file_line_add_local function
 {
-    local REMOTE_SSH="$1"
-    shift
+    local HOST=""
+    if test "$1" = "-h" -o "$1" = "--host"
+    then
+        local HOST="$2"
+        shift 2
+    fi
 
     local FILE="$1"
-    local LINE="$2"
-    local REGEXP="$3"
-    
-    if is_localhost "`command echo "$REMOTE_SSH" | sed 's/^.*@//'`"
+    if is_localhost "${HOST#*@}"
     then
-        file_line_add1 "$FILE" "$LINE" "$REGEXP"
+        file_line_add_local "$@"
     else
-        get_remote_file "$REMOTE_SSH" "$FILE"
-        #ls -la "$LOCAL_TEMP_FILE"
-        file_line_add1 "$LOCAL_TEMP_FILE" "$LINE" "$REGEXP"
-        #ls -la "$LOCAL_TEMP_FILE"
-        put_remote_file "$REMOTE_SSH" "$FILE"
+        file_remote_get "$HOST" "$FILE" || echo_error_function "Can't retrieve `echo_quote "$FILE"` file from $HOST" $OPTION_DEFAULT_ERROR_CODE
+        #ls -la "$FILE_REMOTE"
+        shift
+        file_line_add_local "$FILE_REMOTE" "$@"
+        #ls -la "$FILE_REMOTE"
+        file_remote_put "$HOST" "$FILE"
+    fi
+}
+
+function file_line_set
+# [--host <host>|-h <host>] - ssh connect: [user@]host
+# $* as for file_line_set_local function
+{
+    local HOST=""
+    if test "$1" = "-h" -o "$1" = "--host"
+    then
+        local HOST="$2"
+        shift 2
+    fi
+
+    local FILE="$1"
+    if is_localhost "${HOST#*@}"
+    then
+        file_line_set_local "$@"
+    else
+        file_remote_get "$HOST" "$FILE" || echo_error_function "Can't retrieve `echo_quote "$FILE"` file from $HOST" $OPTION_DEFAULT_ERROR_CODE
+        #ls -la "$FILE_REMOTE"
+        shift
+        file_line_set_local "$FILE_REMOTE" "$@"
+        #ls -la "$FILE_REMOTE"
+        file_remote_put "$HOST" "$FILE"
     fi
 }
 
@@ -653,16 +704,18 @@ function file_replace
         file_delete "$TEMP_FILE"
     fi
 }
+# __FILE_FUNCTIONS_END__
 
+# __NETWORK_FUNCTIONS_START__
 function check_ssh
 # $1 [user@]hostname
 # $2 check via local username
 {
     if test -z "$2"
     then
-        ssh -q -o "BatchMode=yes" -o "ConnectTimeout=5" "$1" "exit" 2> /dev/null
+        $SSHbq "$1" "exit" 2> /dev/null
     else
-        su - "$2" "ssh -q -o \"BatchMode=yes\" -o \"ConnectTimeout=5\" \"$1\" \"exit\" 2> /dev/null"
+        su - "$2" "$SSHbq \"$1\" \"exit\" 2> /dev/null"
     fi
     return $?
 }
@@ -707,13 +760,19 @@ function get_ip
 
 function is_localhost
 {
+    # simple basic test
+    test -z "$1" -o "$1" = "localhost" -o "$1" = "127.0.0.1" && return 0
+
+    # name test
     UNAME_N="`uname -n`"
+    #echo_debug_variable UNAME_N
+    test "$1" = "$UNAME_N" && return 0
+
+    # IP test
     UNAME_IP="`get_ip "$UNAME_N"`"
     REMOTE_IP="`get_ip "$1"`"
-
-    #echo_debug_variable UNAME_N UNAME_IP REMOTE_IP
-
-    test -z "$1" -o "$1" = "localhost" -o "$1" = "127.0.0.1" -o "$1" = "$UNAME_N" -o "$REMOTE_IP" = "$UNAME_IP" && return 0
+    #echo_debug_variable UNAME_IP REMOTE_IP
+    test "$REMOTE_IP" = "$UNAME_IP" && return 0
 
     return 1
 }
@@ -792,7 +851,7 @@ function ssh_scanremoteid
         local DEST_USER="${DEST_USER%@*}"
         local DEST_LOCAL_USER="${DEST_LOCAL_USER#*@}"
         echo_debug INFO "Use $USEID_FILE and scan via $DEST_USER @ $DEST_HOST to user $DEST_LOCAL_USER"
-        ssh -i $USEID_FILE $DEST_USER@$DEST_HOST "
+        $SSH -i $USEID_FILE $DEST_USER@$DEST_HOST "
             umask 077
             DEST_HOME=~$DEST_LOCAL_USER
             DEST_HOME_SSH=~$DEST_LOCAL_USER/.ssh
@@ -854,7 +913,7 @@ function ssh_exportid
         local DEST_USER="${DEST_USER%@*}"
         local DEST_LOCAL_USER="${DEST_LOCAL_USER#*@}"
         echo_debug INFO "Use $USEID_FILE and copy ${COPYID_FILE}.pub via $DEST_USER @ $DEST_HOST to user $DEST_LOCAL_USER"
-        cat "${COPYID_FILE}.pub" | ssh -i $USEID_FILE $DEST_USER@$DEST_HOST "
+        cat "${COPYID_FILE}.pub" | $SSH -i $USEID_FILE $DEST_USER@$DEST_HOST "
             umask 077
             DEST_HOME=~$DEST_LOCAL_USER
             DEST_HOME_SSH=~$DEST_LOCAL_USER/.ssh
@@ -924,12 +983,12 @@ function ssh_importid
 
         for TEST_FILE in "$DEST_HOME_SSH/id_rsa.pub" "$DEST_HOME_SSH/id_dsa.pub"
         do
-            ssh -i $USEID_FILE $DEST_USER@$DEST_HOST "test -f $TEST_FILE"
+            $SSH -i $USEID_FILE $DEST_USER@$DEST_HOST "test -f $TEST_FILE"
             test $? -eq 0 && DESTID_FILE="$TEST_FILE" && break
         done
         test -z "$DESTID_FILE" && return 2
 
-        scp -i $USEID_FILE $DEST_USER@$DEST_HOST:$DESTID_FILE $COPYID_HOME_SSH/id_import.pub > /dev/null 2>&1
+        $SCP -i $USEID_FILE $DEST_USER@$DEST_HOST:$DESTID_FILE $COPYID_HOME_SSH/id_import.pub > /dev/null 2>&1
         if test $? -eq 0
         then
             cat $COPYID_HOME_SSH/id_import.pub >> $COPYID_HOME_SSH_KEYS
@@ -942,6 +1001,7 @@ function ssh_importid
         fi
     done
 }
+# __NETWORK_FUNCTIONS_END__
 
 function call_command
 {
@@ -986,9 +1046,9 @@ function call_command
     else
         USER_SSH=""
         test -n "$USER" && USER_SSH="$USER@"
-        test_yes "$LOCAL_DEBUG" && echo_debug 1 "ssh $TOPT \"$USER_SSH$HOST\" \"$COMMAND_STRING\""
-        test "$LOCAL_DEBUG" = "right" && echo_debug_right "ssh $TOPT \"$USER_SSH$HOST\" \"$COMMAND_STRING\""
-        ssh $TOPT -o "GSSAPIAuthentication no" -o "BatchMode yes" "$USER_SSH$HOST" "$@"
+        test_yes "$LOCAL_DEBUG" && echo_debug 1 "$SSH $TOPT $USER_SSH$HOST \"$COMMAND_STRING\""
+        test "$LOCAL_DEBUG" = "right" && echo_debug_right "$SSH $TOPT $USER_SSH$HOST \"$COMMAND_STRING\""
+        $SSH $TOPT $USER_SSH$HOST "$@"
         EXIT_CODE=$?
     fi
 
@@ -2331,18 +2391,20 @@ export CHECK_ARG_SHIFT
 export -f check_arg_switch
 export -f check_arg_value
 
+export -f file_delete
 export FILE_PREPARE_USER=""
 export FILE_PREPARE_GROUP=""
 export -f file_prepare;     export -f prepare_file
 
-export -f get_remote_file
-export -f put_remote_file
+export -f file_remote_get
+export -f file_remote_put
 
+export -f file_line_remove_local
+export -f file_line_add_local
+export -f file_line_set_local
 export -f file_line_remove
-export -f file_line_add
-export -f file_line_set;    export -f file_line_add1
-export -f lr_file_line_add
-export -f lr_file_line_add1
+export -f file_line_add;        #export -f lr_file_line_add
+export -f file_line_set;        #export -f file_line_add1
 
 export -f file_config_set
 export -f file_config_get

@@ -236,24 +236,48 @@ function insert_cmd
 
 function assign
 {
-    #export -n "$1"+="$2" !!!WHY?!!!
-    #echo printf -v "$1" '%s' "$2"
-    printf -v "$1" '%s' "$2"
+    test $# = 2 && printf -v "$1" '%s' "$2" && return 0
+    test $# = 1 && printf -v "${1%%=*}" '%s' "${1#*=}" && return 0
+    echo_error_function "Wrong arguments count: $#"
 }
 
 function assign_array
 {
-    array_convert "$2" > /dev/null
-    eval "$1"="$ARRAY_CONVERT"
+    test $# = 2 && eval "$1"="$2" && return 0
+    test $# = 1 && eval "${1%%=*}"="${1#*=}" && return 0
+    echo_error_function "Wrong arguments count: $#"
 }
 
 function array_convert
 {
-    local TMP="$@"
-    test_str "$TMP" "^[(].*[)]$" && ARRAY_CONVERT="$TMP" && echo "$ARRAY_CONVERT" && return 0
-    test_str "$TMP" "^[[].*[]]$" && TMP="${TMP:1:${#TMP}-2}" && ARRAY_CONVERT="(\"${TMP//,/\" \"}\")" && echo "$ARRAY_CONVERT" && return 0
-    test_str "$TMP" "^[{].*[}]$" && TMP="${TMP:1:${#TMP}-2}" && ARRAY_CONVERT="(\"${TMP//:/\" \"}\")" && echo "$ARRAY_CONVERT" && return 0
-    ARRAY_CONVERT="($TMP)" && echo "$ARRAY_CONVERT" && return 0
+    if test $# = 2
+    then
+        local VAR="$1"
+        local TMP="$2"
+    elif test $# = 1
+    then
+        local VAR=""
+        local TMP="$1"
+    else
+        echo_error_function "Wrong arguments count: $#"
+    fi
+
+    if test_str "$TMP" "^[(].*[)]$"
+    then
+        ARRAY_CONVERT="$TMP"
+    elif test_str "$TMP" "^[[].*[]]$"
+    then
+        TMP="${TMP:1:${#TMP}-2}"
+        ARRAY_CONVERT="(\"${TMP//,/\" \"}\")"
+    elif test_str "$TMP" "^[{].*[}]$"
+    then
+        TMP="${TMP:1:${#TMP}-2}"
+        ARRAY_CONVERT="(\"${TMP//:/\" \"}\")"
+    else
+        ARRAY_CONVERT="($TMP)"
+    fi
+    test -n "$VAR" && assign "$VAR=$ARRAY_CONVERT" || command echo -n "$ARRAY_CONVERT"
+    return 0
 }
 
 #NAMESPACE/string/start
@@ -264,7 +288,7 @@ function str_trim
     #echo "STR=$STR"
     STR="${STR#"${STR%%[![:space:]]*}"}"   # delete leading whitespace characters
     STR="${STR%"${STR##*[![:space:]]}"}"   # delete trailing whitespace characters
-    test -n "${!@+exist}" && assign "${@}" "$STR" || echo -n "$STR"
+    test -n "${!@+exist}" && assign "${@}" "$STR" || command echo -n "$STR"
 }
 
 function str_word
@@ -304,7 +328,7 @@ function str_word
             ;;
     esac
 
-    test -n "${!2+exist}" && assign "$2" "$STR" || echo -n "$STR"
+    test -n "${!2+exist}" && assign "$2" "$STR" || command echo -n "$STR"
 }
 
 function str_parse_url
@@ -426,24 +450,38 @@ function arguments
 {
     case "$1" in
         init)
-            ARGUMENTS_SHIFTS[$ARGUMENTS_SHIFTS_I]=$ARGUMENTS_SHIFT
-            let ARGUMENTS_SHIFTS_I++
+            ARGUMENTS_STORE[$ARGUMENTS_STORE_I]="$ARGUMENTS_SHIFT|$ARGUMENTS_OPTION_FOUND|$ARGUMENTS_SWITCHES_FOUND"
+            let ARGUMENTS_STORE_I++
             ;;
         done)
-            let ARGUMENTS_SHIFTS_I--
-            ARGUMENTS_SHIFT=${ARGUMENTS_SHIFTS[$ARGUMENTS_SHIFTS_I]}
-            unset ARGUMENTS_SHIFTS[$ARGUMENTS_SHIFTS_I]
+            let ARGUMENTS_STORE_I--
+            ARGUMENTS_SHIFT=${ARGUMENTS_STORE[$ARGUMENTS_STORE_I]%%|*}
+            ARGUMENTS_OPTION_FOUND="${ARGUMENTS_STORE[$ARGUMENTS_STORE_I]#*|}"
+            ARGUMENTS_OPTION_FOUND="${ARGUMENTS_OPTION_FOUND%|*}"
+            ARGUMENTS_SWITCHES_FOUND="${ARGUMENTS_STORE[$ARGUMENTS_STORE_I]##*|}"
+            unset ARGUMENTS_STORE[$ARGUMENTS_STORE_I]
             ;;
         loop)
             ARGUMENTS_SHIFT=0
             set_no ARGUMENTS_OPTION_FOUND
+            ARGUMENTS_SWITCHES_FOUND=""
             ;;
         shift)
+            if test -n "$ARGUMENTS_SWITCHES_FOUND"
+            then # test for unrecognized switches
+                #echo_debug_variable ARGUMENTS_SWITCHES_FOUND
+                local SWITCHES_ARGUMENT="${ARGUMENTS_SWITCHES_FOUND%;*}"
+                local SWITCHES_FOUND="${ARGUMENTS_SWITCHES_FOUND#*;}"
+                SWITCHES_ARGUMENT_UNKNOWN="${SWITCHES_ARGUMENT//[$SWITCHES_FOUND]/}"
+                test -n "$SWITCHES_ARGUMENT_UNKNOWN" && echo_error "Unknown switches: $SWITCHES_ARGUMENT_UNKNOWN in -$SWITCHES_ARGUMENT" $ERROR_CODE_DEFAULT
+                let ARGUMENTS_SHIFT++
+            fi
             test $ARGUMENTS_SHIFT -ne 0 && return $?
             ;;
         check)
             shift
             arguments_check "$@"
+            ;;
     esac
 }
 
@@ -506,11 +544,12 @@ function arguments_check
         tester)
             local ARG_TEST="$1"
             local ARG_OPTION="$2"
+            local RESULT=0
             if test -n "$ARG_TEST"
             then
                 if test_array "$ARG_TEST"
                 then
-                    array_convert "$ARG_TEST" > /dev/null
+                    array_convert ARG_TEST "$ARG_TEST"
                     ARG_TEST="${ARG_TEST:1:${#ARG_TEST}-2}"
                     str_word check ARG_TEST "$ARG_OPTION" || echo_error "Argument `echo_quote "$ARG_OPTION"` is not supported. Available: $ARG_TEST" $ERROR_CODE_DEFAULT
                 else
@@ -518,10 +557,11 @@ function arguments_check
                     for TEST in $ARG_TEST
                     do
                         arguments_tester_$TEST "$@"
+                        test_ne0 && RESULT=1
                     done
                 fi
             fi
-            return 0
+            return $RESULT
             ;;
         *)  arguments_check_$CHECK "$@"
             return $?
@@ -531,10 +571,17 @@ function arguments_check
     case "$CHECK" in
         switch)
             if test "$1" = "--$ARG_LONG" -o "$1" = "-$ARG_SHORT"
-            then
+            then # single long or single short switch
                 test -n "$ARG_VAR" && assign "$ARG_VAR" "$ARG_VALUE"
-                ARGUMENTS_SHIFT+=1
+                let ARGUMENTS_SHIFT++
                 #echo_debug_variable ARG_SHORT ARG_LONG ARG_VAR ARG_VALUE $ARG_VAR
+                return 0
+            fi
+            if test_str "$1" "^-[^-]" && test "${#1}" -ge 3 && test_str "$1" "$ARG_SHORT"
+            then # multiple short switches
+                test -n "$ARG_VAR" && assign "$ARG_VAR" "$ARG_VALUE"
+                test -z "$ARGUMENTS_SWITCHES_FOUND" && ARGUMENTS_SWITCHES_FOUND="${1:1};"
+                ARGUMENTS_SWITCHES_FOUND="${ARGUMENTS_SWITCHES_FOUND}$ARG_SHORT"
                 return 0
             fi
             ;;
@@ -543,27 +590,24 @@ function arguments_check
             then
                 if test $# -eq 1
                 then
-                    test -n "$ARG_VAR" && assign "$ARG_VAR" "$ARG_VALUE"
-                    #echo_error "Missing value for argument \"$1\"" $ERROR_CODE_DEFAULT
+                    echo_error "Missing value for argument \"$1\"" $ERROR_CODE_DEFAULT
                 elif test "${2:0:1}" != "-"
                 then
                     test -n "$ARG_VAR" && assign "$ARG_VAR" "$2"
-                    ARGUMENTS_SHIFT+=1
+                    let ARGUMENTS_SHIFT++
                 else
-                    assign "$ARG_VAR" "$ARG_VALUE"
+                    echo_error "Missing value for argument \"$1\"" $ERROR_CODE_DEFAULT
                 fi
-                shift && arguments_check tester "$ARG_TEST" "$@"
-                ARGUMENTS_SHIFT+=1
-                echo_debug_variable ARG_SHORT ARG_LONG ARG_VAR $ARG_VAR ARG_TEST
+                shift && arguments_check tester "$ARG_TEST" "$@" && let ARGUMENTS_SHIFT++
+                #echo_debug_variable ARG_SHORT ARG_LONG ARG_VAR $ARG_VAR ARG_TEST
                 return 0
             fi
 
             if test "${1%%=*}" = "--$ARG_LONG"
             then
                 assign "$ARG_VAR" "${1#*=}"
-                shift && arguments_check tester "$ARG_TEST" "${!ARG_VAR}" "$@"
-                ARGUMENTS_SHIFT+=1
-                echo_debug_variable ARG_SHORT ARG_LONG ARG_VAR $ARG_VAR ARG_TEST
+                shift && arguments_check tester "$ARG_TEST" "${!ARG_VAR}" "$@" && let ARGUMENTS_SHIFT++
+                #echo_debug_variable ARG_SHORT ARG_LONG ARG_VAR $ARG_VAR ARG_TEST
                 return 0
             fi
             ;;
@@ -572,10 +616,8 @@ function arguments_check
             test "${1:0:1}" = "-" && return 1
             test -n "${!ARG_VAR}" && return 1
             test -n "$ARG_VAR" && assign "$ARG_VAR" "$1"
-            arguments_check tester "$ARG_TEST" "$@"
-            ARGUMENTS_SHIFT+=1
-            set_yes ARGUMENTS_OPTION_FOUND
-            echo_debug_variable ARG_VAR $ARG_VAR ARG_TEST
+            #echo_debug_variable ARG_VAR $ARG_VAR ARG_TEST
+            arguments_check tester "$ARG_TEST" "$@" && set_yes ARGUMENTS_OPTION_FOUND && let ARGUMENTS_SHIFT++
             return 0
             ;;
     esac
@@ -585,12 +627,12 @@ function arguments_check
 
 function arguments_check_info
 {
-    echo_debug INFO "Argument check for type info: $@"
+    echo_debug INFO "Argument check for type info: $1"
 }
 
 function arguments_tester_info
 {
-    echo_debug INFO "Argument tester for string: $@"
+    echo_debug INFO "Argument tester for string: $1"
 }
 
 function arguments_tester_file
@@ -1516,7 +1558,7 @@ function test_str_grep
 {
     local IGNORE_CASE=""
     test "$1" = "-i" -o "$1" = "--ignore-case" && IGNORE_CASE="--ignore-case" && shift
-    test $# != 2 && echo_error_function "Wrong arguments count"
+    test $# != 2 && echo_error_function "Wrong arguments count: $#"
 
     command echo "$1" | $GREP --quiet --extended-regexp $IGNORE_CASE "$2"
     return $?
@@ -1528,7 +1570,7 @@ function test_str
 {
     local IGNORE_CASE=""
     test "$1" = "-i" -o "$1" = "--ignore-case" && IGNORE_CASE="yes" && shift
-    test $# != 2 && echo_error_function "Wrong arguments count"
+    test $# != 2 && echo_error_function "Wrong arguments count: $#"
 
     #test -n "$IGNORE_CASE" && local SHOPT="`shopt -p nocasematch`" && shopt -s nocasematch
     test -n "$IGNORE_CASE" && shopt -s nocasematch
@@ -1543,7 +1585,7 @@ function test_file
 # $1 regexp string to test
 # $2 filename
 {
-    test $# != 2 && echo_error_function "Wrong arguments count"
+    test $# != 2 && echo_error_function "Wrong arguments count: $#"
 
     test -f "$2" || return 1
 
@@ -2633,7 +2675,7 @@ function tools_init
     SCRIPT_FILE="`readlink --canonicalize "$0"`"
     SCRIPT_FILE_NOEXT="${SCRIPT_FILE_NOEXT%.sh}"
     SCRIPT_FILE_NOEXT="${SCRIPT_FILE%.}"
-    SCRIPT_NAME="`basename "$0"`"
+    SCRIPT_NAME="`basename "$SCRIPT_FILE"`"
     SCRIPT_FILE_NOEXT="${SCRIPT_NAME_NOEXT%.sh}"
     SCRIPT_FILE_NOEXT="${SCRIPT_NAME%.}"
     SCRIPT_DIR="`dirname "$SCRIPT_FILE"`"
@@ -2747,10 +2789,11 @@ declare -x -f str_parse_args
 declare -x -f str_get_arg
 declare -x -f str_get_arg_from
 
-declare -x -a ARGUMENTS_SHIFTS=()
-declare -x -i ARGUMENTS_SHIFTS_I=0
+declare -x -a ARGUMENTS_STORE=()        # only internal use
+declare -x -i ARGUMENTS_STORE_I=0       # only internal use
 declare -x -i ARGUMENTS_SHIFT=0
-declare -x    ARGUMENTS_OPTION_FOUND
+declare -x    ARGUMENTS_OPTION_FOUND    # only internal use
+declare -x    ARGUMENTS_SWITCHES_FOUND  # only internal use
 declare -x -f arguments             # init / done / loop / shift / check
 #declare -x -f arguments_check_${type}
 declare -x -f arguments_check       # switch / value / option / tools
@@ -2758,6 +2801,10 @@ declare -x -f arguments_check_info
 declare -x -f arguments_check_tools # checks for standard tools.sh arguments
 #declare -x -f arguments_tester_${check}
 declare -x -f arguments_tester_info
+declare -x -f arguments_tester_file_exist
+declare -x -f arguments_tester_file_read
+declare -x -f arguments_tester_file_write
+declare -x -f arguments_tester_ping
 
 declare -x -f file_temporary_name
 declare -x -f file_delete

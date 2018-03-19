@@ -9,12 +9,32 @@
 
 export INCLUDE_TOOLS="yes"
 
-if test "`uname`" = "SunOS"
+#!/bin/bash
+
+#"Linux RedHat CentOS"
+#"Linux SuSE openSUSE"
+
+function fill_unix_type
+{
+    test $# -eq 3 && UNIX_TYPE="$1" && shift
+    UNIX_DISTRO_MAIN="$1"
+    UNIX_DISTRO_SUB="$2"
+}
+
+fill_unix_type "`uname`" "" ""
+
+test -f "/etc/SuSE-release" && fill_unix_type "SuSE" "`awk 'BEGIN { FS="="; } /^NAME=/ { print $2; }' "/etc/os-release"`"
+test -f "/etc/SuSE-release" && fill_unix_type "SuSE" "`awk '/SUSE Linux Enterprise Server/ { print "SLES"; }' /openSUSE/ { print "openSUSE"; }"/etc/SuSE-release"`"
+test -f "/etc/redhat-release" && fill_unix_type "RedHat" "`awk '/Red Hat Enterprise Linux Server/ { print "RHEL"; }' "/etc/redhat-release"`"
+test -f "/etc/centos-release" && fill_unix_type "RedHat" "CentOS"
+test -f "/etc/OEL-release" && fill_unix_type "RedHat" "OEL"
+
+if test "$UNIX_TYPE" = "SunOS"
 then
     export AWK="/usr/bin/nawk"
     export GREP="/usr/xpg4/bin/grep"
 fi
-if test "`uname`" = "Linux"
+if test "$UNIX_TYPE" = "Linux"
 then
     export AWK="/bin/awk"
     export GREP="/bin/grep"
@@ -44,7 +64,7 @@ function query
         QUERY="$QUESTION (default: $DEFAULT)"
     fi
 
-    if test "`uname`" = "SunOS"
+    if test "$UNIX_TYPE" = "SunOS"
     then
         OK="no"
         until test "$OK" = "ok"
@@ -71,7 +91,7 @@ function query
         done
     fi
 
-    if test "`uname`" = "Linux"
+    if test "$UNIX_TYPE" = "Linux"
     then
         OK="no"
         until test "$OK" = "ok"
@@ -443,7 +463,7 @@ function check_internet
 function get_ip_arp
 {
     local GET_IP_ARP="`arp "$1" 2> /dev/null | "$AWK" 'BEGIN { FS="[()]"; } { print $2; }'`"
-    if test "`uname`" = "Linux" -a -z "$GET_IP_ARP"
+    if test "$UNIX_TYPE" = "Linux" -a -z "$GET_IP_ARP"
     then
         GET_IP_ARP="`arp -n "$1" | "$AWK" '/ether/ { print $1; }'`"
     fi
@@ -452,14 +472,8 @@ function get_ip_arp
 
 function get_ip_ping
 {
-    if test "`uname`" = "SunOS"
-    then
-        ping -s "$1" 1 1 | grep "bytes from" | "$AWK" 'BEGIN { FS="[()]"; } { print $2; }'
-    fi
-    if test "`uname`" = "Linux"
-    then
-        ping -q -c 1 -t 1 "$1" | grep PING | "$AWK" 'BEGIN { FS="[()]"; } { print $2; }'
-    fi
+    test "$UNIX_TYPE" = "SunOS" && ping -s "$1" 1 1 | grep "bytes from" | "$AWK" 'BEGIN { FS="[()]"; } { print $2; }'
+    test "$UNIX_TYPE" = "Linux" && ping -q -c 1 -t 1 "$1" | grep PING | "$AWK" 'BEGIN { FS="[()]"; } { print $2; }'
 }
 
 function get_ip
@@ -480,10 +494,7 @@ function is_localhost
 
     #echo_debug_variable UNAME_N UNAME_IP REMOTE_IP
 
-    if test -z "$1" -o "$1" = "localhost" -o "$1" = "127.0.0.1" -o "$1" = "$UNAME_N" -o "$REMOTE_IP" = "$UNAME_IP"
-    then
-        return 0
-    fi
+    test -z "$1" -o "$1" = "localhost" -o "$1" = "127.0.0.1" -o "$1" = "$UNAME_N" -o "$REMOTE_IP" = "$UNAME_IP" && return 0
 
     return 1
 }

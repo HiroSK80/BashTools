@@ -405,6 +405,9 @@ function file_line_set
     if ! "$GREP" --quiet --line-regexp --fixed-strings -- "$LINE" "$FILE"
     then
         file_line_add "$FILE" "$LINE" "$REGEXP_AFTER" "$REGEXP_REPLACE"
+        return 1
+    else
+        return 0
     fi
 }
 
@@ -835,7 +838,7 @@ function kill_tree_childs
     done
     if test_yes "$TOPMOST" -a "$CHECK_PID" != "$$"
     then
-        test_yes "$ECHO_KILL" && echo "Killing process with $CHECK_PID PID" && ps -ef | awk --assign p="$CHECK_PID" '$2==p { print "Killed: "$0; }'
+        test_yes "$ECHO_KILL" && echo_line "Killing process with $CHECK_PID PID" && ps -ef | awk --assign p="$CHECK_PID" '$2==p { print "Killed: "$0; }' | echo_output
         kill -9 "$CHECK_PID" 2>/dev/null
     fi
 }
@@ -867,6 +870,11 @@ function fd_find_free
         fd_check $FILE_FD || break
     done
     echo $FILE_FD
+}
+
+function test_ne0
+{
+    test $? -ne 0
 }
 
 function fill_command_options
@@ -916,7 +924,17 @@ function test_str
 {
     test "$#" != "2" && echo_error_function "test_str" "Wrong parameters count"
 
-    echo "$1" | egrep --quiet "$2"
+    /bin/echo "$1" | grep --quiet --extended-regexp "$2"
+    return $?
+}
+
+function test_file
+# $1 string to test
+# $2 regexp
+{
+    test "$#" != "2" && echo_error_function "test_file" "Wrong parameters count"
+
+    grep --quiet --extended-regexp "$1" "$2"
     return $?
 }
 
@@ -982,7 +1000,7 @@ function cursor_get_position
 {
     if test -t 1
     then
-        echo -en "\033[6n"
+        /bin/echo -en "\033[6n"
         read -s -d "R" CURSOR_POSITION
         CURSOR_POSITION="${CURSOR_POSITION#*[}"
     else
@@ -1049,7 +1067,7 @@ function show_output
         count==0 { line=current; count++; next; }
         count==1 { print prefix line; line=current; count=1; next; }
         count>1 { print prefix line " ("count"x)"; line=current; count=1; next; }
-        END { if (count>1) p=" ("count"x)"; else p=""; print prefix line p; }' | log_output
+        END { if (count>1) p=" ("count"x)"; else p=""; print prefix line p; }' | echo_output
 }
 
 function log_output
@@ -1058,8 +1076,18 @@ function log_output
     IFS=''
     while read LINE
     do
-        echo "$LINE"
         echo_log "$LINE"
+    done
+    IFS="$BACKUP_IFS"
+}
+
+function echo_output
+{
+    BACKUP_IFS="$IFS"
+    IFS=''
+    while read LINE
+    do
+        echo_line "$LINE"
     done
     IFS="$BACKUP_IFS"
 }
@@ -1072,13 +1100,17 @@ LOG_SPACE=""
 function log_file_init
 {
     local LOG_TITLE="$0 - Log file init"
-    test $# -eq 2 && LOG_TITLE="$1" && shift
-    test -n "$1" && LOG_FILE="$1"
-    test -z "$LOG_FILE" && echo_error_function "log_file_init" "Log file is not specified"
+
+    while test $# -gt 0
+    do
+        test "${1:0:1}" = "/" && LOG_FILE="$1" || LOG_TITLE="$1"
+        shift
+    done
+    test -z "$LOG_FILE" && LOG_FILE="`echo "$0" | sed --regexp-extended --expression='s:(|\.|\.sh)$:.log:'`"
 
     prepare_file "$LOG_FILE"
-    echo "$LOG_SECTION" >> "$LOG_FILE"
-    echo "`date +"$LOG_DATE"` $LOG_TITLE" >> "$LOG_FILE"
+    /bin/echo "$LOG_SECTION" >> "$LOG_FILE"
+    /bin/echo "`date +"$LOG_DATE"` $LOG_TITLE" >> "$LOG_FILE"
 }
 
 function log_file_done
@@ -1088,8 +1120,8 @@ function log_file_done
     test -z "$LOG_FILE" && echo_error_function "log_file_done" "Log file is not specified"
 
     prepare_file "$LOG_FILE"
-    echo "`date +"$LOG_DATE"` $LOG_TITLE" >> "$LOG_FILE"
-    echo "$LOG_SECTION" >> "$LOG_FILE"
+    /bin/echo "`date +"$LOG_DATE"` $LOG_TITLE" >> "$LOG_FILE"
+    /bin/echo "$LOG_SECTION" >> "$LOG_FILE"
 }
 
 function echo_log
@@ -1098,12 +1130,18 @@ function echo_log
 
     prepare_file "$LOG_FILE"
     #echo "${LOG_SPACE}$@" | sed --expression='s/\\n/\n                    /g' --expression='s/^/                    /g' >> "$LOG_FILE"
-    echo "${LOG_SPACE}$@" | pipe_remove_color >> "$LOG_FILE"
+    /bin/echo "${LOG_SPACE}$@" | pipe_remove_color >> "$LOG_FILE"
 }
 
 # echo $TERM
 # ok xterm/rxvt/konsole/linux
 # no dumb/sun
+
+function echo_line
+{
+    /bin/echo "$@"
+    echo_log "$@"
+}
 
 function echo_info
 {
@@ -1189,9 +1227,9 @@ function echo_debug_right
 
         cursor_get_position
         #tput sc
-        echo -e "\r\c" >&$REDIRECT_DEBUG
+        /bin/echo -e "\r\c" >&$REDIRECT_DEBUG
         test $SHIFT_MESSAGE -ge 25 && tput cuu1 >&$REDIRECT_DEBUG && tput cuf $SHIFT_MESSAGE >&$REDIRECT_DEBUG
-        echo -e "${COLOR_DEBUG}$DEBUG_MESSAGE${COLOR_RESET}" >&$REDIRECT_DEBUG
+        /bin/echo -e "${COLOR_DEBUG}$DEBUG_MESSAGE${COLOR_RESET}" >&$REDIRECT_DEBUG
         #tput rc
         let CURSOR_COLUMN--
         test $CURSOR_COLUMN -ge 1 && tput cuf $CURSOR_COLUMN >&$REDIRECT_DEBUG
@@ -1223,8 +1261,10 @@ function echo_debug_function
 {
     if check_debug function
     then
-        FUNCTION_INFO="<<< ${FUNCNAME[@]} $@"
+        FUNCTION_INFO="${FUNCNAME[@]}"
         FUNCTION_INFO="${FUNCTION_INFO/echo_debug_function /}"
+        FUNCTION_INFO="${FUNCTION_INFO/ /($@) }"
+        FUNCTION_INFO="<<< $FUNCTION_INFO"
         if test_yes "$OPTION_COLOR"
         then
             echo -e "${COLOR_DEBUG}${ECHO_PREFIX}${ECHO_UNAME}${FUNCTION_INFO}${COLOR_RESET}" >&$REDIRECT_DEBUG
@@ -1233,7 +1273,7 @@ function echo_debug_function
         fi
     fi
 
-    echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}${FUNCTION_INFO}$@"
+    echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}${FUNCTION_INFO}"
 }
 
 function echo_debug_funct
@@ -1254,7 +1294,7 @@ function echo_error
         echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!" >&$REDIRECT_ERROR
     fi
 
-    echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!"
+    #echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!"
 
     test -n "$EXIT_CODE" && exit $EXIT_CODE
     return 0
@@ -1295,7 +1335,7 @@ function echo_warning
         echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}." >&$REDIRECT_WARNING
     fi
 
-    echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}."
+    #echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}."
 
     test -n "$EXIT_CODE" && exit $EXIT_CODE
 }
@@ -1401,12 +1441,14 @@ export -f kill_tree
 export -f fd_check
 export -f fd_find_free
 
+export -f test_ne0
 export -f fill_command_options
 export -f test_boolean
 export -f test_yes
 export -f test_no
 export -f test_integer
 export -f test_str
+export -f test_file
 export -f test_cmd
 export -f test_cmd_z
 export -f test_opt
@@ -1430,11 +1472,14 @@ export SHOW_OUTPUT_HIDELINES="" # regexp to hide lines
 export SHOW_OUTPUT_COMMAND=""
 export SHOW_OUTPUT_DEDUPLICATE="yes"
 export -f show_output
+export -f log_output
+export -f echo_output
 
 export -f log_file_init
 export -f log_file_done
 export -f echo_log
 
+export -f echo_line
 export -f echo_info
 export -f echo_step
 export -f echo_substep
@@ -1457,6 +1502,7 @@ do
     check_arg_init
     check_arg_switch "d|debug" "OPTION_DEBUG|yes" "$@" && set_debug right
     check_arg_switch "|debug-right" "OPTION_DEBUG|right,$OPTION_DEBUG" "$@"
+    check_arg_switch "|debug-function" "OPTION_DEBUG|function,$OPTION_DEBUG" "$@"
     check_arg_switch "p|prefix" "OPTION_PREFIX|yes" "$@"
     check_arg_value "c|color" "OPTION_COLOR" "$@"
     check_arg_value "u|uname" "OPTION_UNAME" "$@"

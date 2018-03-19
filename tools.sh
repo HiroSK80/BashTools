@@ -267,6 +267,43 @@ function check_arg_value
     return 1
 }
 
+function prepare_file
+{
+    local FILE=""
+    local EMPTY="no"
+    local ROLL="no"
+    local USER=""
+    local GROUP=""
+    while test $# -gt 0
+    do
+        CHECK_ARG_SHIFT=0
+        check_arg_switch "e|empty" "EMPTY|yes" "$@"
+        check_arg_switch "r|roll" "ROLL|yes" "$@"
+        test $CHECK_ARG_SHIFT -ne 0 && shift $CHECK_ARG_SHIFT && continue
+        test -z "$FILE" && FILE="$1" && shift && continue
+        echo_error_function "prepare_file" "Unknown argument: $1" 1
+    done
+    test -z "$FILE" && echo_error_function "prepare_file" "Filename is not specified: $1" 1
+
+    if test "$ROLL" = "yes"
+    then
+        test -f "$FILE-9" && rm -f "$FILE-9"
+        for N in 8 7 6 5 4 3 2 1
+        do
+            let N1=N+1
+            test -f "$FILE-$N" && mv "$FILE-$N" "$FILE-$N1"
+        done
+        test -f "$FILE" && mv "$FILE" "$FILE-1"
+    fi
+
+    test "$EMPTY" = "yes" && rm -f "$FILE"
+
+    touch "$FILE"
+    chmod ug+w "$FILE" 2> /dev/null
+    chgrp  "$FILE" 2> /dev/null
+    chown  "$FILE" 2> /dev/null
+}
+
 function get_remote_file
 # $1 ssh connect: user@host
 # $2 remote file
@@ -873,10 +910,10 @@ function test_str
 # $1 string to test
 # $2 regexp
 {
-    test "$#" != "2" && echo_error "tools: test_str function wrong parameters count"
+    test "$#" != "2" && echo_error_function "test_str" "Wrong parameters count"
 
     echo "$1" | egrep --quiet "$2"
-    return "$?"
+    return $?
 }
 
 function test_cmd
@@ -892,7 +929,7 @@ function test_cmd
     fi
 
     echo "$CMD" | egrep --quiet "$1"
-    return "$?"
+    return $?
 }
 
 function test_cmd_z
@@ -961,24 +998,84 @@ function cursor_move_down
 }
 
 function show_output
+# -c <command> | --command=<command>
+# -p <prefix> | --prefix=<prefix>
 {
     local PREFIX="$SHOW_OUTPUT_PREFIX"
     local HIDELINES="$SHOW_OUTPUT_HIDELINES"
-    test -n "$1" && HIDELINES="$1"
+    local COMMAND="$SHOW_OUTPUT_COMMAND"
+
+    while test $# -gt 0
+    do
+        CHECK_ARG_SHIFT=0
+        check_arg_value "p|prefix" "PREFIX" "$@"
+        check_arg_value "c|command" "COMMAND" "$@"
+        test $CHECK_ARG_SHIFT -ne 0 && shift $CHECK_ARG_SHIFT && continue
+        test -z "$HIDELINES" && HIDELINES="$1" && shift && continue
+        echo_error_function "show_output" "Unknown argument: $1" 1
+    done
 
     #while read LINE
     #do
     #    echo "$PREFIX$LINE"
     #done
 
-    awk --assign=x="$PREFIX" --assign=h="$HIDELINES" '
-        BEGIN { l=""; c=0; }
-        h!="" && $0~h { next; }
-        $0==l { c++; next; }
-        c==0 { l=$0; c++; next; }
-        c==1 { print x l; l=$0; c=1; next; }
-        c>1 { print x l " ("c"x)"; l=$0; c=1; next; }
-        END { if (c>1) p=" ("c"x)"; else p=""; print x l p; }'
+    awk --assign=prefix="$PREFIX" --assign=hideline="$HIDELINES" --assign=command="$COMMAND" '
+        BEGIN { line=""; count=0; }
+        command=="" { current=$0; }
+        command!="" {
+            current="";
+            cmd = command " \"" $0 "\"";
+            while (cmd | getline cmd_line) {
+                current=current cmd_line;
+            }
+            close(cmd)
+            #print $0 " -> " current;
+        }
+
+        hideline!="" && current~hideline { next; }
+        current==line { count++; next; }
+        count==0 { line=current; count++; next; }
+        count==1 { print prefix line; line=current; count=1; next; }
+        count>1 { print prefix line " ("count"x)"; line=current; count=1; next; }
+        END { if (count>1) p=" ("count"x)"; else p=""; print prefix line p; }' | log_output
+}
+
+function log_output
+{
+    BACKUP_IFS="$IFS"
+    IFS=''
+    while read LINE
+    do
+        echo "$LINE"
+        echo_log "$LINE"
+    done
+    IFS="$BACKUP_IFS"
+}
+
+LOG_FILE=""
+LOG_DATE="%Y-%m-%d %H:%M:%S"
+LOG_SECTION="====================================================="
+LOG_SPACE=""
+
+function init_log_file
+{
+    test $# -eq 2 && LOG_TITLE="$1" && shift
+    test -n "$1" && LOG_FILE="$1"
+    test -z "$LOG_FILE" && echo_error_function "init_log_file" "Log file is not specified"
+
+    prepare_file "$LOG_FILE"
+    echo "$LOG_SECTION" >> "$LOG_FILE"
+    echo "`date +"$LOG_DATE"` $LOG_TITLE" >> "$LOG_FILE"
+}
+
+function echo_log
+{
+    test -z "$LOG_FILE" && return
+
+    prepare_file "$LOG_FILE"
+    #echo "${LOG_SPACE}$@" | sed --expression='s/\\n/\n                    /g' --expression='s/^/                    /g' >> "$LOG_FILE"
+    echo "${LOG_SPACE}$@" | sed --regexp-extended --expression="s/\x1B\[([0-9]{1,3}((;[0-9]{1,3})*)?)?[m|K]//g" --expression="s/\\\\033\[([0-9]{1,3}((;[0-9]{1,3})*)?)?[m|K]//g" >> "$LOG_FILE"
 }
 
 # echo $TERM
@@ -993,6 +1090,8 @@ function echo_info
     else
         echo "${ECHO_PREFIX}${ECHO_UNAME}$@"
     fi
+
+    echo_log "${ECHO_PREFIX}${ECHO_UNAME}$@"
 }
 
 function echo_step
@@ -1001,8 +1100,10 @@ function echo_step
     then
         echo -e "${COLOR_STEP}${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}$@${COLOR_RESET}"
     else
-        echo "${ECHO_PREFIX}${ECHO_UNAME}$@"
+        echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}$@"
     fi
+
+    echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}$@"
 }
 
 function echo_substep
@@ -1013,6 +1114,8 @@ function echo_substep
     else
         echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_SUBSTEP}$@"
     fi
+
+    echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_SUBSTEP}$@"
 }
 
 function set_debug
@@ -1044,6 +1147,8 @@ function echo_debug
             echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@" >&$REDIRECT_DEBUG
         fi
     fi
+
+    echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@"
 }
 
 function echo_debug_right
@@ -1069,6 +1174,8 @@ function echo_debug_right
         test $CURSOR_COLUMN -ge 1 && tput cuf $CURSOR_COLUMN >&$REDIRECT_DEBUG
         #test $SHIFT_MESSAGE -ge 15 || cursor_move_down
     fi
+
+    echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@"
 }
 
 function echo_debug_variable
@@ -1102,6 +1209,8 @@ function echo_debug_function
             echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}${FUNCTION_INFO}" >&$REDIRECT_DEBUG
         fi
     fi
+
+    echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}${FUNCTION_INFO}$@"
 }
 
 function echo_debug_funct
@@ -1122,13 +1231,32 @@ function echo_error
         echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!" >&$REDIRECT_ERROR
     fi
 
+    echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!"
+
     test -n "$EXIT_CODE" && exit $EXIT_CODE
+    return 0
+}
+
+function echo_error_ne0
+{
+    test $? -ne 0 && echo_error "$1" "$2"
 }
 
 function echo_error_exit
 {
     echo_error "$1"
     exit "$2"
+}
+
+function echo_error_function
+{
+    local EXIT_CODE=""
+    local ECHO_FUNCTION="$1"
+    shift
+    local ECHO_ERROR="$@"
+    test_integer "${@:(-1)}" && local EXIT_CODE=$2 && ECHO_ERROR="${@:1:${#@}-1}"
+
+    echo_error "[$ECHO_FUNCTION] $ECHO_ERROR" $EXIT_CODE
 }
 
 function echo_warning
@@ -1143,6 +1271,8 @@ function echo_warning
     else
         echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}." >&$REDIRECT_WARNING
     fi
+
+    echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}."
 
     test -n "$EXIT_CODE" && exit $EXIT_CODE
 }
@@ -1208,6 +1338,8 @@ export CHECK_ARG_SHIFT
 export -f check_arg_switch
 export -f check_arg_value
 
+export -f prepare_file
+
 export -f get_remote_file
 export -f put_remote_file
 
@@ -1269,8 +1401,12 @@ export -f cursor_move_down
 
 export SHOW_OUTPUT_PREFIX="  >  "
 export SHOW_OUTPUT_HIDELINES="" # regexp to hide lines
+export SHOW_OUTPUT_COMMAND=""
 export SHOW_OUTPUT_DEDUPLICATE="yes"
 export -f show_output
+
+export -f init_log_file
+export -f echo_log
 
 export -f echo_info
 export -f echo_step
@@ -1282,6 +1418,8 @@ export -f echo_debug_var
 export -f echo_debug_function
 export -f echo_debug_funct
 export -f echo_error
+export -f echo_error_ne0
+export -f echo_error_function
 export -f echo_error_exit
 export -f echo_warning
 

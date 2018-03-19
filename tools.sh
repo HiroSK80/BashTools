@@ -312,7 +312,7 @@ function check_arg_value
     return 1
 }
 
-function prepare_file_move
+function file_prepare_move
 {
     local F="$1"
     local N=$2
@@ -320,12 +320,12 @@ function prepare_file_move
     local N1
     let N1=N+1
 
-    test $N1 -ne $C -a -f "$F-$N" -a -f "$F-$N1" && prepare_file_move "$1" $N1 $C
+    test $N1 -ne $C -a -f "$F-$N" -a -f "$F-$N1" && file_prepare_move "$1" $N1 $C
     file_delete "$F-$N1"
     mv "$F-$N" "$F-$N1"
 }
 
-function prepare_file
+function file_prepare
 {
     local FILE=""
     local EMPTY="no"
@@ -347,7 +347,7 @@ function prepare_file
 
     if test_yes "$ROLL" && test -f "$FILE"
     then
-        test -f "$FILE-1" && prepare_file_move "$FILE" 1 "$COUNT"
+        test -f "$FILE-1" && file_prepare_move "$FILE" 1 "$COUNT"
         mv "$FILE" "$FILE-1"
     fi
 
@@ -363,10 +363,15 @@ function prepare_file
 
     test_yes "$EMPTY" && cat /dev/null > "$FILE"
 
-    test -n "$PREPARE_FILE_USER" && chgrp "$PREPARE_FILE_USER" "$FILE" 2> /dev/null
-    test -n "$PREPARE_FILE_GROUP" && chown "$PREPARE_FILE_GROUP" "$FILE" 2> /dev/null
+    test -n "$FILE_PREPARE_USER" && chgrp "$FILE_PREPARE_USER" "$FILE" 2> /dev/null
+    test -n "$FILE_PREPARE_GROUP" && chown "$FILE_PREPARE_GROUP" "$FILE" 2> /dev/null
 
     return 0
+}
+
+function prepare_file
+{
+    file_prepare "$@"
 }
 
 function get_remote_file
@@ -523,6 +528,15 @@ function lr_file_line_add1
     fi
 }
 
+function file_config_format
+# $1 filename
+{
+    local CONFIG_FILE="$1"
+    local FORMAT="standard"
+    test -e "$CONFIG_FILE" && $GREP "^[\t ]\[" "$CONFIG_FILE" && FORMAT="extended"
+    return "$FORMAT"
+}
+
 function file_config_set
 # $1 filename
 # $2 option
@@ -530,14 +544,23 @@ function file_config_set
 {
     local CONFIG_FILE="$1"
     local CONFIG_TEMP_FILE="/tmp/`basename "$CONFIG_FILE"`.tmp"
-    local OPTION="$2"
+    local OPTION_SECTION="`dirname "$2"`"
+    local OPTION_NAME="`basename "$2"`"
     local VALUE="$3"
-    local ERROR_MSG="Configuration \"$OPTION=\"$VALUE\"\" change to file `echo_quote "$CONFIG_FILE"` fail"
+    local ERROR_MSG="Configuration \"$OPTION_NAME=\"$VALUE\"\" change to file `echo_quote "$CONFIG_FILE"` fail"
     if test -e "$CONFIG_FILE"
     then
         cat "$CONFIG_FILE" > "$CONFIG_TEMP_FILE" || echo_error_function "$ERROR_MSG, temporary file create `echo_quote "$CONFIG_TEMP_FILE"` problem" $OPTION_DEFAULT_ERROR_CODE
-        test ! -w "$CONFIG_FILE" || echo_error_function "$ERROR_MSG, file not writable" $OPTION_DEFAULT_ERROR_CODE
-        $AWK 'BEGIN { opt_val="'"$OPTION"'=\"'"$VALUE"'\""; found=0; } /^[\t ]*'$OPTION'[\t ]*=[\t ]*/ { print opt_val; found=1; next; } { print; } END { if (found == 0) print opt_val; }' "$CONFIG_TEMP_FILE" > "$CONFIG_FILE"
+        test -w "$CONFIG_FILE" || echo_error_function "$ERROR_MSG, file not writable" $OPTION_DEFAULT_ERROR_CODE
+        $AWK 'BEGIN { opt_val="'"$OPTION_NAME"'=\"'"$VALUE"'\""; found=0; s=0; }
+            "'"$OPTION_SECTION"'" != "." && /^[\t ]*\[.*\][\t ]*$/ {
+                s=0; }
+            "'"$OPTION_SECTION"'" != "." && /^[\t ]*\['"$OPTION_SECTION"'\][\t ]*$/ {
+                s=1; }
+            s==1 && /^[\t ]*'$OPTION_NAME'[\t ]*=[\t ]*/ {
+                print opt_val; found=1; next; }
+            { print; }
+            END { if (found == 0) { if ("'"$OPTION_SECTION"'" != "." ) print "['"$OPTION_SECTION"']"; print opt_val; } }' "$CONFIG_TEMP_FILE" > "$CONFIG_FILE"
         if test -s "$CONFIG_FILE"
         then
             file_delete "$CONFIG_TEMP_FILE"
@@ -547,7 +570,13 @@ function file_config_set
             echo_error_function "$ERROR_MSG" $OPTION_DEFAULT_ERROR_CODE
         fi
     else
-        echo "$OPTION=\"$VALUE\"" > "$CONFIG_FILE" || echo_error_function "$ERROR_MSG, file create problem" $OPTION_DEFAULT_ERROR_CODE
+        if test "$OPTION_SECTION" = "."
+        then
+            echo "$OPTION_NAME=\"$VALUE\"" > "$CONFIG_FILE" || echo_error_function "$ERROR_MSG, file create problem" $OPTION_DEFAULT_ERROR_CODE
+        else
+            echo "[$OPTION_SECTION]" > "$CONFIG_FILE" || echo_error_function "$ERROR_MSG, file create problem" $OPTION_DEFAULT_ERROR_CODE
+            echo "$OPTION_NAME=\"$VALUE\"" >> "$CONFIG_FILE"
+        fi
     fi
 }
 
@@ -570,7 +599,7 @@ function file_config_get
     then
 #A="  A = \"\$USER \" "; echo "-$A-"; B="`echo "$A" | awk '/^[\t ]*A[\t ]*=[\t ]*/ { sub(/^[\t ]*A[\t ]*=[\t ]*/, ""); sub(/^["]/, ""); sub(/["]*[\t ]*$/, ""); print; }'`"; eval "set O=\"$B\""; echo "-$B-$O-"
         VALUE="`$AWK 'BEGIN { if ("'"$OPTION_SECTION"'" == ".") s=1; else s=0; }
-                /* { print "LINE=" $0; } */
+            /* { print "LINE=" $0; } */
             "'"$OPTION_SECTION"'" != "." && /^[\t ]*\[.*\][\t ]*$/ {
                 s=0; }
             "'"$OPTION_SECTION"'" != "." && /^[\t ]*\['"$OPTION_SECTION"'\][\t ]*$/ {
@@ -1329,7 +1358,7 @@ function log_init
     done
     test -z "$LOG_FILE" && LOG_FILE="`command echo "$0" | sed --regexp-extended --expression='s:(|\.|\.sh)$:.log:'`"
 
-    prepare_file "$LOG_FILE"
+    file_prepare "$LOG_FILE"
     command echo "$LOG_SECTION" >> "$LOG_FILE"
     echo_log "`uname -n`: $LOG_TITLE"
 }
@@ -1348,7 +1377,7 @@ function log_done
     local LOG_DURATION
     let LOG_DURATION=`date -u +%s`-$LOG_START
 
-    prepare_file "$LOG_FILE"
+    file_prepare "$LOG_FILE"
     command echo "`date +"$LOG_DATE"` $LOG_TITLE, script runtime $LOG_DURATION seconds" >> "$LOG_FILE"
     command echo "$LOG_SECTION" >> "$LOG_FILE"
 }
@@ -1362,7 +1391,7 @@ function echo_log
     test_str "$1" "^(-d|--date)$" && LOG_DATE_STRING="`date +"$LOG_DATE"`" shift
     test_yes "$LOG_WITHDATE" && LOG_DATE_STRING="`date +"$LOG_DATE"`"
 
-    prepare_file "$LOG_FILE"
+    file_prepare "$LOG_FILE"
     #echo "${LOG_SPACE}$@" | sed --expression='s/\\n/\n                    /g' --expression='s/^/                    /g' >> "$LOG_FILE"
     command echo "${LOG_SPACE}${LOG_DATE_STRING} $@" | pipe_remove_color >> "$LOG_FILE"
     #command echo "${LOG_SPACE}${LOG_DATE_STRING} $@" >> "$LOG_FILE"
@@ -2185,9 +2214,9 @@ export CHECK_ARG_SHIFT
 export -f check_arg_switch
 export -f check_arg_value
 
-export PREPARE_FILE_USER=""
-export PREPARE_FILE_GROUP=""
-export -f prepare_file
+export FILE_PREPARE_USER=""
+export FILE_PREPARE_GROUP=""
+export -f file_prepare;     export -f prepare_file
 
 export -f get_remote_file
 export -f put_remote_file

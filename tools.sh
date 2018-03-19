@@ -611,6 +611,7 @@ function ssh_scanid
 # ssh_scanid @root host `get_ip host`
 {
     local SCAN_HOSTS=""
+    local SCAN_HOST=""
     local SCAN_USER=""
     local SCAN_USER_HOME=""
     local SCAN_USER_HOME_SSH=""
@@ -632,8 +633,11 @@ function ssh_scanid
     touch $SCAN_USER_HOME_SSH_HOSTS
     chown --reference=$SCAN_USER_HOME $SCAN_USER_HOME_SSH_HOSTS
 
-    #echo "Scan host ids $SCAN_HOSTS to $SCAN_USER_HOME_SSH_HOSTS"
-    ssh-keyscan $SCAN_HOSTS >> "$SCAN_USER_HOME_SSH_HOSTS" 2> /dev/null
+    echo_debug "Scan host ids $SCAN_HOSTS to $SCAN_USER_HOME_SSH_HOSTS"
+    for SCAN_HOST in $SCAN_HOSTS
+    do
+        ssh-keyscan $SCAN_HOST >> "$SCAN_USER_HOME_SSH_HOSTS" 2> /dev/null
+    done
     cp "$SCAN_USER_HOME_SSH_HOSTS" "${SCAN_USER_HOME_SSH_HOSTS}_orig"
     cat "${SCAN_USER_HOME_SSH_HOSTS}_orig" | sort -u > "$SCAN_USER_HOME_SSH_HOSTS"
     rm -f "${SCAN_USER_HOME_SSH_HOSTS}_orig"
@@ -669,7 +673,7 @@ function ssh_scanremoteid
         local DEST_LOCAL_USER="${DESTINATION%@*}"
         local DEST_USER="${DEST_USER%@*}"
         local DEST_LOCAL_USER="${DEST_LOCAL_USER#*@}"
-        #echo "Use $USEID_FILE and scan via $DEST_USER @ $DEST_HOST to user $DEST_LOCAL_USER"
+        echo_debug "Use $USEID_FILE and scan via $DEST_USER @ $DEST_HOST to user $DEST_LOCAL_USER"
         ssh -i $USEID_FILE $DEST_USER@$DEST_HOST "
             umask 077
             DEST_HOME=~$DEST_LOCAL_USER
@@ -679,7 +683,10 @@ function ssh_scanremoteid
             chown --reference=\$DEST_HOME \$DEST_HOME_SSH
             touch \$DEST_HOME_SSH_HOSTS
             chown --reference=\$DEST_HOME \$DEST_HOME_SSH_HOSTS
-            ssh-keyscan `hostname` `hostname --fqdn` `hostname --short` `get_ip` >> \$DEST_HOME_SSH_HOSTS 2> /dev/null
+            ssh-keyscan `hostname` >> \$DEST_HOME_SSH_HOSTS 2> /dev/null
+            ssh-keyscan `hostname --fqdn` >> \$DEST_HOME_SSH_HOSTS 2> /dev/null
+            ssh-keyscan `hostname --short` >> \$DEST_HOME_SSH_HOSTS 2> /dev/null
+            ssh-keyscan `get_ip` >> \$DEST_HOME_SSH_HOSTS 2> /dev/null
             test -x /sbin/restorecon && /sbin/restorecon \$DEST_HOME_SSH \$DEST_HOME_SSH_HOSTS >/dev/null 2>&1 || true
             cp \$DEST_HOME_SSH_HOSTS \${DEST_HOME_SSH_HOSTS}_orig
             cat \${DEST_HOME_SSH_HOSTS}_orig | sort -u > \$DEST_HOME_SSH_HOSTS
@@ -728,7 +735,7 @@ function ssh_exportid
         local DEST_LOCAL_USER="${DESTINATION%@*}"
         local DEST_USER="${DEST_USER%@*}"
         local DEST_LOCAL_USER="${DEST_LOCAL_USER#*@}"
-        #echo "Use $USEID_FILE and copy ${COPYID_FILE}.pub via $DEST_USER @ $DEST_HOST to user $DEST_LOCAL_USER"
+        echo_debug "Use $USEID_FILE and copy ${COPYID_FILE}.pub via $DEST_USER @ $DEST_HOST to user $DEST_LOCAL_USER"
         cat "${COPYID_FILE}.pub" | ssh -i $USEID_FILE $DEST_USER@$DEST_HOST "
             umask 077
             DEST_HOME=~$DEST_LOCAL_USER
@@ -783,9 +790,7 @@ function ssh_importid
         local DEST_LOCAL_USER="${DEST_LOCAL_USER#*@}"
         local DESTID_FILE=""
 
-        #echo "Use $USEID_FILE and copy id via $DEST_USER @ $DEST_HOST to user $DEST_LOCAL_USER"
-
-        test -z "$COPYID_USER" && COPYID_HOME=~ || COPYID_HOME="`eval echo "~$COPYID_USER"`"
+        test -z "$COPYID_USER" && COPYID_USER="`whoami`" && COPYID_HOME=~ || COPYID_HOME="`eval echo "~$COPYID_USER"`"
         COPYID_HOME_SSH="$COPYID_HOME/.ssh"
         COPYID_HOME_SSH_KEYS="$COPYID_HOME_SSH/authorized_keys"
 
@@ -796,6 +801,8 @@ function ssh_importid
         chown --reference=$COPYID_HOME $COPYID_HOME_SSH
         touch $COPYID_HOME_SSH_KEYS
         chown --reference=$COPYID_HOME $COPYID_HOME_SSH_KEYS
+
+        echo_debug "Use $USEID_FILE and copy id via $DEST_USER @ $DEST_HOST from user $DEST_LOCAL_USER to $COPYID_USER"
 
         for TEST_FILE in "$DEST_HOME_SSH/id_rsa.pub" "$DEST_HOME_SSH/id_dsa.pub"
         do
@@ -821,7 +828,7 @@ function ssh_importid
 function call_command
 {
     local HOST=""
-    local TOPT=""
+    local TOPT="-t"
     local USER="$CALL_COMMAND_DEFAULT_USER"
     local USER_SET="no"
     local DEBUG="no"
@@ -833,6 +840,7 @@ function call_command
         test "$1" = "--debug-right" && DEBUG="right" && shift && continue
         test "$1" = "--nodebug" && DEBUG="no" && shift && continue
         test "$1" = "--term" -o "$1" = "-t" && TOPT="-t" && shift && continue
+        test "$1" = "--noterm" -o "$1" = "-nt" && TOPT="" && shift && continue
         test "$1" = "--tterm" -o "$1" = "-tt" && TOPT="-tt" && shift && continue
         test "$1" = "--host" -o "$1" = "-h" && shift && HOST="$1" && shift && continue
         test "${1%%=*}" = "--host" && HOST="${1#*=}" && shift && continue
@@ -841,11 +849,13 @@ function call_command
         break
     done
 
+    local COMMAND_STRING="`echo_quote "$@"`"
+    test $# = 1 && COMMAND_STRING="$@"
     local EXIT_CODE
     if is_localhost "$HOST"
     then
-        test_yes "$DEBUG" && echo_debug "$@"
-        test "$DEBUG" = "right" && echo_debug_right "$@"
+        test_yes "$DEBUG" && echo_debug "$COMMAND_STRING"
+        test "$DEBUG" = "right" && echo_debug_right "$COMMAND_STRING"
         if test_no "$USER_SET" -o "`get_id`" = "$USER"
         then
             #bash -c "$@"
@@ -858,8 +868,8 @@ function call_command
     else
         USER_SSH=""
         test -n "$USER" && USER_SSH="$USER@"
-        test_yes "$DEBUG" && echo_debug "ssh $TOPT \"$USER_SSH$HOST\" \"$@\""
-        test "$DEBUG" = "right" && echo_debug_right "ssh $TOPT \"$USER_SSH$HOST\" \"$@\""
+        test_yes "$DEBUG" && echo_debug "ssh $TOPT \"$USER_SSH$HOST\" \"$COMMAND_STRING\""
+        test "$DEBUG" = "right" && echo_debug_right "ssh $TOPT \"$USER_SSH$HOST\" \"$COMMAND_STRING\""
         ssh $TOPT -o "GSSAPIAuthentication no" -o "BatchMode yes" "$USER_SSH$HOST" "$@"
         EXIT_CODE=$?
     fi
@@ -1319,9 +1329,26 @@ function pipe_echo_prefix
         END { if (count>1) p=" ("count"x)"; else p=""; print prefix line p; }' | pipe_echo
 }
 
-# echo $TERM
-# ok xterm/rxvt/konsole/linux
-# no dumb/sun
+
+function echo_quote
+# usage as standard echo with quoted arguments if needed
+{
+    local ARG
+    local SPACE=""
+    local SPACE_CHECK=".*[*; ].*"
+    for ARG in "$@"
+    do
+        if [[ $ARG =~ $SPACE_CHECK ]]
+        then
+            ARG="${ARG//\"/\\\"}"
+            echo -e "$SPACE\"$ARG\"\c"
+        else
+            echo -e "$SPACE$ARG\c"
+        fi
+        SPACE=" "
+    done
+    echo
+}
 
 function echo_line
 # usage as standard echo
@@ -1641,6 +1668,10 @@ function colors_init
 {
     # set colors to current terminal
     #echo "Initial color usage is set to $OPTION_COLOR and using $OPTION_COLORS colors"
+
+# echo $TERM
+# ok xterm/rxvt/konsole/linux
+# no dumb/sun
 
     # set TERM if is not set
     test -z "$TERM" -a -n "$OPTION_TERM" && export TERM="$OPTION_TERM"
@@ -1984,6 +2015,7 @@ export -f pipe_log;         export -f log_output
 export -f pipe_echo;        export -f echo_output
 export -f pipe_echo_prefix; export -f show_output
 
+export -f echo_quote
 export -f echo_line
 export -f echo_info
 export -f echo_step

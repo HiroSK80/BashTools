@@ -348,7 +348,7 @@ function prepare_file
     fi
     test -w "$FILE" || echo_error_function "prepare_file" "Can't create and prepare file for writting: $FILE" 1
 
-    test_yes "$EMPTY" && echo > "$FILE"
+    test_yes "$EMPTY" && command echo > "$FILE"
     
     test -n "$PREPARE_FILE_USER" && chgrp "$PREPARE_FILE_USER" "$FILE" 2> /dev/null
     test -n "$PREPARE_FILE_GROUP" && chown "$PREPARE_FILE_GROUP" "$FILE" 2> /dev/null
@@ -414,7 +414,7 @@ function file_line_add
 
     if test -z "$REGEXP_AFTER$REGEXP_REPLACE"
     then
-        echo "$LINE" >> "$FILE"
+        command echo "$LINE" >> "$FILE"
     else
         cat "$FILE" > "$TEMP_FILE"
         if test -n "$REGEXP_REPLACE" && `cat "$TEMP_FILE" | $AWK 'BEGIN { f=1; } /'"$REGEXP_REPLACE"'/ { f=0; } END { exit f; }'`
@@ -473,7 +473,7 @@ function lr_file_line_add
     local LINE="$2"
     local REGEXP="$3"
     
-    if is_localhost "`echo "$REMOTE_SSH" | sed 's/^.*@//'`"
+    if is_localhost "`command echo "$REMOTE_SSH" | sed 's/^.*@//'`"
     then
         file_line_add1 "$FILE" "$LINE" "$REGEXP"
     else
@@ -496,7 +496,7 @@ function lr_file_line_add1
     local LINE="$2"
     local REGEXP="$3"
     
-    if is_localhost "`echo "$REMOTE_SSH" | sed 's/^.*@//'`"
+    if is_localhost "`command echo "$REMOTE_SSH" | sed 's/^.*@//'`"
     then
         file_line_add1 "$FILE" "$LINE" "$REGEXP"
     else
@@ -530,7 +530,7 @@ function file_config_set
             echo_error "file $CONFIG_FILE new configuration \"$OPTION=\"$VALUE\"\" change fail" 99
         fi
     else
-        echo "$OPTION=\"$VALUE\"" > "$CONFIG_FILE"
+        command echo "$OPTION=\"$VALUE\"" > "$CONFIG_FILE"
     fi
 }
 
@@ -590,7 +590,7 @@ function get_ip_arp
     then
         GET_IP_ARP="`arp -n "$1" | $AWK '/ether/ { print $1; }'`"
     fi
-    echo "$GET_IP_ARP"
+    command echo "$GET_IP_ARP"
 }
 
 function get_ip_ping
@@ -606,7 +606,7 @@ function get_ip
 
     local GET_IP="`get_ip_arp "$HOST"`"
     test -z "$GET_IP" && GET_IP="`get_ip_ping "$HOST"`"
-    echo "$GET_IP"
+    command echo "$GET_IP"
 }
 
 function is_localhost
@@ -921,7 +921,7 @@ function kill_tree_childs
         then
             test_yes FOUND_PID \
                 && ps -ef | $AWK --assign p="$CHECK_PID" '$2==p { print "PID " p " killed: " $0; }' | echo_output \
-                || echo "PID $CHECK_PID already killed" | echo_output
+                || echo_line "PID $CHECK_PID already killed" | echo_output
         fi
         kill -9 "$CHECK_PID" 2>/dev/null
     fi
@@ -940,7 +940,7 @@ function kill_tree_name
 # $2 exclude PIDs
 {
     local PID_LIST="`get_pids "$1"`"
-    test -n "$2" && PID_LIST="`echo "$PID_LIST" | $GREP --invert-match $2`"
+    test -n "$2" && PID_LIST="`command echo "$PID_LIST" | $GREP --invert-match $2`"
     kill_tree $PID_LIST
 }
 
@@ -958,7 +958,24 @@ function fd_find_free
     do
         fd_check $FILE_FD || break
     done
-    echo $FILE_FD
+    command echo $FILE_FD
+}
+
+declare -A PERF_DATA
+#PERF_DATA["default"]=0
+function perf_start
+{
+    local PERF_VAR="${1:-default}"
+    PERF_DATA[$PERF_VAR]="`date "+%s.%N"`"
+    echo_line "Performance started on date `date +"%Y-%m-%d %H:%M:%S"` time: ${PERF_DATA[$PERF_VAR]}"
+}
+
+function perf_end
+{
+    local PERF_VAR="${1:-default}"
+    local PERF_DATA_NOW="`date "+%s.%N"`"
+    echo_line "Performance ended on date `date +"%Y-%m-%d %H:%M:%S"` time: $PERF_DATA_NOW elapsed: `command echo | $AWK "{ print $PERF_DATA_NOW - ${PERF_DATA[$PERF_VAR]}; }"`s"
+    PERF_DATA[$PERF_VAR]=0
 }
 
 function set_yes
@@ -1105,7 +1122,7 @@ function test_cmd
         shift
     fi
 
-    echo "$CMD" | $GREP --extended-regexp --quiet "$1"
+    command echo "$CMD" | $GREP --extended-regexp --quiet "$1"
     return $?
 }
 
@@ -1223,7 +1240,7 @@ function log_init
         test "${1:0:1}" = "/" && LOG_FILE="$1" || LOG_TITLE="${1:-$LOG_TITLE}"
         shift
     done
-    test -z "$LOG_FILE" && LOG_FILE="`echo "$0" | sed --regexp-extended --expression='s:(|\.|\.sh)$:.log:'`"
+    test -z "$LOG_FILE" && LOG_FILE="`command echo "$0" | sed --regexp-extended --expression='s:(|\.|\.sh)$:.log:'`"
 
     prepare_file "$LOG_FILE"
     command echo "$LOG_SECTION" >> "$LOG_FILE"
@@ -1388,12 +1405,12 @@ function echo_quote
             if test "$QUOTE" = "D"
             then
                 ARG="${ARG//\"/\\\\\"}"
-                echo -e "$SPACE\"$ARG\"\c"
+                command echo -e "$SPACE\"$ARG\"\c"
             else
-                echo -e "$SPACE'$ARG'\c"
+                command echo -e "$SPACE'$ARG'\c"
             fi
         else
-            echo -e "$SPACE$ARG\c"
+            command echo -e "$SPACE$ARG\c"
         fi
         SPACE=" "
     done
@@ -1469,8 +1486,8 @@ function echo_step
     echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}${STEP_NUMBER_STR}$@"
 
     test_integer "$STEP_NUMBER" && let STEP_NUMBER++ && let $STEP_VARIABLE=$STEP_NUMBER
-    test_str "$STEP_NUMBER" "^[a-z]$" && export $STEP_VARIABLE="`echo "$STEP_NUMBER" | tr "a-z" "b-z_"`"
-    test_str "$STEP_NUMBER" "^[A-Z]$" && export $STEP_VARIABLE="`echo "$STEP_NUMBER" | tr "A-Z" "B-Z_"`"
+    test_str "$STEP_NUMBER" "^[a-z]$" && export $STEP_VARIABLE="`command echo "$STEP_NUMBER" | tr "a-z" "b-z_"`"
+    test_str "$STEP_NUMBER" "^[A-Z]$" && export $STEP_VARIABLE="`command echo "$STEP_NUMBER" | tr "A-Z" "B-Z_"`"
     return 0
 }
 
@@ -1490,7 +1507,7 @@ function echo_substep
 function set_debug
 {
     local OPTION="${1:-yes}"
-    echo "$OPTION_DEBUG" | $GREP --quiet --word-regexp "$OPTION" || OPTION_DEBUG="$OPTION,$OPTION_DEBUG"
+    command echo "$OPTION_DEBUG" | $GREP --quiet --word-regexp "$OPTION" || OPTION_DEBUG="$OPTION,$OPTION_DEBUG"
 }
 
 function unset_debug
@@ -1502,7 +1519,7 @@ function unset_debug
 function check_debug
 {
     local OPTION="${1:-yes}"
-    echo "$OPTION_DEBUG" | $GREP --quiet --word-regexp "$OPTION"
+    command echo "$OPTION_DEBUG" | $GREP --quiet --word-regexp "$OPTION"
 }
 
 function echo_debug
@@ -1557,7 +1574,7 @@ function echo_debug_right
             cursor_get_position
             let SHIFT_MESSAGE=$SHIFT_MESSAGE+1
 #echo -en "\\033[1A"
-            test_yes "$SHIFT1" && test $SHIFT_MESSAGE -le $SHIFT1_MIN_FREE && echo -e "\r" > "${REDIRECT_DEBUG}"
+            test_yes "$SHIFT1" && test $SHIFT_MESSAGE -le $SHIFT1_MIN_FREE && command echo -e "\r" > "${REDIRECT_DEBUG}"
             command echo -en "\\033[${SHIFT_MESSAGE}G" > "${REDIRECT_DEBUG}"
             test_yes "$SHIFT1" && echo -en "\\033[1A" > "${REDIRECT_DEBUG}"
             command echo -e "${COLOR_DEBUG}$DEBUG_MESSAGE${COLOR_RESET}\c" > "${REDIRECT_DEBUG}"
@@ -1628,9 +1645,9 @@ function echo_error
 
     if test_yes "$OPTION_COLOR"
     then
-        echo -e "$COLOR_ERROR${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!$COLOR_RESET" >&$REDIRECT_ERROR
+        command echo -e "$COLOR_ERROR${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!$COLOR_RESET" >&$REDIRECT_ERROR
     else
-        echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!" >&$REDIRECT_ERROR
+        command echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!" >&$REDIRECT_ERROR
     fi
 
     echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!"
@@ -1690,9 +1707,9 @@ function echo_warning
 
     if test_yes "$OPTION_COLOR"
     then
-        echo -e "$COLOR_WARNING${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}.$COLOR_RESET" >&$REDIRECT_WARNING
+        command echo -e "$COLOR_WARNING${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}.$COLOR_RESET" >&$REDIRECT_WARNING
     else
-        echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}." >&$REDIRECT_WARNING
+        command echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}." >&$REDIRECT_WARNING
     fi
 
     echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}."
@@ -1735,7 +1752,7 @@ function history_store
     test -z "$1" -o "$1" = "${HISTORY[0]}" && return 0
 
     HISTORY=("$1" "${HISTORY[@]}")
-    echo "$1" >> "$HISTFILE"
+    command echo "$1" >> "$HISTFILE"
     history -s "$1"
 }
 
@@ -1758,7 +1775,7 @@ function colors_init
     # init color usage if is not set
     if ! test_yes "$OPTION_COLOR" && ! test_no "$OPTION_COLOR"
     then
-        if test "`echo "$TERM" | cut -c 1-5`" = "xterm" -o "$TERM" = "rxvt" -o "$TERM" = "konsole" -o "$TERM" = "linux" -o "$TERM" = "putty"
+        if test "`command echo "$TERM" | cut -c 1-5`" = "xterm" -o "$TERM" = "rxvt" -o "$TERM" = "konsole" -o "$TERM" = "linux" -o "$TERM" = "putty"
         then
             OPTION_COLOR="yes"
             OPTION_COLORS="256"
@@ -2061,8 +2078,8 @@ export -f fd_find_free
 
 export -f set_yes
 
-export S_TAB="`echo -e "\t"`"
-export S_NEWLINE="`echo -e "\n"`"
+export S_TAB="`command echo -e "\t"`"
+export S_NEWLINE="`command echo -e "\n"`"
 export -f test_ne0
 export -f fill_command_options
 export -f test_boolean

@@ -84,8 +84,8 @@ function query
     fi
     test -z "$TEST_REGEXP" && TEST_REGEXP=".*"
     DEFAULT="$4"
-    declare -x REPLY=""
-    declare -x QUERY_REPLY=""
+    export REPLY=""
+    export QUERY_REPLY=""
 
     if test -z "$DEFAULT"
     then
@@ -139,8 +139,8 @@ function query
         done
     fi
 
-    declare -x REPLY
-    declare -x QUERY_REPLY="$REPLY"
+    export REPLY
+    export QUERY_REPLY="$REPLY"
     #echo $REPLY
 }
 
@@ -164,43 +164,41 @@ function command_options
     shift
     if test "$TASK" = "fill"
     then
-        declare -x COMMAND="$1"
-        declare -x OPTIONS="$2 $3 $4 $5 $6 $7 $8 $9"
-        declare -x OPTIONS2="$3 $4 $5 $6 $7 $8 $9 ${10}"
-        declare -x OPTIONS3="$4 $5 $6 $7 $8 $9 $10 ${11}"
-        declare -x OPTIONS4="$5 $6 $7 $8 $9 $10 $11 ${12}"
-        declare -x OPTION="$2"
-        declare -x OPTION1="$2"
-        declare -x OPTION2="$3"
-        declare -x OPTION3="$4"
-        declare -x OPTION4="$5"
-        declare -x OPTION5="$6"
-        declare -x OPTION6="$7"
-        declare -x OPTION7="$8"
-        declare -x OPTION8="$9"
-        declare -x OPTION9="${10}"
-        unset OPTIONS_A
-        declare -a OPTIONS_A=("$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}")
+        COMMAND="$1"
+        OPTIONS="$2 $3 $4 $5 $6 $7 $8 $9"
+        OPTIONS2="$3 $4 $5 $6 $7 $8 $9 ${10}"
+        OPTIONS3="$4 $5 $6 $7 $8 $9 $10 ${11}"
+        OPTIONS4="$5 $6 $7 $8 $9 $10 $11 ${12}"
+        OPTION="$2"
+        OPTION1="$2"
+        OPTION2="$3"
+        OPTION3="$4"
+        OPTION4="$5"
+        OPTION5="$6"
+        OPTION6="$7"
+        OPTION7="$8"
+        OPTION8="$9"
+        OPTION9="${10}"
+        OPTIONS_A=("$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}")
     fi
     if test "$TASK" = "parse"
     then
-        declare -x COMMAND="`str_get_arg "$INPUT" 1`"
-        declare -x OPTIONS="`str_get_arg_from "$INPUT" 2`"
-        declare -x OPTIONS2="`str_get_arg_from "$INPUT" 3`"
-        declare -x OPTIONS3="`str_get_arg_from "$INPUT" 4`"
-        declare -x OPTIONS4="`str_get_arg_from "$INPUT" 5`"
-        declare -x OPTION="`str_get_arg "$INPUT" 2`"
-        declare -x OPTION1="`str_get_arg "$INPUT" 2`"
-        declare -x OPTION2="`str_get_arg "$INPUT" 3`"
-        declare -x OPTION3="`str_get_arg "$INPUT" 4`"
-        declare -x OPTION4="`str_get_arg "$INPUT" 5`"
-        declare -x OPTION5="`str_get_arg "$INPUT" 6`"
-        declare -x OPTION6="`str_get_arg "$INPUT" 7`"
-        declare -x OPTION7="`str_get_arg "$INPUT" 8`"
-        declare -x OPTION8="`str_get_arg "$INPUT" 9`"
-        declare -x OPTION9="`str_get_arg "$INPUT" 10`"
-        unset OPTIONS_A
-        declare -a OPTIONS_A=("$OPTION" "$OPTION2" "$OPTION3" "$OPTION4" "$OPTION5" "$OPTION6" "$OPTION7" "$OPTION8" "$OPTION9")
+        COMMAND="`str_get_arg "$INPUT" 1`"
+        OPTIONS="`str_get_arg_from "$INPUT" 2`"
+        OPTIONS2="`str_get_arg_from "$INPUT" 3`"
+        OPTIONS3="`str_get_arg_from "$INPUT" 4`"
+        OPTIONS4="`str_get_arg_from "$INPUT" 5`"
+        OPTION="`str_get_arg "$INPUT" 2`"
+        OPTION1="`str_get_arg "$INPUT" 2`"
+        OPTION2="`str_get_arg "$INPUT" 3`"
+        OPTION3="`str_get_arg "$INPUT" 4`"
+        OPTION4="`str_get_arg "$INPUT" 5`"
+        OPTION5="`str_get_arg "$INPUT" 6`"
+        OPTION6="`str_get_arg "$INPUT" 7`"
+        OPTION7="`str_get_arg "$INPUT" 8`"
+        OPTION8="`str_get_arg "$INPUT" 9`"
+        OPTION9="`str_get_arg "$INPUT" 10`"
+        OPTIONS_A=("$OPTION" "$OPTION2" "$OPTION3" "$OPTION4" "$OPTION5" "$OPTION6" "$OPTION7" "$OPTION8" "$OPTION9")
     fi
     if test "$TASK" = "insert" -o "$TASK" = "insert_command"
     then
@@ -249,36 +247,49 @@ function str_trim
     local STR="$@"
     test -n "${!@+exist}" && STR="${!@}"
     #echo "STR=$STR"
-    STR="${STR#"${STR%%[![:space:]]*}"}"   # remove leading whitespace characters
-    STR="${STR%"${STR##*[![:space:]]}"}"   # remove trailing whitespace characters
+    STR="${STR#"${STR%%[![:space:]]*}"}"   # delete leading whitespace characters
+    STR="${STR%"${STR##*[![:space:]]}"}"   # delete trailing whitespace characters
     test -n "${!@+exist}" && assign "${!@}" "$STR" || echo -n "$STR"
 }
 
-function str_add_word
-# add word if not present delimited by space to string or variable
-# $1 variable or string
-# $2 word
+function str_word
+# add words if not present delimited by space to string or variable
+# delete words delimited by start/spaces/end from string or variable
+# check word in string or variable
+# $1 add/delete/check
+# $2 variable or string
+# $3+ word[s]
 {
-    local STR="$1"
-    test -n "${!1+exist}" && STR="${!1}"
-    test_str "$STR" "\b$2\b" && return 0
-    test -n "$STR" && STR="$STR "
-    STR="$STR$2"
-    test -n "${!1+exist}" && assign "$1" "$STR" || echo -n "out=$STR"
-}
+    local STR="$2"
+    test -n "${!2+exist}" && STR="${!2}"
+    local W
 
-function str_delete_word
-# delete word delimited by start/spaces/end from string or variable
-# $1 variable or string
-# $2 word
-{
-    local STR="$1"
-    test -n "${!1+exist}" && STR="${!1}"
-    STR="${STR% $2}"
-    STR="${STR#$2 }"
-    STR="${STR/ $2 / }"
-    test -n "${!1+exist}" && assign "$1" "$STR" || echo -n "out=$STR"
-    test -n "${!1+exist}" && echo a || echo b
+    case "$1" in
+        add)
+            for W in "${@:3}"
+            do
+                if ! test_str "$STR" "\b$W\b"
+                then
+                    test -n "$STR" && STR="$STR "
+                    STR="$STR$W"
+                fi
+            done
+            ;;
+        delete)
+            for W in "${@:3}"
+            do
+                STR="${STR% $W}"
+                STR="${STR#$W }"
+                STR="${STR/ $W / }"
+            done
+            ;;
+        check)
+            test_str "$STR" "\b$3\b"
+            return $?
+            ;;
+    esac
+
+    test -n "${!2+exist}" && assign "$2" "$STR" || echo -n "$STR"
 }
 
 function str_parse_url
@@ -331,8 +342,7 @@ function str_parse_args
 # $1 string with arguments and options in ""
 # !!! $2 destination array variable
 {
-    unset PARSE_ARGS
-    declare -a PARSE_ARGS=()
+    PARSE_ARGS=()
 
     #local ARRAY="${2}"
     #local EVAL="`printf '%q\n' "$1"`"
@@ -350,7 +360,7 @@ function str_parse_args
         #assign $ARRAY "($V)"
         #eval "${!ARRAY}"+=($V)
         PARSE_ARGS+=("$V")
-        declare -x PARSE_ARGS_$C="$V"
+        export PARSE_ARGS_$C="$V"
         C=C+1
     done
 }
@@ -448,7 +458,7 @@ function check_arg_switch
     then
         ARG_NAME_VAR="${2%|*}"
         ARG_NAME_VALUE="${2#*|}"
-        test -n "$ARG_NAME_VAR" && declare -x ${ARG_NAME_VAR}="$ARG_NAME_VALUE"
+        test -n "$ARG_NAME_VAR" && assign ${ARG_NAME_VAR} "$ARG_NAME_VALUE"
         CHECK_ARG_SHIFT+=1
         return 0
     fi
@@ -484,14 +494,14 @@ function check_arg_value
     then
         if test $# -eq 1
         then
-            test -n "${ARG_NAME_VAR}" && declare -x ${ARG_NAME_VAR}="$ARG_NAME_VALUE"
+            test -n "$ARG_NAME_VAR" && assign $ARG_NAME_VAR "$ARG_NAME_VALUE"
             CHECK_ARG_SHIFT+=1 && return 0 #echo_error "Missing value for argument \"$1\"" $ERROR_CODE_DEFAULT
         elif test "${2:0:1}" != "-"
         then
-            test -n "${ARG_NAME_VAR}" && declare -x ${ARG_NAME_VAR}="$2"
+            test -n "$ARG_NAME_VAR" && assign $ARG_NAME_VAR "$2"
             CHECK_ARG_SHIFT+=1
         else
-            declare -x ${ARG_NAME_VAR}="$ARG_NAME_VALUE"
+            assign $ARG_NAME_VAR "$ARG_NAME_VALUE"
         fi
         CHECK_ARG_SHIFT+=1
         return 0
@@ -499,7 +509,7 @@ function check_arg_value
 
     if test "${1%%=*}" = "--$ARG_NAME_LONG"
     then
-        declare -x ${ARG_NAME_VAR}="${1#*=}"
+        assign $ARG_NAME_VAR "${1#*=}"
         CHECK_ARG_SHIFT+=1
         return 0
     fi
@@ -592,38 +602,36 @@ function prepare_file
     file_prepare "$@"
 }
 
-function file_remote_get
+function file_remote
+# $1 get / put
 # $1 user@host:remote_file
 # $2 local file
 {
     local SSH="${1%%:*}"
     local FILE="${1#*:}"
-    declare -x FILE_REMOTE="`file_temporary_name file_remote "$FILE"`"
+    FILE_REMOTE="`file_temporary_name file_remote "$FILE"`"
     test -n "$2" && FILE_REMOTE="$2"
-    file_delete "$FILE_REMOTE"
-    $SCPq "$SSH":"$FILE" "$FILE_REMOTE" || return 1
+
+    case "$1" in
+        get)
+            file_delete "$FILE_REMOTE"
+            $SCPq "$SSH":"$FILE" "$FILE_REMOTE" || return 1
+            ;;
+        put)
+            $SCPq "$FILE_REMOTE" "$SSH":"$FILE" || return 1
+            file_delete "$FILE_REMOTE"
+            ;;
+    esac
 }
 
-function file_remote_put
-# $1 user@host:remote_file
-# $2 local file
-{
-    local SSH="${1%%:*}"
-    local FILE="${1#*:}"
-    declare -x FILE_REMOTE="`file_temporary_name file_remote "$FILE"`"
-    test -n "$2" && FILE_REMOTE="$2"
-    $SCPq "$FILE_REMOTE" "$SSH":"$FILE" || return 1
-    file_delete "$FILE_REMOTE"
-}
-
-function file_line_remove_local
+function file_line_delete_local
 # $1 filename
-# $2 remove regexp
+# $2 delete regexp
 {
     local FILE="$1"
-    local TEMP_FILE="`file_temporary_name file_line_remove_local "$FILE"`"
+    local TEMP_FILE="`file_temporary_name file_line_delete_local "$FILE"`"
     local REGEXP="$2"
-    local ERROR_MSG="Remove line \"$REGEXP\" from file `echo_quote "$FILE"` fail"
+    local ERROR_MSG="Delete line \"$REGEXP\" from file `echo_quote "$FILE"` fail"
     if test -r "$FILE"
     then
         cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
@@ -704,23 +712,24 @@ function file_line_add1
 }
 
 function file_line
-# $1 can be [[user@]host:][path/]filename
-# $* as for file_line_add_local function
+# $1 task - add / delete / set
+# $2 can be [[user@]host:][path/]filename
+# $* as for file_line_*_local function
 {
-    local LINE="$1"
-    test_str "$LINE" "(remove|add|set)" || echo_error_function "Unsupported function: $LINE. Supported: remove add set" $ERROR_CODE_DEFAULT
+    local TASK="$1"
+    test_str "$TASK" "(delete|add|set)" || echo_error_function "Unsupported function: $TASK. Supported: delete add set" $ERROR_CODE_DEFAULT
     local -A URL
     str_parse_url "$2" URL
     shift 2
     if test "${URL[PROTOCOL]}" = "file" || is_localhost "${URL[HOST]}"
     then
-        file_line_${LINE}_local "${URL[FILE]}" "$@"
+        file_line_${TASK}_local "${URL[FILE]}" "$@"
     else
-        file_remote_get "${URL[URL]}" || echo_error_function "Can't retrieve `echo_quote "${URL[FILE]}"` file from ${URL[USER_HOST]}" $ERROR_CODE_DEFAULT
+        file_remote get "${URL[URL]}" || echo_error_function "Can't retrieve `echo_quote "${URL[FILE]}"` file from ${URL[USER_HOST]}" $ERROR_CODE_DEFAULT
         #ls -la "$FILE_REMOTE"
-        file_line_${LINE}_local "$FILE_REMOTE" "$@"
+        file_line_${TASK}_local "$FILE_REMOTE" "$@"
         #ls -la "$FILE_REMOTE"
-        file_remote_put "${URL[URL]}" || echo_error_function "Can't upload `echo_quote "$FILE_REMOTE"` file to ${URL[USER_HOST]}" $ERROR_CODE_DEFAULT
+        file_remote put "${URL[URL]}" || echo_error_function "Can't upload `echo_quote "$FILE_REMOTE"` file to ${URL[USER_HOST]}" $ERROR_CODE_DEFAULT
     fi
 }
 
@@ -818,8 +827,8 @@ function file_config_read
     local OPTION_SECTION="`dirname "$2"`"
     local OPTION_NAME="`basename "$2"`"
 
-    test "$OPTION_SECTION" != "." && declare -x ${OPTION_SECTION}_${OPTION_NAME}="$VALUE"
-    declare -x $OPTION_NAME="$VALUE"
+    test "$OPTION_SECTION" != "." && export ${OPTION_SECTION}_${OPTION_NAME}="$VALUE"
+    export $OPTION_NAME="$VALUE"
 }
 
 function file_replace
@@ -1192,9 +1201,38 @@ function call_command
 }
 
 function get_pids
+# return PIDs found by command regex
 {
     ps -e -o pid,ppid,cmd | $AWK --assign=p="$1" --assign=s="$$" '$1==s||$2==s||/tools_get_pids_tag/ { next; } $0~p { print $1; }';
 }
+
+function get_pids_tree_loop
+# internal search function
+{
+    local CHECK_PID
+    for CHECK_PID in $*
+    do
+        local CHILD_PIDS="`ps -o pid --no-headers --ppid ${CHECK_PID}`"
+        test -n "$CHILD_PIDS" && get_pids_tree_loop $CHILD_PIDS && str_word add PIDS_TREE $CHILD_PIDS
+        test $CHECK_PID != "$$" && str_word add PIDS_TREE $CHECK_PID
+    done
+}
+
+function get_pids_tree
+# return parent+child PIDs found from processes found by command regex / or by parent PIDs
+# $1 regex search for parent PIDs /or/ parent PIDs
+{
+    local PIDS_TREE=""
+    if test_integer "$1"
+    then # search tree for PIDs
+        get_pids_tree_loop $*
+    else # search tree for PIDs from name
+        local PID_LIST="`get_pids "$1"`"
+        get_pids_tree_loop $PID_LIST
+    fi
+    echo "$PIDS_TREE"
+}
+
 
 function kill_tree_verbose
 {
@@ -1215,11 +1253,8 @@ function kill_tree_verbose
         echo_line "${SPACE}Killing PID: $CHECK_PID"
         if test "$CHECK_PID" != "$$"
         then
-            if test_yes KILL_ECHO
-            then
-                local PID_INFO="`ps -f --no-heading $CHECK_PID`"
-                test -n "$PID_INFO" && echo_line "${SPACE}  PID $CHECK_PID killed:     <$PID_INFO>" || echo_line "  PID $CHECK_PID already killed"
-            fi
+            local PID_INFO="`ps -f --no-heading $CHECK_PID`"
+            test -n "$PID_INFO" && echo_debug INFO "${SPACE}  PID $CHECK_PID killed:     <$PID_INFO>" || echo_debug INFO "  PID $CHECK_PID already killed"
             kill -9 "$CHECK_PID" 2>/dev/null
         else
             echo_line "${SPACE}  PID $CHECK_PID skipping as its me"
@@ -1228,35 +1263,17 @@ function kill_tree_verbose
 }
 
 function kill_tree
-{
-    #echo_line "Kill tree: $*"
-    local CHECK_PID
-    for CHECK_PID in $*
-    do
-        CHILD_PIDS="`ps -o pid --no-headers --ppid ${CHECK_PID}`"
-        test -n "$CHILD_PIDS" && kill_tree $CHILD_PIDS
-        if test "$CHECK_PID" != "$$"
-        then
-            if test_yes KILL_ECHO
-            then
-                local PID_INFO="`ps -f --no-heading $CHECK_PID`"
-                test -n "$PID_INFO" && echo_line "PID $CHECK_PID killed:     <$PID_INFO>" || echo_line "PID $CHECK_PID already killed"
-            fi
-            kill -9 "$CHECK_PID" 2>/dev/null
-        else
-            echo_line "PID $CHECK_PID skipping killing itself"
-        fi
-    done
-}
-
-function kill_tree_name
-# $1 regexp for process name
+# $1 regexp for process name or pid
 # $2 exclude PIDs
 {
-    local PID_LIST="`get_pids "$1"`"
-    test_yes KILL_ECHO && echo_line "PIDs for name `echo_quote "$1"`: "$PID_LIST
+    local PID_LIST="`get_pids_tree "$1"`"
     test -n "$2" && PID_LIST="`command echo "$PID_LIST" | $GREP --invert-match "$2"`"
-    test -n "$PID_LIST" && kill_tree $PID_LIST
+    for KILL_PID in $PID_LIST
+    do
+        local PID_INFO="`ps -f --no-heading $KILL_PID`"
+        test -n "$PID_INFO" && echo_debug INFO "PID $KILL_PID killed:     <$PID_INFO>" || echo_debug INFO "PID $KILL_PID already killed"
+        kill -9 $KILL_PID 2>/dev/null
+    done
 }
 
 
@@ -1517,7 +1534,7 @@ function pipe_remove_color
         --expression="s/\\\\033\[([0-9]{1,3}((;[0-9]{1,3})*)?)?[m|K]//g"
 }
 
-function pipe_remove_lines
+function pipe_join_lines
 # removes new line codes from pipe
 {
     $AWK '$0=="" { next; } { print; }' | tr '\n' ' ' | xargs
@@ -1549,31 +1566,32 @@ function pipe_cut
 
         #echo_debug_variable LENGTH_TOTAL LENGTH_MAX LINE
 
-        if test "$CUT_TYPE" = "center"
-        then
-            local -i LENGTH_LEFT
-            let LENGTH_LEFT="( $LENGTH_MAX - 3) / 2"
-            local -i LENGTH_RIGHT
-            let LENGTH_RIGHT="$LENGTH_MAX - $LENGTH_LEFT - 3"
-            local -i START_RIGHT
-            let START_RIGHT="$LENGTH_TOTAL - $LENGTH_RIGHT"
-            #echo_debug_variable LENGTH_LEFT START_RIGHT LENGTH_RIGHT
-            echo "${LINE:0:$LENGTH_LEFT}...${LINE:$START_RIGHT}"
-        elif test "$CUT_TYPE" = "left"
-        then
-            local -i LENGTH_RIGHT
-            let LENGTH_RIGHT="$LENGTH_MAX - 3"
-            local -i START_RIGHT
-            let START_RIGHT="$LENGTH_TOTAL - $LENGTH_RIGHT"
-            #echo_debug_variable START_RIGHT LENGTH_RIGHT
-            echo "...${LINE:$START_RIGHT}"
-        elif test "$CUT_TYPE" = "right"
-        then
-            local -i LENGTH_LEFT
-            let LENGTH_LEFT="$LENGTH_MAX - 3"
-            #echo_debug_variable LENGTH_LEFT
-            echo "${LINE:0:$LENGTH_LEFT}..."
-        fi
+        case "$CUT_TYPE" in
+            center)
+                local -i LENGTH_LEFT
+                let LENGTH_LEFT="( $LENGTH_MAX - 3) / 2"
+                local -i LENGTH_RIGHT
+                let LENGTH_RIGHT="$LENGTH_MAX - $LENGTH_LEFT - 3"
+                local -i START_RIGHT
+                let START_RIGHT="$LENGTH_TOTAL - $LENGTH_RIGHT"
+                #echo_debug_variable LENGTH_LEFT START_RIGHT LENGTH_RIGHT
+                echo "${LINE:0:$LENGTH_LEFT}...${LINE:$START_RIGHT}"
+                ;;
+            left)
+                local -i LENGTH_RIGHT
+                let LENGTH_RIGHT="$LENGTH_MAX - 3"
+                local -i START_RIGHT
+                let START_RIGHT="$LENGTH_TOTAL - $LENGTH_RIGHT"
+                #echo_debug_variable START_RIGHT LENGTH_RIGHT
+                echo "...${LINE:$START_RIGHT}"
+                ;;
+            right)
+                local -i LENGTH_LEFT
+                let LENGTH_LEFT="$LENGTH_MAX - 3"
+                #echo_debug_variable LENGTH_LEFT
+                echo "${LINE:0:$LENGTH_LEFT}..."
+                ;;
+        esac
     done
     IFS="$BACKUP_IFS"
 }
@@ -1859,9 +1877,9 @@ function echo_step
     if test $# -ge 2
     then
         STEP_VARIABLE="$1"
-        shift
         STEP_NUMBER=${!STEP_VARIABLE}
         STEP_NUMBER_STR="${STEP_NUMBER}. "
+        shift
     fi
 
     if test_yes "$OPTION_COLOR"
@@ -1875,8 +1893,8 @@ function echo_step
     echo_log "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_STEP$STEP_NUMBER_STR$@"
 
     test_integer "$STEP_NUMBER" && let STEP_NUMBER++ && let $STEP_VARIABLE=$STEP_NUMBER
-    test_str "$STEP_NUMBER" "^[a-z]$" && declare -x $STEP_VARIABLE="`command echo "$STEP_NUMBER" | tr "a-z" "b-z_"`"
-    test_str "$STEP_NUMBER" "^[A-Z]$" && declare -x $STEP_VARIABLE="`command echo "$STEP_NUMBER" | tr "A-Z" "B-Z_"`"
+    test_str "$STEP_NUMBER" "^[a-z]$" && assign $STEP_VARIABLE "`command echo "$STEP_NUMBER" | tr "a-z" "b-z_"`"
+    test_str "$STEP_NUMBER" "^[A-Z]$" && assign $STEP_VARIABLE "`command echo "$STEP_NUMBER" | tr "A-Z" "B-Z_"`"
     return 0
 }
 
@@ -1940,30 +1958,19 @@ function debug_init_namespaces
 function debug_set
 {
     test $# = 0 && local OPTIONS="debug" || local OPTIONS="$@"
-
-    local OPTION
-    for OPTION in $OPTIONS
-    do
-        #echo "$OPTION_DEBUG" | $GREP --quiet --word-regexp "$OPTION" || declare -x OPTION_DEBUG="$OPTION,$OPTION_DEBUG"
-        #debug_unset $OPTION
-        #test -n "$OPTION_DEBUG" && OPTION_DEBUG="$OPTION_DEBUG "
-        #OPTION_DEBUG="$OPTION_DEBUG$OPTION"
-        str_add_word OPTION_DEBUG "$OPTION"
-    done
+    str_word add OPTION_DEBUG $OPTIONS
 }
 
 function debug_unset
 {
-    local OPTION="${1:-debug}"
-    #OPTION_DEBUG="${OPTION_DEBUG/$OPTION?(,)/}"
-    str_delete_word OPTION_DEBUG "$OPTION"
+    test $# = 0 && local OPTIONS="debug" || local OPTIONS="$@"
+    str_word delete OPTION_DEBUG $OPTIONS
 }
 
 function debug_check
 {
     local OPTION="${1:-debug}"
-    #echo "$OPTION_DEBUG" | $GREP --quiet --word-regexp "$OPTION"
-    test_str "$OPTION_DEBUG" "\b$OPTION\b"
+    str_word check OPTION_DEBUG $OPTION
 }
 
 function debug_level_check
@@ -2274,12 +2281,12 @@ function history_init
     then
         HISTFILE="${SCRIPT_FILE_NOEXT}.history"
     else
-        declare -x HISTFILE="$1"
+        HISTFILE="$1"
     fi
-    declare -x HISTCMD=1001
-    declare -x HISTCONTROL=ignoredups
-    declare -x HISTSIZE=1000
-    declare -x HISTFILESIZE=1000
+    HISTCMD=1001
+    HISTCONTROL=ignoredups
+    HISTSIZE=1000
+    HISTFILESIZE=1000
     touch "$HISTFILE"
     #set -o history
 
@@ -2290,7 +2297,7 @@ function history_restore
 {
     history -r
 
-    declare -a HISTORY=()
+    HISTORY=()
     while read LINE
     do
         test -n "$LINE" && HISTORY+=("$LINE")
@@ -2318,7 +2325,7 @@ function colors_init
 # no dumb/sun
 
     # set TERM if is not set
-    test -z "$TERM" -a -n "$OPTION_TERM" && declare -x TERM="$OPTION_TERM"
+    test -z "$TERM" -a -n "$OPTION_TERM" && TERM="$OPTION_TERM"
 
     # init color numbers
     test_integer "$OPTION_COLORS" || OPTION_COLORS="256"
@@ -2612,8 +2619,7 @@ declare -x -r S_TAB="`command echo -e "\t"`"
 declare -x -r S_NEWLINE="`command echo -e "\n"`"
 
 declare -x -f str_trim
-declare -x -f str_add_word
-declare -x -f str_delete_word
+declare -x -f str_word      # add / delete / check
 
 declare -x PARSE_URL
 declare -x PARSE_URL_PROTOCOL
@@ -2643,13 +2649,12 @@ declare -x -f file_delete
 declare -x -f file_prepare;     declare -x -f prepare_file
 
 declare -x    FILE_REMOTE
-declare -x -f file_remote_get
-declare -x -f file_remote_put
+declare -x -f file_remote   # get / put
 
-declare -x -f file_line_remove_local
+declare -x -f file_line_delete_local
 declare -x -f file_line_add_local
 declare -x -f file_line_set_local
-declare -x -f file_line
+declare -x -f file_line     # add / delete / set
 
 declare -x -f file_config_set
 declare -x -f file_config_get
@@ -2675,10 +2680,10 @@ declare -x CALL_COMMAND_DEFAULT_USER=""
 declare -x -f call_command
 
 declare -x -f get_pids
-declare -x    KILL_ECHO="yes"
-declare -x -f kill_tree_verbose
+declare -x -f get_pids_tree_loop
+declare -x -f get_pids_tree
+#declare -x -f kill_tree_verbose
 declare -x -f kill_tree
-declare -x -f kill_tree_name
 
 declare -x -f fd_check
 declare -x -f fd_find_free
@@ -2718,6 +2723,7 @@ declare -x -f cursor_get_position
 declare -x -f cursor_move_down
 
 declare -x -f pipe_remove_color
+declare -x -f pipe_join_lines
 declare -x -f pipe_from
 declare -x -f pipe_cut
 declare -x -f echo_cut
@@ -2786,7 +2792,7 @@ declare -x -f history_init
 declare -x -f history_restore
 declare -x -f history_store
 
-declare -x OPTION_IGNORE_UNKNOWN="no"
+declare -x OPTION_IGNORE_UNKNOWN="yes"
 declare -x -f check_arg_tools
 declare -x -f tools_init
 declare -x -f colors_init

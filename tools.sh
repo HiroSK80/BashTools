@@ -83,11 +83,7 @@ function query
             then
                 ping -c 2 "$REPLY" > /dev/null 2>&1
                 test $? -eq 0 && OK="ok"
-
-                if test "$OK" = "no"
-                then
-                    echo "        Error: $ERROR"
-                fi
+                test_no "$OK" && echo "        Error: $ERROR"
             else
                 OK="ok"
             fi
@@ -112,10 +108,7 @@ function query
             else
                 OK="`echo "$REPLY" | awk '/'$TEST_REGEXP'/ { print "ok"; exit } { print "no" }'`"
             fi
-            if test "$OK" = "no"
-            then
-                echo "        Error: $ERROR"
-            fi
+            test_no "$OK" && echo "        Error: $ERROR"
         done
     fi
 
@@ -295,7 +288,7 @@ function prepare_file
     done
     test -z "$FILE" && echo_error_function "prepare_file" "Filename is not specified: $1" 1
 
-    if test "$ROLL" = "yes"
+    if test_yes "$ROLL"
     then
         test -f "$FILE-9" && rm -f "$FILE-9"
         for N in 8 7 6 5 4 3 2 1
@@ -306,7 +299,7 @@ function prepare_file
         test -f "$FILE" && mv "$FILE" "$FILE-1"
     fi
 
-    test "$EMPTY" = "yes" && rm -f "$FILE"
+    test_yes "$EMPTY" && rm -f "$FILE"
 
     touch "$FILE"
     test -f "$FILE" || echo_error_function "prepare_file" "Can't create the file: $FILE" 1
@@ -812,8 +805,8 @@ function call_command
 
     if is_localhost "$HOST"
     then
-        test "$DEBUG" = "yes" && echo_debug_right "$@"
-        if test "$USER_SET" = "no" -o "`get_id`" = "$USER"
+        test_yes "$DEBUG" && echo_debug_right "$@"
+        if test_no "$USER_SET" -o "`get_id`" = "$USER"
         then
             bash -c "$@"
             TOOL_EXEC_EXIT_CODE="$?"
@@ -840,9 +833,9 @@ function kill_tree_childs
     do
         kill_tree_childs "yes" "$CHILD_PID"
     done
-    if test "$TOPMOST" = "yes" -a "$CHECK_PID" != "$$"
+    if test_yes "$TOPMOST" -a "$CHECK_PID" != "$$"
     then
-        test "$ECHO_KILL" = "yes" && echo "Killing process with $CHECK_PID PID" && ps -ef | awk --assign p="$CHECK_PID" '$2==p { print "Killed: "$0; }'
+        test_yes "$ECHO_KILL" && echo "Killing process with $CHECK_PID PID" && ps -ef | awk --assign p="$CHECK_PID" '$2==p { print "Killed: "$0; }'
         kill -9 "$CHECK_PID" 2>/dev/null
     fi
 }
@@ -890,19 +883,19 @@ function fill_command_options
 function test_boolean
 # $1 integer
 {
-    [[ "$1" =~ ^(yes|Yes|YES|true|True|TRUE)$ ]]
+    [[ "$1" =~ ^(y|Y|yes|Yes|YES|true|True|TRUE)$ ]]
 }
 
 function test_yes
 # $1 integer
 {
-    [[ "$1" =~ ^(yes|Yes|YES)$ ]]
+    [[ "$1" =~ ^(y|Y|yes|Yes|YES)$ ]]
 }
 
 function test_no
 # $1 integer
 {
-    [[ "$1" =~ ^(no|No|NO)$ ]]
+    [[ "$1" =~ ^(n|N|no|No|NO)$ ]]
 }
 
 function test_integer
@@ -1114,7 +1107,7 @@ function echo_log
 
 function echo_info
 {
-    if test "$OPTION_COLOR" = "yes"
+    if test_yes "$OPTION_COLOR"
     then
         echo -e "${COLOR_INFO}${ECHO_PREFIX}${ECHO_UNAME}$@${COLOR_RESET}"
     else
@@ -1126,7 +1119,7 @@ function echo_info
 
 function echo_step
 {
-    if test "$OPTION_COLOR" = "yes"
+    if test_yes "$OPTION_COLOR"
     then
         echo -e "${COLOR_STEP}${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}$@${COLOR_RESET}"
     else
@@ -1138,7 +1131,7 @@ function echo_step
 
 function echo_substep
 {
-    if test "$OPTION_COLOR" = "yes"
+    if test_yes "$OPTION_COLOR"
     then
         echo -e "${COLOR_SUBSTEP}${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_SUBSTEP}$@${COLOR_RESET}"
     else
@@ -1170,7 +1163,7 @@ function echo_debug
 {
     if check_debug
     then
-        if test "$OPTION_COLOR" = "yes"
+        if test_yes "$OPTION_COLOR"
         then
             echo -e "${COLOR_DEBUG}${ECHO_PREFIX}${ECHO_UNAME}$@${COLOR_RESET}" >&$REDIRECT_DEBUG
         else
@@ -1185,7 +1178,7 @@ function echo_debug_right
 {
     if check_debug right
     then
-        if test "$OPTION_COLOR" = "yes"
+        if test_yes "$OPTION_COLOR"
         then
             local DEBUG_MESSAGE="${ECHO_PREFIX}${ECHO_UNAME}$@"
         else
@@ -1232,7 +1225,7 @@ function echo_debug_function
     then
         FUNCTION_INFO="<<< ${FUNCNAME[@]} $@"
         FUNCTION_INFO="${FUNCTION_INFO/echo_debug_function /}"
-        if test "$OPTION_COLOR" = "yes"
+        if test_yes "$OPTION_COLOR"
         then
             echo -e "${COLOR_DEBUG}${ECHO_PREFIX}${ECHO_UNAME}${FUNCTION_INFO}${COLOR_RESET}" >&$REDIRECT_DEBUG
         else
@@ -1254,7 +1247,7 @@ function echo_error
     local ECHO_ERROR="$@"
     test_integer "${@:(-1)}" && local EXIT_CODE=$2 && ECHO_ERROR="${@:1:${#@}-1}"
 
-    if test "$OPTION_COLOR" = "yes"
+    if test_yes "$OPTION_COLOR"
     then
         echo -e "$COLOR_ERROR${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!$COLOR_RESET" >&$REDIRECT_ERROR
     else
@@ -1295,7 +1288,7 @@ function echo_warning
     local ECHO_WARNING="$@"
     test_integer "${@:(-1)}" && local EXIT_CODE=$2 && ECHO_WARNING="${@:1:${#@}-1}"
 
-    if test "$OPTION_COLOR" = "yes"
+    if test_yes "$OPTION_COLOR"
     then
         echo -e "$COLOR_WARNING${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}!$COLOR_RESET" >&$REDIRECT_WARNING
     else
@@ -1493,11 +1486,11 @@ done
 #    OPTION_PREFIX="yes"
 #fi
 
-test "$OPTION_PREFIX" = "yes" && ECHO_PREFIX="### "
+test_yes "$OPTION_PREFIX" && ECHO_PREFIX="### "
 
-test "$OPTION_UNAME" = "yes" && ECHO_UNAME="`uname -n`: " || ECHO_UNAME=""
+test_yes "$OPTION_UNAME" && ECHO_UNAME="`uname -n`: " || ECHO_UNAME=""
 
-if test "$OPTION_COLOR" != "yes" -a "$OPTION_COLOR" != "no"
+if ! test_yes "$OPTION_COLOR" -a ! test_no "$OPTION_COLOR"
 then
     #echo "Color is \"$OPTION_COLOR\"; setting..."
     if test "`echo "$TERM" | cut -c 1-5`" = "xterm" -o "$TERM" = "rxvt" -o "$TERM" = "konsole" -o "$TERM" = "linux"
@@ -1509,7 +1502,7 @@ then
     #echo "Color is $OPTION_COLOR"
 fi
 
-if test "$OPTION_COLOR" = "yes"
+if test_yes "$OPTION_COLOR"
 then
     # color definitions
     COLOR_RESET="\033[0m"

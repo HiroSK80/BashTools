@@ -236,6 +236,19 @@ function str_get_arg_from_quoted
 
 function check_arg_init
 {
+    CHECK_ARG_SHIFTS[$CHECK_ARG_SHIFTS_I]=$CHECK_ARG_SHIFT
+    let CHECK_ARG_SHIFTS_I++
+}
+
+function check_arg_done
+{
+    let CHECK_ARG_SHIFTS_I--
+    CHECK_ARG_SHIFT=${CHECK_ARG_SHIFTS[$CHECK_ARG_SHIFTS_I]}
+    unset CHECK_ARG_SHIFTS[$CHECK_ARG_SHIFTS_I]
+}
+
+function check_arg_loop
+{
     CHECK_ARG_SHIFT=0
 }
 
@@ -250,14 +263,16 @@ function check_arg_switch
 # $3 arguments
 # usage: check_arg_switch "d|debug" "OPTION_DEBUG|default" "$@"
 # example:
+# check_arg_init
 # while test $# -gt 0
 # do
-#     check_arg_init
+#     check_arg_loop
 #     check_arg_switch "d|debug" "OPTION_DEBUG|yes" "$@"
 #     check_arg_value "h|host" "OPTION_HOST|localhost" "$@"
 #     check_arg_shift && shift $CHECK_ARG_SHIFT && continue
 #     echo_error "Unknown argument: $1" 1
 # done
+# check_arg_done
 {
     ARG_NAME_SHORT="${1%|*}"
     ARG_NAME_LONG="${1#*|}"
@@ -284,14 +299,16 @@ function check_arg_value
 # $3 arguments
 # usage: check_arg_value "h|host" "OPTION_HOST" "$@"
 # example:
+# check_arg_init
 # while test $# -gt 0
 # do
-#     check_arg_init
+#     check_arg_loop
 #     check_arg_switch "d|debug" "OPTION_DEBUG|yes" "$@"
 #     check_arg_value "h|host" "OPTION_HOST|localhost" "$@"
 #     check_arg_shift && shift $CHECK_ARG_SHIFT && continue
 #     echo_error "Unknown argument: $1" 1
 # done
+# check_arg_done
 {
     ARG_NAME_SHORT="${1%|*}"
     ARG_NAME_LONG="${1#*|}"
@@ -327,6 +344,37 @@ function check_arg_value
     return 1
 }
 
+function str_parse_url
+# $1 URL
+#   [path/]filename
+#   host:[path/]filename
+#   user@host:[path/]filename
+#   protocol://user@host:[path/]filename
+{
+    PARSE_URL="$1"
+    if test_str "$PARSE_URL" "^([^:/]+):(.*)$"
+    then
+        PARSE_URL_PROTOCOL="ssh"
+        PARSE_URL_USER_HOST="${BASH_REMATCH[1]}"
+        PARSE_URL_FILE="${BASH_REMATCH[2]}"
+        test_str "$PARSE_URL_USER_HOST" "((.*)@)?(.*)$"
+        PARSE_URL_USER="${BASH_REMATCH[2]}"
+        PARSE_URL_HOST="${BASH_REMATCH[3]}"
+    else
+        PARSE_URL_PROTOCOL="file"
+        PARSE_URL_USER_HOST=""
+        PARSE_URL_USER=""
+        PARSE_URL_HOST=""
+        PARSE_URL_FILE="$PARSE_URL"
+    fi
+    echo "PARSE_URL=$PARSE_URL"
+    echo "PARSE_URL_PROTOCOL=$PARSE_URL_PROTOCOL"
+    echo "PARSE_URL_USER_HOST=$PARSE_URL_USER_HOST"
+    echo "PARSE_URL_HOST=$PARSE_URL_HOST"
+    echo "PARSE_URL_USER=$PARSE_URL_USER"
+    echo "PARSE_URL_FILE=$PARSE_URL_FILE"
+}
+
 # __FILE_FUNCTIONS_START__
 function file_delete
 {
@@ -340,9 +388,9 @@ function file_delete
 function file_prepare_move
 {
     local F="$1"
-    local N=$2
-    local C=$3
-    local N1
+    local -i N=$2
+    local -i C=$3
+    local -i N1
     let N1=N+1
 
     test $N1 -ne $C -a -f "$F-$N" -a -f "$F-$N1" && file_prepare_move "$1" $N1 $C
@@ -358,16 +406,19 @@ function file_prepare
     local COUNT="9"
     local USER=""
     local GROUP=""
+    check_arg_init
     while test $# -gt 0
     do
-        check_arg_init
+        check_arg_loop
         check_arg_switch "e|empty" "EMPTY|yes" "$@"
         check_arg_switch "r|roll" "ROLL|yes" "$@"
-        check_arg_switch "c|count" "COUNT|9" "$@"
+        check_arg_switch "u|user" "USER|" "$@"
+        check_arg_switch "g|group" "GROUP|" "$@"
         check_arg_shift && shift $CHECK_ARG_SHIFT && continue
         test -z "$FILE" && FILE="$1" && shift && continue
         echo_error_function "Unknown argument: $1" $OPTION_DEFAULT_ERROR_CODE
     done
+    check_arg_done
     test -z "$FILE" && echo_error_function "Filename is not specified" $OPTION_DEFAULT_ERROR_CODE
 
     if test_yes "$ROLL" && test -f "$FILE"
@@ -388,8 +439,8 @@ function file_prepare
 
     test_yes "$EMPTY" && cat /dev/null > "$FILE"
 
-    test -n "$FILE_PREPARE_USER" && chgrp "$FILE_PREPARE_USER" "$FILE" 2> /dev/null
-    test -n "$FILE_PREPARE_GROUP" && chown "$FILE_PREPARE_GROUP" "$FILE" 2> /dev/null
+    test -n "$USER" && chgrp "$USER" "$FILE" 2> /dev/null
+    test -n "$GROUP" && chown "$GROUP" "$FILE" 2> /dev/null
 
     return 0
 }
@@ -399,29 +450,25 @@ function prepare_file
     file_prepare "$@"
 }
 
-export FILE_REMOTE
-
 function file_remote_get
-# $1 ssh connect: user@host
-# $2 remote file
-# $3 local file
+# $1 user@host:remote_file
+# $2 local file
 {
-    local SSH="$1"
-    local FILE="$2"
-    export FILE_REMOTE="/tmp/`basename "$FILE"`.$$"
-    test -n "$3" && FILE_REMOTE="$3"
+    local SSH="${1%%:*}"
+    local FILE="${2#*:}"
+    export FILE_REMOTE="/tmp/file_remote_`basename "$FILE"`.$$"
+    test -n "$2" && FILE_REMOTE="$2"
     file_delete "$FILE_REMOTE"
     $SCPq "$SSH":"$FILE" "$FILE_REMOTE" || return 1
 }
 
 function file_remote_put
-# $1 ssh connect: user@host
-# $2 remote file
-# $3 local file
+# $1 user@host:remote_file
+# $2 local file
 {
-    local SSH="$1"
-    local FILE="$2"
-    export FILE_REMOTE="/tmp/`basename "$FILE"`.$$"
+    local SSH="${1%%:*}"
+    local FILE="${2#*:}"
+    export FILE_REMOTE="/tmp/file_remote_`basename "$FILE"`.$$"
     test -n "$3" && FILE_REMOTE="$3"
     $SCPq "$FILE_REMOTE" "$SSH":"$FILE" || return 1
     file_delete "$FILE_REMOTE"
@@ -502,7 +549,7 @@ function file_line_set_local
 
     if ! $GREP --quiet --line-regexp --fixed-strings -- "$LINE" "$FILE"
     then
-        file_line_add "$FILE" "$LINE" "$REGEXP_AFTER" "$REGEXP_REPLACE"
+        file_line_add_local "$FILE" "$LINE" "$REGEXP_AFTER" "$REGEXP_REPLACE"
         return 1
     else
         return 0
@@ -514,78 +561,23 @@ function file_line_add1
     file_line_set "$@"
 }
 
-function file_line_remove
-# [--host <host>|-h <host>] - ssh connect: [user@]host
+function file_line
+# $1 can be [[user@]host:][path/]filename
 # $* as for file_line_add_local function
 {
-    local HOST=""
-    if test "$1" = "-h" -o "$1" = "--host"
+    local LINE="$1"
+    test_str "$LINE" "(remove|add|set)" || echo_error_function "Supported only line: remove add set functions and not: $LINE" $OPTION_DEFAULT_ERROR_CODE
+    str_parse_url "$2"
+    shift 2
+    if test "$PARSE_URL_PROTOCOL" = "file" || is_localhost "$PARSE_URL_HOST"
     then
-        local HOST="$2"
-        shift 2
-    fi
-
-    local FILE="$1"
-    if is_localhost "${HOST#*@}"
-    then
-        file_line_remove_local "$@"
+        file_line_${LINE}_local "$PARSE_URL_FILE" "$@"
     else
-        file_remote_get "$HOST" "$FILE" || echo_error_function "Can't retrieve `echo_quote "$FILE"` file from $HOST" $OPTION_DEFAULT_ERROR_CODE
+        file_remote_get "$PARSE_URL" || echo_error_function "Can't retrieve `echo_quote "$PARSE_URL_FILE"` file from $PARSE_URL_USER_HOST" $OPTION_DEFAULT_ERROR_CODE
         #ls -la "$FILE_REMOTE"
-        shift
-        file_line_remove_local "$FILE_REMOTE" "$@"
+        file_line_${LINE}_local "$FILE_REMOTE" "$@"
         #ls -la "$FILE_REMOTE"
-        file_remote_put "$HOST" "$FILE"
-    fi
-}
-
-function file_line_add
-# [--host <host>|-h <host>] - ssh connect: [user@]host
-# $* as for file_line_add_local function
-{
-    local HOST=""
-    if test "$1" = "-h" -o "$1" = "--host"
-    then
-        local HOST="$2"
-        shift 2
-    fi
-
-    local FILE="$1"
-    if is_localhost "${HOST#*@}"
-    then
-        file_line_add_local "$@"
-    else
-        file_remote_get "$HOST" "$FILE" || echo_error_function "Can't retrieve `echo_quote "$FILE"` file from $HOST" $OPTION_DEFAULT_ERROR_CODE
-        #ls -la "$FILE_REMOTE"
-        shift
-        file_line_add_local "$FILE_REMOTE" "$@"
-        #ls -la "$FILE_REMOTE"
-        file_remote_put "$HOST" "$FILE"
-    fi
-}
-
-function file_line_set
-# [--host <host>|-h <host>] - ssh connect: [user@]host
-# $* as for file_line_set_local function
-{
-    local HOST=""
-    if test "$1" = "-h" -o "$1" = "--host"
-    then
-        local HOST="$2"
-        shift 2
-    fi
-
-    local FILE="$1"
-    if is_localhost "${HOST#*@}"
-    then
-        file_line_set_local "$@"
-    else
-        file_remote_get "$HOST" "$FILE" || echo_error_function "Can't retrieve `echo_quote "$FILE"` file from $HOST" $OPTION_DEFAULT_ERROR_CODE
-        #ls -la "$FILE_REMOTE"
-        shift
-        file_line_set_local "$FILE_REMOTE" "$@"
-        #ls -la "$FILE_REMOTE"
-        file_remote_put "$HOST" "$FILE"
+        file_remote_put "$PARSE_URL"
     fi
 }
 
@@ -595,7 +587,7 @@ function file_config_format
     local CONFIG_FILE="$1"
     local FORMAT="standard"
     test -e "$CONFIG_FILE" && $GREP "^[\t ]\[" "$CONFIG_FILE" && FORMAT="extended"
-    return "$FORMAT"
+    echo "$FORMAT"
 }
 
 function file_config_set
@@ -737,7 +729,7 @@ function get_ip_arp
     local GET_IP_ARP="`arp "$1" 2> /dev/null | $AWK 'BEGIN { FS="[()]"; } { print $2; }'`"
     if test "$UNIX_TYPE" = "Linux" -a -z "$GET_IP_ARP"
     then
-        GET_IP_ARP="`arp -n "$1" | $AWK '/ether/ { print $1; }'`"
+        GET_IP_ARP="`arp -n "$1" 2> /dev/null | $AWK '/ether/ { print $1; }'`"
     fi
     command echo "$GET_IP_ARP"
 }
@@ -745,7 +737,7 @@ function get_ip_arp
 function get_ip_ping
 {
     test "$UNIX_TYPE" = "SunOS" && ping -s "$1" 1 1 | $GREP "bytes from" | $AWK 'BEGIN { FS="[()]"; } { print $2; }'
-    test "$UNIX_TYPE" = "Linux" && ping -q -c 1 -t 1 -W 1 "$1" | $GREP PING | $AWK 'BEGIN { FS="[()]"; } { print $2; }'
+    test "$UNIX_TYPE" = "Linux" && ping -q -c 1 -t 1 -W 1 "$1" 2> /dev/null | $GREP PING | $AWK 'BEGIN { FS="[()]"; } { print $2; }'
 }
 
 function get_ip
@@ -1117,9 +1109,6 @@ function fd_find_free
     command echo $FILE_FD
 }
 
-declare -A PERF_DATA
-declare -A PERF_MSG
-#PERF_DATA["default"]=0
 function perf_start
 {
     local PERF_VAR="${1:-default}"
@@ -1316,7 +1305,7 @@ function test_str
     test $# != 2 && echo_error_function "Wrong parameters count"
 
     #test -n "$IGNORE_CASE" && local SHOPT="`shopt -p nocasematch`" && shopt -s nocasematch
-    #test -n "$IGNORE_CASE" && shopt -s nocasematch
+    test -n "$IGNORE_CASE" && shopt -s nocasematch
     [[ "$1" =~ $2 ]]
     RETURN=$?
     #test -n "$IGNORE_CASE" && $SHOPT
@@ -1609,9 +1598,10 @@ function pipe_prefix
     test -n "$SHOW_OUTPUT_COMMAND" && HIDELINES="$SHOW_OUTPUT_COMMAND"
     local NEW_LINE="yes"
 
+    check_arg_init
     while test $# -gt 0
     do
-        check_arg_init
+        check_arg_loop
         check_arg_value "p|prefix" "PREFIX" "$@"
         check_arg_value "c|command" "COMMAND" "$@"
         check_arg_switch "l|newline" "NEW_LINE|no" "$@"
@@ -1619,6 +1609,7 @@ function pipe_prefix
         test -z "$HIDELINES" && HIDELINES="$1" && shift && continue
         echo_error_function "Unknown argument: $1" $OPTION_DEFAULT_ERROR_CODE
     done
+    check_arg_done
 
     #while read LINE
     #do
@@ -1710,8 +1701,8 @@ function echo_line
 # usage as standard echo
 # echoes arguments to standard output and log to the file
 {
-    command echo "$@"
-    echo_log "${ECHO_PREFIX}${ECHO_UNAME}$@"
+    command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$@"
+    echo_log "$ECHO_PREFIX$ECHO_UNAME$@"
 }
 
 function echo_title
@@ -1725,18 +1716,18 @@ function echo_title
     local TITLE_TAIL="${TITLE_STYLE:2:1}`printf -- "${TITLE_STYLE:4:1}%.0s" $TITLE_SEQ`${TITLE_STYLE:7:1}"
     if test_yes "$OPTION_COLOR"
     then
-        command echo -e "${COLOR_INFO}${ECHO_PREFIX}${ECHO_UNAME}$TITLE_HEAD${COLOR_RESET}"
-        command echo -e "${COLOR_INFO}${ECHO_PREFIX}${ECHO_UNAME}$TITLE_MSG${COLOR_RESET}"
-        command echo -e "${COLOR_INFO}${ECHO_PREFIX}${ECHO_UNAME}$TITLE_TAIL${COLOR_RESET}"
+        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_INFO$TITLE_HEAD$COLOR_RESET"
+        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_INFO$TITLE_MSG$COLOR_RESET"
+        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_INFO$TITLE_TAIL$COLOR_RESET"
     else
-        command echo "${ECHO_PREFIX}${ECHO_UNAME}$TITLE_HEAD"
-        command echo "${ECHO_PREFIX}${ECHO_UNAME}$TITLE_MSG"
-        command echo "${ECHO_PREFIX}${ECHO_UNAME}$TITLE_TAIL"
+        command echo "$ECHO_PREFIX$ECHO_UNAME$TITLE_HEAD"
+        command echo "$ECHO_PREFIX$ECHO_UNAME$TITLE_MSG"
+        command echo "$ECHO_PREFIX$ECHO_UNAME$TITLE_TAIL"
     fi
 
-    echo_log "${ECHO_PREFIX}${ECHO_UNAME}$TITLE_HEAD"
-    echo_log "${ECHO_PREFIX}${ECHO_UNAME}$TITLE_MSG"
-    echo_log "${ECHO_PREFIX}${ECHO_UNAME}$TITLE_TAIL"
+    echo_log "$ECHO_PREFIX$ECHO_UNAME$TITLE_HEAD"
+    echo_log "$ECHO_PREFIX$ECHO_UNAME$TITLE_MSG"
+    echo_log "$ECHO_PREFIX$ECHO_UNAME$TITLE_TAIL"
     return 0
 }
 
@@ -1744,35 +1735,35 @@ function echo_info
 {
     if test_yes "$OPTION_COLOR"
     then
-        command echo -e "${COLOR_INFO}${ECHO_PREFIX}${ECHO_UNAME}$@${COLOR_RESET}"
+        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_INFO$@$COLOR_RESET"
     else
-        command echo "${ECHO_PREFIX}${ECHO_UNAME}$@"
+        command echo "$ECHO_PREFIX$ECHO_UNAME$@"
     fi
 
-    echo_log "${ECHO_PREFIX}${ECHO_UNAME}$@"
+    echo_log "$ECHO_PREFIX$ECHO_UNAME$@"
     return 0
 }
 
 function echo_step
 {
-    local STEP_NUMBER=""
+    local -i STEP_NUMBER=""
     local STEP_NUMBER_STR=""
     if test $# -ge 2
     then
         STEP_VARIABLE="$1"
         shift
-        STEP_NUMBER="${!STEP_VARIABLE}"
+        STEP_NUMBER=${!STEP_VARIABLE}
         STEP_NUMBER_STR="${STEP_NUMBER}. "
     fi
 
     if test_yes "$OPTION_COLOR"
     then
-        command echo -e "${COLOR_STEP}${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}${STEP_NUMBER_STR}$@${COLOR_RESET}"
+        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_STEP$ECHO_PREFIX_STEP$STEP_NUMBER_STR$@$COLOR_RESET"
     else
-        command echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}${STEP_NUMBER_STR}$@"
+        command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_STEP$STEP_NUMBER_STR$@"
     fi
 
-    echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}${STEP_NUMBER_STR}$@"
+    echo_log "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_STEP$STEP_NUMBER_STR$@"
 
     test_integer "$STEP_NUMBER" && let STEP_NUMBER++ && let $STEP_VARIABLE=$STEP_NUMBER
     test_str "$STEP_NUMBER" "^[a-z]$" && export $STEP_VARIABLE="`command echo "$STEP_NUMBER" | tr "a-z" "b-z_"`"
@@ -1784,12 +1775,12 @@ function echo_substep
 {
     if test_yes "$OPTION_COLOR"
     then
-        command echo -e "${COLOR_SUBSTEP}${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_SUBSTEP}$@${COLOR_RESET}"
+        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_SUBSTEP$ECHO_PREFIX_SUBSTEP$@$COLOR_RESET"
     else
-        command echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_SUBSTEP}$@"
+        command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_SUBSTEP$@"
     fi
 
-    echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_SUBSTEP}$@"
+    echo_log "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_SUBSTEP$@"
     return 0
 }
 
@@ -1877,12 +1868,12 @@ function echo_debug
         then
             if test_yes "$OPTION_COLOR"
             then
-                command echo -e "${COLOR_DEBUG}${ECHO_PREFIX}${ECHO_UNAME}${ECHO_DEBUG_LEVEL}$@${COLOR_RESET}" > "${REDIRECT_DEBUG}"
+                command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_DEBUG$ECHO_DEBUG_LEVEL$@$COLOR_RESET" > $REDIRECT_DEBUG
             else
-                command echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}${ECHO_DEBUG_LEVEL}$@" > "${REDIRECT_DEBUG}"
+                command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$ECHO_DEBUG_LEVEL$@" > $REDIRECT_DEBUG
             fi
 
-            echo_log --date "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}${ECHO_DEBUG_LEVEL}$@"
+            echo_log --date "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$ECHO_DEBUG_LEVEL$@"
         fi
     fi
     return 0
@@ -1899,22 +1890,24 @@ function echo_debug_right
         test "$1" = "-1" && SHIFT1="yes" && shift
         if test_yes "$OPTION_COLOR"
         then
-            local DEBUG_MESSAGE="${ECHO_PREFIX}${ECHO_UNAME}$@"
+            local DEBUG_MESSAGE="$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_DEBUG$@$COLOR_RESET"
+            local DEBUG_MESSAGE_STR="$ECHO_PREFIX$ECHO_UNAME$@"
         else
-            local DEBUG_MESSAGE="${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@"
+            local DEBUG_MESSAGE="$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$@"
+            local DEBUG_MESSAGE_STR="$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$@"
         fi
-        local SHIFT_MESSAGE="`tput cols`"
-        let SHIFT_MESSAGE="$SHIFT_MESSAGE-${#DEBUG_MESSAGE}"
+        local -i SHIFT_MESSAGE="`tput cols`"
+        let SHIFT_MESSAGE="$SHIFT_MESSAGE-${#DEBUG_MESSAGE_STR}"
 
 ##############OLD
         #cursor_get_position
 #tput sc
-        #/bin/echo -e "\r\c" > "${REDIRECT_DEBUG}"
-        #test $SHIFT_MESSAGE -ge 25 && tput cuu1 > "${REDIRECT_DEBUG}" && tput cuf $SHIFT_MESSAGE > "${REDIRECT_DEBUG}"
-        #/bin/echo -e "${COLOR_DEBUG}$DEBUG_MESSAGE${COLOR_RESET}" > "${REDIRECT_DEBUG}"
+        #/bin/echo -e "\r\c" > $REDIRECT_DEBUG
+        #test $SHIFT_MESSAGE -ge 25 && tput cuu1 > $REDIRECT_DEBUG && tput cuf $SHIFT_MESSAGE > $REDIRECT_DEBUG
+        #/bin/echo -e "$COLOR_DEBUG$DEBUG_MESSAGE$COLOR_RESET" > $REDIRECT_DEBUG
 #tput rc
         #let CURSOR_COLUMN--
-        #test $CURSOR_COLUMN -ge 1 && tput cuf $CURSOR_COLUMN > "${REDIRECT_DEBUG}"
+        #test $CURSOR_COLUMN -ge 1 && tput cuf $CURSOR_COLUMN > $REDIRECT_DEBUG
 #test $SHIFT_MESSAGE -ge 15 || cursor_move_down
 ##############OLD
 
@@ -1922,19 +1915,19 @@ function echo_debug_right
         if test $SHIFT_MESSAGE -gt 0
         then
             cursor_get_position
-            let SHIFT_MESSAGE=$SHIFT_MESSAGE+1
+            let SHIFT_MESSAGE++
 #echo -en "\\033[1A"
-            test_yes "$SHIFT1" && test $SHIFT_MESSAGE -le $SHIFT1_MIN_FREE && command echo -e "\r" > "${REDIRECT_DEBUG}"
-            command echo -en "\\033[${SHIFT_MESSAGE}G" > "${REDIRECT_DEBUG}"
-            test_yes "$SHIFT1" && echo -en "\\033[1A" > "${REDIRECT_DEBUG}"
-            command echo -e "${COLOR_DEBUG}$DEBUG_MESSAGE${COLOR_RESET}\c" > "${REDIRECT_DEBUG}"
-            command echo -en "\\033[${CURSOR_COLUMN}G" > "${REDIRECT_DEBUG}"
-            test_yes "$SHIFT1" && echo -en "\\033[1B" > "${REDIRECT_DEBUG}"
+            test_yes "$SHIFT1" && test $SHIFT_MESSAGE -le $SHIFT1_MIN_FREE && command echo -e "\r" > $REDIRECT_DEBUG
+            command echo -en "\\033[${SHIFT_MESSAGE}G" > $REDIRECT_DEBUG
+            test_yes "$SHIFT1" && echo -en "\\033[1A" > $REDIRECT_DEBUG
+            command echo -e "$DEBUG_MESSAGE\c" > $REDIRECT_DEBUG
+            command echo -en "\\033[${CURSOR_COLUMN}G" > $REDIRECT_DEBUG
+            test_yes "$SHIFT1" && echo -en "\\033[1B" > $REDIRECT_DEBUG
         else
-            command echo -e "\r${COLOR_DEBUG}$DEBUG_MESSAGE${COLOR_RESET}" > "${REDIRECT_DEBUG}"
+            command echo -e "\r$DEBUG_MESSAGE" > $REDIRECT_DEBUG
         fi
 
-        echo_log --date "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@"
+        echo_log --date "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$@"
     fi
     return 0
 }
@@ -1953,9 +1946,9 @@ function echo_debug_variable
         done
         if test_yes "$OPTION_COLOR"
         then
-            command echo -e "${COLOR_DEBUG}${ECHO_PREFIX}${ECHO_UNAME}${VAR_LIST}${COLOR_RESET}" > "${REDIRECT_DEBUG}"
+            command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_DEBUG$VAR_LIST$COLOR_RESET" > $REDIRECT_DEBUG
         else
-            command echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}${VAR_LIST}" > "${REDIRECT_DEBUG}"
+            command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$VAR_LIST" > $REDIRECT_DEBUG
         fi
     fi
     return 0
@@ -1979,12 +1972,12 @@ function echo_debug_function
         FUNCTION_INFO="<<< $FUNCTION_INFO"
         if test_yes "$OPTION_COLOR"
         then
-            command echo -e "${COLOR_DEBUG}${ECHO_PREFIX}${ECHO_UNAME}${FUNCTION_INFO}${COLOR_RESET}" > "${REDIRECT_DEBUG}"
+            command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_DEBUG$FUNCTION_INFO$COLOR_RESET" > $REDIRECT_DEBUG
         else
-            command echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}${FUNCTION_INFO}" > "${REDIRECT_DEBUG}"
+            command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$FUNCTION_INFO" > $REDIRECT_DEBUG
         fi
 
-        echo_log --date "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}${FUNCTION_INFO}"
+        echo_log --date "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$FUNCTION_INFO"
     fi
     return 0
 }
@@ -2003,12 +1996,12 @@ function echo_error
 
     if test_yes "$OPTION_COLOR"
     then
-        command echo -e "$COLOR_ERROR${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!$COLOR_RESET" >&$REDIRECT_ERROR
+        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_ERROR$ECHO_PREFIX_ERROR$ECHO_ERROR!$COLOR_RESET" >&$REDIRECT_ERROR
     else
-        command echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!" >&$REDIRECT_ERROR
+        command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_ERROR$ECHO_ERROR!" >&$REDIRECT_ERROR
     fi
 
-    echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_ERROR}${ECHO_ERROR}!"
+    echo_log "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_ERROR$ECHO_ERROR!"
 
     test -n "$EXIT_CODE" && exit $EXIT_CODE
     return 0
@@ -2066,12 +2059,12 @@ function echo_warning
 
     if test_yes "$OPTION_COLOR"
     then
-        command echo -e "${COLOR_WARNING}${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}.${COLOR_RESET}" >&$REDIRECT_WARNING
+        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_WARNING$ECHO_PREFIX_WARNING$ECHO_WARNING.$COLOR_RESET" >&$REDIRECT_WARNING
     else
-        command echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}." >&$REDIRECT_WARNING
+        command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_WARNING$ECHO_WARNING." >&$REDIRECT_WARNING
     fi
 
-    echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_WARNING}${ECHO_WARNING}."
+    echo_log "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_WARNING$ECHO_WARNING."
 
     test -n "$EXIT_CODE" && exit $EXIT_CODE
     return 0
@@ -2098,10 +2091,10 @@ function history_restore
 {
     history -r
 
-    export HISTORY=()
-    while read FILE_LINE
+    declare -a HISTORY=()
+    while read LINE
     do
-        test -n "$FILE_LINE" && HISTORY+=("$FILE_LINE")
+        test -n "$LINE" && HISTORY+=("$LINE")
     done <<< "`tac "$HISTFILE"`"
 }
 
@@ -2272,6 +2265,8 @@ function colors_init
     test $OPTION_COLORS -gt 8 && COLOR_DEBUG="$COLOR_CHARCOAL" || COLOR_DEBUG="$COLOR_BLUE"
     COLOR_ERROR="$COLOR_LIGHT_RED"
     COLOR_WARNING="$COLOR_CYAN"
+    COLOR_UNAME="$COLOR_GREEN"
+    COLOR_PREFIX="$COLOR_DARK_GRAY"
 
     #echo "Color usage is now set to $OPTION_COLOR and using $OPTION_COLORS colors for $TERM"
 }
@@ -2292,9 +2287,10 @@ function check_arg_tools
 
 function tools_init
 {
+    check_arg_init
     while test $# -gt 0
     do
-        check_arg_init
+        check_arg_loop
         check_arg_tools "$@"
         check_arg_shift && shift $CHECK_ARG_SHIFT && continue
         if test -z "$TOOLS_FILE" -a -f "$1"
@@ -2311,6 +2307,7 @@ function tools_init
         test_no OPTION_IGNORE_UNKNOWN && echo_error "Unknown argument for tools: $1" 1
         shift
     done
+    check_arg_done
 
     TOOLS_FILE="`readlink --canonicalize "$TOOLS_FILE"`"
     TOOLS_NAME="`basename "$TOOLS_FILE"`"
@@ -2375,6 +2372,8 @@ export COLOR_SUBSTEP
 export COLOR_DEBUG
 export COLOR_ERROR
 export COLOR_WARNING
+export COLOR_UNAME
+export COLOR_PREFIX
 
 export -f query
 export -f query_yn
@@ -2386,25 +2385,38 @@ export -f str_parse_args
 export -f str_get_arg
 export -f str_get_arg_from
 
+declare -a CHECK_ARG_SHIFTS=()
+export CHECK_ARG_SHIFTS
+declare -i CHECK_ARG_SHIFTS_I=0
+export CHECK_ARG_SHIFTS_I
 declare -i CHECK_ARG_SHIFT=0
 export CHECK_ARG_SHIFT
+export -f check_arg_init
+export -f check_arg_done
+export -f check_arg_loop
+export -f check_arg_shift
 export -f check_arg_switch
 export -f check_arg_value
 
+export PARSE_URL
+export PARSE_URL_PROTOCOL
+export PARSE_URL_USER_HOST
+export PARSE_URL_USER
+export PARSE_URL_HOST
+export PARSE_URL_FILE
+export -f str_parse_url
+
 export -f file_delete
-export FILE_PREPARE_USER=""
-export FILE_PREPARE_GROUP=""
 export -f file_prepare;     export -f prepare_file
 
+export FILE_REMOTE
 export -f file_remote_get
 export -f file_remote_put
 
 export -f file_line_remove_local
 export -f file_line_add_local
 export -f file_line_set_local
-export -f file_line_remove
-export -f file_line_add;        #export -f lr_file_line_add
-export -f file_line_set;        #export -f file_line_add1
+export -f file_line         #export -f file_line_add1 lr_file_line_add
 
 export -f file_config_set
 export -f file_config_get
@@ -2437,6 +2449,9 @@ export -f kill_tree_name
 export -f fd_check
 export -f fd_find_free
 
+declare -A PERF_DATA
+declare -A PERF_MSG
+#PERF_DATA["default"]=0
 export -f perf_start
 export -f perf_now
 export -f perf_end
@@ -2547,8 +2562,12 @@ export -f colors_init
 ### tools init
 tools_init "$@"
 
+colors_init
+
 # set echo prefix or uname prefix
 test_yes OPTION_PREFIX && ECHO_PREFIX="### " || ECHO_PREFIX=""
+test -n "$ECHO_PREFIX" && ECHO_PREFIX_C="$COLOR_PREFIX$ECHO_PREFIX$COLOR_RESET"
 test_yes OPTION_UNAME && ECHO_UNAME="`uname -n`: " || ECHO_UNAME=""
+test -n "$ECHO_UNAME" && ECHO_UNAME_C="$COLOR_UNAME$ECHO_UNAME$COLOR_RESET"
 
-colors_init
+return 0

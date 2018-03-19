@@ -655,7 +655,6 @@ function arguments_check
             fi
 
             test $ARG_FOUND_COUNT = 0 && return 1
-            test -z "$ARG_VAR" && return 0
             ARGUMENTS_VALUE="$ARG_VALUE"
             local -i ARG_FOUND_COUNT_I=0
             while test $ARG_FOUND_COUNT_I -lt $ARG_FOUND_COUNT
@@ -690,6 +689,7 @@ function arguments_check
 
     if test_yes ARG_ASSIGN
     then
+        test -z "$ARG_VAR" && return 0
         if test_str "$ARG_VAR" "/append"
         then
             ARG_VAR="${ARG_VAR%/*}"
@@ -834,24 +834,28 @@ function file_prepare
 }
 
 function file_remote
-# $1 get / put
+# $1 get
+# $2 user@host:remote_file
+# $3 local file
+#
+# $1 put
 # $2 user@host:remote_file
 # $3 local file
 {
     local TASK="$1"
-    local SSH="${2%%:*}"
-    local FILE="${2#*:}"
-    FILE_REMOTE="`file_temporary_name file_remote "$FILE"`"
+    local SSH_HOST="${2%%:*}"
+    local SSH_FILE="${2#*:}"
+    FILE="`file_temporary_name file_remote "$FILE"`"
     test -n "$3" && FILE_REMOTE="$3"
 
     case "$TASK" in
         get)
-            file_delete "$FILE_REMOTE"
-            $SCPq "$SSH":"$FILE" "$FILE_REMOTE" || return 1
+            file_delete "$FILE"
+            $SCPq "$SSH_HOST":"$SSH_FILE" "$FILE" || return 1
             ;;
         put)
-            $SCPq "$FILE_REMOTE" "$SSH":"$FILE" || return 1
-            file_delete "$FILE_REMOTE"
+            $SCPq "$FILE" "$SSH_HOST":"$SSH_FILE" || return 1
+            file_delete "$FILE"
             ;;
     esac
 }
@@ -1910,7 +1914,8 @@ function echo_cut
 #NAMESPACE/pipes/end
 
 function log
-# [log file pathname]
+# $1 [log file pathname]
+# $2 "$@"
 {
     TASK="$1"
     shift
@@ -1920,9 +1925,12 @@ function log
         init)
             LOG_FILE="$1"
             test -z "$LOG_FILE" && LOG_FILE="${SCRIPT_FILE_NOEXT}.log"
+            shift
+            local LOG_TITLE_OPTIONS=""
+            test -n "$1" && LOG_TITLE_OPTIONS=" `echo_quote "$@"`"
 
             log section
-            log log "$LOG_TITLE started on `hostname --fqdn`" >> "$LOG_FILE"
+            log log "$LOG_TITLE$LOG_TITLE_OPTIONS started on `hostname --fqdn`" >> "$LOG_FILE"
             ;;
         done)
             test -z "$LOG_FILE" && echo_error_function "Log file is not specified"
@@ -3044,6 +3052,7 @@ DEBUG_TYPES[debug]="D"
 DEBUG_TYPES[right]="R"
 DEBUG_TYPES[function]="F"
 DEBUG_TYPES[variable]="V"
+DEBUG_TYPES[command]="C"
 declare -x -i DEBUG_LEVEL
 declare -x    DEBUG_LEVEL_STR
 declare -x -i DEBUG_LEVEL_DEFAULT=80

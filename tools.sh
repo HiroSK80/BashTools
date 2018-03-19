@@ -43,11 +43,13 @@ test -f "/etc/OEL-release" && fill_unix_type "RedHat" "OEL"
 
 if test "$UNIX_TYPE" = "SunOS"
 then
+    export RM="rm"
     export AWK="/usr/bin/nawk"
     export GREP="/usr/xpg4/bin/grep"
 fi
 if test "$UNIX_TYPE" = "Linux"
 then
+    export RM="/bin/rm -f"
     export AWK="/bin/awk"
     type awk > /dev/null 2>&1 && export AWK="`type -P awk`"
     export GREP="/bin/grep"
@@ -117,7 +119,7 @@ function query
                 ping -c 2 "$REPLY" > /dev/null 2>&1
                 test $? -eq 0 && OK="ok"
             else
-                OK="`echo "$REPLY" | awk '/'$TEST_REGEXP'/ { print "ok"; exit } { print "no" }'`"
+                OK="`echo "$REPLY" | $AWK '/'$TEST_REGEXP'/ { print "ok"; exit } { print "no" }'`"
             fi
             test_no "$OK" && echo "        Error: $ERROR"
         done
@@ -308,7 +310,7 @@ function prepare_file_move
     let N1=N+1
 
     test $N1 -ne $C -a -f "$F-$N" -a -f "$F-$N1" && prepare_file_move "$1" $N1 $C
-    test -f "$F-$N1" && rm -f "$F-$N1"
+    test -f "$F-$N1" && $RM "$F-$N1"
     mv "$F-$N" "$F-$N1"
 }
 
@@ -332,19 +334,22 @@ function prepare_file
     done
     test -z "$FILE" && echo_error_function "prepare_file" "Filename is not specified" 1
 
-    mkdir -p "`dirname $FILE`"
-
     if test_yes "$ROLL" && test -f "$FILE"
     then
         test -f "$FILE-1" && prepare_file_move "$FILE" 1 "$COUNT"
         mv "$FILE" "$FILE-1"
     fi
 
-    test_yes "$EMPTY" && rm -f "$FILE"
+    if test ! -w "$FILE"
+    then
+        mkdir -p "`dirname $FILE`"
+        touch "$FILE"
+        chmod ug+w "$FILE" 2> /dev/null
+    fi
+    test -w "$FILE" || echo_error_function "prepare_file" "Can't create and prepare file for writting: $FILE" 1
 
-    touch "$FILE"
-    test -f "$FILE" || echo_error_function "prepare_file" "Can't create the file: $FILE" 1
-    chmod ug+w "$FILE" 2> /dev/null
+    test_yes "$EMPTY" && echo > "$FILE"
+    
     test -n "$PREPARE_FILE_USER" && chgrp "$PREPARE_FILE_USER" "$FILE" 2> /dev/null
     test -n "$PREPARE_FILE_GROUP" && chown "$PREPARE_FILE_GROUP" "$FILE" 2> /dev/null
 }
@@ -356,7 +361,7 @@ function get_remote_file
     local REMOTE_SSH="$1"
     local REMOTE_FILE="$2"
     LOCAL_TEMP_FILE="/tmp/`basename "$REMOTE_FILE"`.$$"
-    rm -f "$LOCAL_TEMP_FILE"
+    $RM "$LOCAL_TEMP_FILE"
     scp -q "$REMOTE_SSH":"$REMOTE_FILE" "$LOCAL_TEMP_FILE" || return 1
     #echo "$LOCAL_TEMP_FILE"
 }
@@ -369,7 +374,7 @@ function put_remote_file
     local REMOTE_FILE="$2"
     LOCAL_TEMP_FILE="/tmp/`basename "$REMOTE_FILE"`.$$"
     scp -q "$LOCAL_TEMP_FILE" "$REMOTE_SSH":"$REMOTE_FILE" || return 1
-    rm -f "$LOCAL_TEMP_FILE"
+    $RM "$LOCAL_TEMP_FILE"
 }
 
 function file_line_remove
@@ -384,10 +389,10 @@ function file_line_remove
         cat "$FILE" > "$TEMP_FILE"
         if diff "$FILE" "$TEMP_FILE" > /dev/null 2> /dev/null
         then
-            cat "$TEMP_FILE" 2> /dev/null | "$GREP" --invert-match "$REGEXP" > "$FILE" 2> /dev/null
-            /bin/rm -f "$TEMP_FILE"
+            cat "$TEMP_FILE" 2> /dev/null | $GREP --invert-match "$REGEXP" > "$FILE" 2> /dev/null
+            $RM "$TEMP_FILE"
         else
-            /bin/rm -f "$TEMP_FILE"
+            $RM "$TEMP_FILE"
             echo_error "$FILE line \"$REGEXP\" remove fail" 99
         fi
     fi
@@ -412,21 +417,21 @@ function file_line_add
         echo "$LINE" >> "$FILE"
     else
         cat "$FILE" > "$TEMP_FILE"
-        if test -n "$REGEXP_REPLACE" && `cat "$TEMP_FILE" | "$AWK" 'BEGIN { f=1; } /'"$REGEXP_REPLACE"'/ { f=0; } END { exit f; }'`
+        if test -n "$REGEXP_REPLACE" && `cat "$TEMP_FILE" | $AWK 'BEGIN { f=1; } /'"$REGEXP_REPLACE"'/ { f=0; } END { exit f; }'`
         then
-            cat "$TEMP_FILE" | "$AWK" --assign=line="$LINE" 'BEGIN { p=0; gsub(/\n/, "\\n", line); } p==0&&/'"$REGEXP_REPLACE"'/ { p=1; print line; next } { print; } END { if (p==0) print line; }' > "$FILE"
-        elif test -n "$REGEXP_AFTER" && `cat "$TEMP_FILE" | "$AWK" 'BEGIN { f=1; } /'"$REGEXP_AFTER"'/ { f=0; } END { exit f; }'`
+            cat "$TEMP_FILE" | $AWK --assign=line="$LINE" 'BEGIN { p=0; gsub(/\n/, "\\n", line); } p==0&&/'"$REGEXP_REPLACE"'/ { p=1; print line; next } { print; } END { if (p==0) print line; }' > "$FILE"
+        elif test -n "$REGEXP_AFTER" && `cat "$TEMP_FILE" | $AWK 'BEGIN { f=1; } /'"$REGEXP_AFTER"'/ { f=0; } END { exit f; }'`
         then
-            cat "$TEMP_FILE" | "$AWK" --assign=line="$LINE" 'BEGIN { p=0; gsub(/\n/, "\\n", line); } p==0&&/'"$REGEXP_AFTER"'/ { print $0; p=1; print line; next } { print; } END { if (p==0) print line; }' > "$FILE"
+            cat "$TEMP_FILE" | $AWK --assign=line="$LINE" 'BEGIN { p=0; gsub(/\n/, "\\n", line); } p==0&&/'"$REGEXP_AFTER"'/ { print $0; p=1; print line; next } { print; } END { if (p==0) print line; }' > "$FILE"
         else
-            cat "$TEMP_FILE" | "$AWK" --assign=line="$LINE" 'BEGIN { gsub(/\n/, "\\n", line); } { print; } END { print line; }' > "$FILE"
+            cat "$TEMP_FILE" | $AWK --assign=line="$LINE" 'BEGIN { gsub(/\n/, "\\n", line); } { print; } END { print line; }' > "$FILE"
         fi
         if test -s "$FILE"
         then
-            /bin/rm -f "$TEMP_FILE"
+            $RM "$TEMP_FILE"
         else
             cat "$TEMP_FILE" > "$FILE"
-            /bin/rm -f "$TEMP_FILE"
+            $RM "$TEMP_FILE"
             echo_error "$FILE add \"$LINE\" fail" 99
         fi
     fi
@@ -443,7 +448,7 @@ function file_line_set
     local REGEXP_AFTER="$3"
     local REGEXP_REPLACE="$4"
 
-    if ! "$GREP" --quiet --line-regexp --fixed-strings -- "$LINE" "$FILE"
+    if ! $GREP --quiet --line-regexp --fixed-strings -- "$LINE" "$FILE"
     then
         file_line_add "$FILE" "$LINE" "$REGEXP_AFTER" "$REGEXP_REPLACE"
         return 1
@@ -515,13 +520,13 @@ function file_config_set
     if test -e "$CONFIG_FILE"
     then
         cat "$CONFIG_FILE" > "$CONFIG_TEMP_FILE"
-        cat "$CONFIG_TEMP_FILE" | "$AWK" 'BEGIN { found=0; } /^'$OPTION'=/ { print "'"$OPTION"'=\"'"$VALUE"'\""; found=1; next; } { print; } END { if (found == 0) print "'"$OPTION"'=\"'"$VALUE"'\""; }' > "$CONFIG_FILE"
+        cat "$CONFIG_TEMP_FILE" | $AWK 'BEGIN { found=0; } /^'$OPTION'=/ { print "'"$OPTION"'=\"'"$VALUE"'\""; found=1; next; } { print; } END { if (found == 0) print "'"$OPTION"'=\"'"$VALUE"'\""; }' > "$CONFIG_FILE"
         if test -s "$CONFIG_FILE"
         then
-            /bin/rm -f "$CONFIG_TEMP_FILE"
+            $RM "$CONFIG_TEMP_FILE"
         else
             cat "$CONFIG_TEMP_FILE" > "$CONFIG_FILE"
-            /bin/rm -f "$CONFIG_TEMP_FILE"
+            $RM "$CONFIG_TEMP_FILE"
             echo_error "file $CONFIG_FILE new configuration \"$OPTION=\"$VALUE\"\" change fail" 99
         fi
     else
@@ -544,10 +549,10 @@ function file_replace
         cat "$TEMP_FILE" | sed --expression="s|$SEARCH|$REPLACE|g" > "$FILE"
         if test -s "$FILE"
         then
-            /bin/rm -f "$TEMP_FILE"
+            $RM "$TEMP_FILE"
         else
             cat "$TEMP_FILE" > "$FILE"
-            /bin/rm -f "$TEMP_FILE"
+            $RM "$TEMP_FILE"
             echo_error "file $FILE string $SEARCH replace fail" 99
         fi
     fi
@@ -580,18 +585,18 @@ function check_ping
 
 function get_ip_arp
 {
-    local GET_IP_ARP="`arp "$1" 2> /dev/null | "$AWK" 'BEGIN { FS="[()]"; } { print $2; }'`"
+    local GET_IP_ARP="`arp "$1" 2> /dev/null | $AWK 'BEGIN { FS="[()]"; } { print $2; }'`"
     if test "$UNIX_TYPE" = "Linux" -a -z "$GET_IP_ARP"
     then
-        GET_IP_ARP="`arp -n "$1" | "$AWK" '/ether/ { print $1; }'`"
+        GET_IP_ARP="`arp -n "$1" | $AWK '/ether/ { print $1; }'`"
     fi
     echo "$GET_IP_ARP"
 }
 
 function get_ip_ping
 {
-    test "$UNIX_TYPE" = "SunOS" && ping -s "$1" 1 1 | grep "bytes from" | "$AWK" 'BEGIN { FS="[()]"; } { print $2; }'
-    test "$UNIX_TYPE" = "Linux" && ping -q -c 1 -t 1 -W 1 "$1" | grep PING | "$AWK" 'BEGIN { FS="[()]"; } { print $2; }'
+    test "$UNIX_TYPE" = "SunOS" && ping -s "$1" 1 1 | $GREP "bytes from" | $AWK 'BEGIN { FS="[()]"; } { print $2; }'
+    test "$UNIX_TYPE" = "Linux" && ping -q -c 1 -t 1 -W 1 "$1" | $GREP PING | $AWK 'BEGIN { FS="[()]"; } { print $2; }'
 }
 
 function get_ip
@@ -619,7 +624,7 @@ function is_localhost
 
 function get_id
 {
-    id | "$AWK" 'BEGIN { FS="[()]"; } { print $2; }'
+    id | $AWK 'BEGIN { FS="[()]"; } { print $2; }'
 }
 
 function ssh_scanid
@@ -657,7 +662,7 @@ function ssh_scanid
     done
     cp "$SCAN_USER_HOME_SSH_HOSTS" "${SCAN_USER_HOME_SSH_HOSTS}_orig"
     cat "${SCAN_USER_HOME_SSH_HOSTS}_orig" | sort -u > "$SCAN_USER_HOME_SSH_HOSTS"
-    rm -f "${SCAN_USER_HOME_SSH_HOSTS}_orig"
+    $RM "${SCAN_USER_HOME_SSH_HOSTS}_orig"
 }
 
 function ssh_scanremoteid
@@ -832,10 +837,10 @@ function ssh_importid
         if test $? -eq 0
         then
             cat $COPYID_HOME_SSH/id_import.pub >> $COPYID_HOME_SSH_KEYS
-            rm -f $COPYID_HOME_SSH/id_import.pub
+            $RM $COPYID_HOME_SSH/id_import.pub
             cp $COPYID_HOME_SSH_KEYS ${COPYID_HOME_SSH_KEYS}_orig
             cat ${COPYID_HOME_SSH_KEYS}_orig | sort -u > $COPYID_HOME_SSH_KEYS
-            rm -f ${COPYID_HOME_SSH_KEYS}_orig
+            $RM ${COPYID_HOME_SSH_KEYS}_orig
         else
             return 1
         fi
@@ -896,7 +901,7 @@ function call_command
 
 function get_pids
 {
-    ps -ef | grep --invert-match $$ | awk --assign=p="$1" --assign=s="$$" '$3==s { next; } $0~p { print $2; }'
+    ps -ef | $GREP --invert-match $$ | $AWK --assign=p="$1" --assign=s="$$" '$3==s { next; } $0~p { print $2; }'
 }
 
 export ECHO_KILL="no"
@@ -911,11 +916,11 @@ function kill_tree_childs
     done
     if test_yes TOPMOST && test "$CHECK_PID" != "$$"
     then
-        local FOUND_PID="`ps -ef | awk --assign p="$CHECK_PID" '$2==p { print "yes"; }'`"
+        local FOUND_PID="`ps -ef | $AWK --assign p="$CHECK_PID" '$2==p { print "yes"; }'`"
         if test_yes ECHO_KILL
         then
             test_yes FOUND_PID \
-                && ps -ef | awk --assign p="$CHECK_PID" '$2==p { print "PID " p " killed: " $0; }' | echo_output \
+                && ps -ef | $AWK --assign p="$CHECK_PID" '$2==p { print "PID " p " killed: " $0; }' | echo_output \
                 || echo "PID $CHECK_PID already killed" | echo_output
         fi
         kill -9 "$CHECK_PID" 2>/dev/null
@@ -935,7 +940,7 @@ function kill_tree_name
 # $2 exclude PIDs
 {
     local PID_LIST="`get_pids "$1"`"
-    test -n "$2" && PID_LIST="`echo "$PID_LIST" | grep --invert-match $2`"
+    test -n "$2" && PID_LIST="`echo "$PID_LIST" | $GREP --invert-match $2`"
     kill_tree $PID_LIST
 }
 
@@ -1072,7 +1077,7 @@ function test_str
     test "$1" = "-i" -o "$1" = "--ignore-case" && IGNORE_CASE="--ignore-case" && shift
     test $# != 2 && echo_error_function "test_str" "Wrong parameters count"
 
-    /bin/echo "$1" | grep --quiet --extended-regexp $IGNORE_CASE "$2"
+    command echo "$1" | $GREP --quiet --extended-regexp $IGNORE_CASE "$2"
     return $?
 }
 
@@ -1084,7 +1089,7 @@ function test_file
 
     test -f "$2" || return 1
 
-    grep --quiet --extended-regexp "$1" "$2"
+    $GREP --quiet --extended-regexp "$1" "$2"
     return $?
 }
 
@@ -1100,7 +1105,7 @@ function test_cmd
         shift
     fi
 
-    echo "$CMD" | egrep --quiet "$1"
+    echo "$CMD" | $GREP --extended-regexp --quiet "$1"
     return $?
 }
 
@@ -1153,7 +1158,7 @@ function cursor_get_position
         exec < /dev/tty
         OLD_stty=$(stty -g)
         stty raw -echo min 0
-        /bin/echo -en "\033[6n" > /dev/tty
+        command echo -en "\033[6n" > /dev/tty
         read -r -s -d "R" CURSOR_POSITION
         stty $OLD_stty
         CURSOR_POSITION="${CURSOR_POSITION#*[}"
@@ -1184,13 +1189,13 @@ function pipe_remove_color
 function pipe_remove_lines
 # removes color control codes from pipe
 {
-    awk '$0=="" { next; } { print; }' | tr '\n' ' ' | xargs
+    $AWK '$0=="" { next; } { print; }' | tr '\n' ' ' | xargs
 }
 
 function pipe_from
 # command | pipe_from "from this line"
 {
-    "$AWK" --assign=from="$1" '
+    $AWK --assign=from="$1" '
         BEGIN { show=0; }
         show==1 { print; next; }
         $0~from { show=1; print; }
@@ -1221,7 +1226,7 @@ function log_init
     test -z "$LOG_FILE" && LOG_FILE="`echo "$0" | sed --regexp-extended --expression='s:(|\.|\.sh)$:.log:'`"
 
     prepare_file "$LOG_FILE"
-    /bin/echo "$LOG_SECTION" >> "$LOG_FILE"
+    command echo "$LOG_SECTION" >> "$LOG_FILE"
     echo_log "`uname -n`: $LOG_TITLE"
 }
 
@@ -1240,8 +1245,8 @@ function log_done
     let LOG_DURATION=`date -u +%s`-$LOG_START
 
     prepare_file "$LOG_FILE"
-    /bin/echo "`date +"$LOG_DATE"` $LOG_TITLE, script runtime $LOG_DURATION seconds" >> "$LOG_FILE"
-    /bin/echo "$LOG_SECTION" >> "$LOG_FILE"
+    command echo "`date +"$LOG_DATE"` $LOG_TITLE, script runtime $LOG_DURATION seconds" >> "$LOG_FILE"
+    command echo "$LOG_SECTION" >> "$LOG_FILE"
 }
 
 function echo_log
@@ -1255,7 +1260,7 @@ function echo_log
 
     prepare_file "$LOG_FILE"
     #echo "${LOG_SPACE}$@" | sed --expression='s/\\n/\n                    /g' --expression='s/^/                    /g' >> "$LOG_FILE"
-    /bin/echo "${LOG_SPACE}${LOG_DATE_STRING} $@" | pipe_remove_color >> "$LOG_FILE"
+    command echo "${LOG_SPACE}${LOG_DATE_STRING} $@" | pipe_remove_color >> "$LOG_FILE"
 }
 
 function log_output
@@ -1324,7 +1329,7 @@ function pipe_echo_prefix
     #    echo "$PREFIX$LINE"
     #done
 
-    "$AWK" --assign=prefix="$PREFIX" --assign=hideline="$HIDELINES" --assign=command="$COMMAND" --assign=newline="$NEW_LINE" '
+    $AWK --assign=prefix="$PREFIX" --assign=hideline="$HIDELINES" --assign=command="$COMMAND" --assign=newline="$NEW_LINE" '
         BEGIN { line=""; count=0; }
         command=="" { current=$0; }
         command!="" {
@@ -1399,17 +1404,43 @@ function echo_line
 # usage as standard echo
 # echoes arguments to standard output and log to the file
 {
-    /bin/echo "$@"
+    command echo "$@"
     echo_log "${ECHO_PREFIX}${ECHO_UNAME}$@"
+}
+
+function echo_title
+{
+    #TITLE_STYLE="01234567"
+    local TITLE_MSG=" $@ "
+    local TITLE_LENGTH="${#TITLE_MSG}"
+    local TITLE_MSG="${TITLE_STYLE:1:1}$TITLE_MSG${TITLE_STYLE:6:1}"
+    local TITLE_SEQ="`eval echo "{1..$TITLE_LENGTH}"`"
+    local TITLE_HEAD="${TITLE_STYLE:0:1}`printf -- "${TITLE_STYLE:3:1}%.0s" $TITLE_SEQ`${TITLE_STYLE:5:1}"
+    local TITLE_TAIL="${TITLE_STYLE:2:1}`printf -- "${TITLE_STYLE:4:1}%.0s" $TITLE_SEQ`${TITLE_STYLE:7:1}"
+    if test_yes "$OPTION_COLOR"
+    then
+        command echo -e "${COLOR_INFO}${ECHO_PREFIX}${ECHO_UNAME}$TITLE_HEAD${COLOR_RESET}"
+        command echo -e "${COLOR_INFO}${ECHO_PREFIX}${ECHO_UNAME}$TITLE_MSG${COLOR_RESET}"
+        command echo -e "${COLOR_INFO}${ECHO_PREFIX}${ECHO_UNAME}$TITLE_TAIL${COLOR_RESET}"
+    else
+        command echo "${ECHO_PREFIX}${ECHO_UNAME}$TITLE_HEAD"
+        command echo "${ECHO_PREFIX}${ECHO_UNAME}$TITLE_MSG"
+        command echo "${ECHO_PREFIX}${ECHO_UNAME}$TITLE_TAIL"
+    fi
+
+    echo_log "${ECHO_PREFIX}${ECHO_UNAME}$TITLE_HEAD"
+    echo_log "${ECHO_PREFIX}${ECHO_UNAME}$TITLE_MSG"
+    echo_log "${ECHO_PREFIX}${ECHO_UNAME}$TITLE_TAIL"
+    return 0
 }
 
 function echo_info
 {
     if test_yes "$OPTION_COLOR"
     then
-        /bin/echo -e "${COLOR_INFO}${ECHO_PREFIX}${ECHO_UNAME}$@${COLOR_RESET}"
+        command echo -e "${COLOR_INFO}${ECHO_PREFIX}${ECHO_UNAME}$@${COLOR_RESET}"
     else
-        /bin/echo "${ECHO_PREFIX}${ECHO_UNAME}$@"
+        command echo "${ECHO_PREFIX}${ECHO_UNAME}$@"
     fi
 
     echo_log "${ECHO_PREFIX}${ECHO_UNAME}$@"
@@ -1430,9 +1461,9 @@ function echo_step
 
     if test_yes "$OPTION_COLOR"
     then
-        /bin/echo -e "${COLOR_STEP}${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}${STEP_NUMBER_STR}$@${COLOR_RESET}"
+        command echo -e "${COLOR_STEP}${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}${STEP_NUMBER_STR}$@${COLOR_RESET}"
     else
-        /bin/echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}${STEP_NUMBER_STR}$@"
+        command echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}${STEP_NUMBER_STR}$@"
     fi
 
     echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_STEP}${STEP_NUMBER_STR}$@"
@@ -1447,9 +1478,9 @@ function echo_substep
 {
     if test_yes "$OPTION_COLOR"
     then
-        /bin/echo -e "${COLOR_SUBSTEP}${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_SUBSTEP}$@${COLOR_RESET}"
+        command echo -e "${COLOR_SUBSTEP}${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_SUBSTEP}$@${COLOR_RESET}"
     else
-        /bin/echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_SUBSTEP}$@"
+        command echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_SUBSTEP}$@"
     fi
 
     echo_log "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_SUBSTEP}$@"
@@ -1459,7 +1490,7 @@ function echo_substep
 function set_debug
 {
     local OPTION="${1:-yes}"
-    echo "$OPTION_DEBUG" | grep --quiet --word-regexp "$OPTION" || OPTION_DEBUG="$OPTION,$OPTION_DEBUG"
+    echo "$OPTION_DEBUG" | $GREP --quiet --word-regexp "$OPTION" || OPTION_DEBUG="$OPTION,$OPTION_DEBUG"
 }
 
 function unset_debug
@@ -1471,7 +1502,7 @@ function unset_debug
 function check_debug
 {
     local OPTION="${1:-yes}"
-    echo "$OPTION_DEBUG" | grep --quiet --word-regexp "$OPTION"
+    echo "$OPTION_DEBUG" | $GREP --quiet --word-regexp "$OPTION"
 }
 
 function echo_debug
@@ -1480,9 +1511,9 @@ function echo_debug
     then
         if test_yes "$OPTION_COLOR"
         then
-            echo -e "${COLOR_DEBUG}${ECHO_PREFIX}${ECHO_UNAME}$@${COLOR_RESET}" > "${REDIRECT_DEBUG}"
+            command echo -e "${COLOR_DEBUG}${ECHO_PREFIX}${ECHO_UNAME}$@${COLOR_RESET}" > "${REDIRECT_DEBUG}"
         else
-            echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@" > "${REDIRECT_DEBUG}"
+            command echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@" > "${REDIRECT_DEBUG}"
         fi
 
         echo_log --date "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@"
@@ -1527,13 +1558,13 @@ function echo_debug_right
             let SHIFT_MESSAGE=$SHIFT_MESSAGE+1
 #echo -en "\\033[1A"
             test_yes "$SHIFT1" && test $SHIFT_MESSAGE -le $SHIFT1_MIN_FREE && echo -e "\r" > "${REDIRECT_DEBUG}"
-            echo -en "\\033[${SHIFT_MESSAGE}G" > "${REDIRECT_DEBUG}"
+            command echo -en "\\033[${SHIFT_MESSAGE}G" > "${REDIRECT_DEBUG}"
             test_yes "$SHIFT1" && echo -en "\\033[1A" > "${REDIRECT_DEBUG}"
-            /bin/echo -e "${COLOR_DEBUG}$DEBUG_MESSAGE${COLOR_RESET}\c" > "${REDIRECT_DEBUG}"
-            echo -en "\\033[${CURSOR_COLUMN}G" > "${REDIRECT_DEBUG}"
+            command echo -e "${COLOR_DEBUG}$DEBUG_MESSAGE${COLOR_RESET}\c" > "${REDIRECT_DEBUG}"
+            command echo -en "\\033[${CURSOR_COLUMN}G" > "${REDIRECT_DEBUG}"
             test_yes "$SHIFT1" && echo -en "\\033[1B" > "${REDIRECT_DEBUG}"
         else
-            /bin/echo -e "\r${COLOR_DEBUG}$DEBUG_MESSAGE${COLOR_RESET}" > "${REDIRECT_DEBUG}"
+            command echo -e "\r${COLOR_DEBUG}$DEBUG_MESSAGE${COLOR_RESET}" > "${REDIRECT_DEBUG}"
         fi
 
         echo_log --date "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}$@"
@@ -1573,9 +1604,9 @@ function echo_debug_function
         FUNCTION_INFO="<<< $FUNCTION_INFO"
         if test_yes "$OPTION_COLOR"
         then
-            echo -e "${COLOR_DEBUG}${ECHO_PREFIX}${ECHO_UNAME}${FUNCTION_INFO}${COLOR_RESET}" > "${REDIRECT_DEBUG}"
+            command echo -e "${COLOR_DEBUG}${ECHO_PREFIX}${ECHO_UNAME}${FUNCTION_INFO}${COLOR_RESET}" > "${REDIRECT_DEBUG}"
         else
-            echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}${FUNCTION_INFO}" > "${REDIRECT_DEBUG}"
+            command echo "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}${FUNCTION_INFO}" > "${REDIRECT_DEBUG}"
         fi
 
         echo_log --date "${ECHO_PREFIX}${ECHO_UNAME}${ECHO_PREFIX_DEBUG}${FUNCTION_INFO}"
@@ -1857,6 +1888,8 @@ function colors_init
     fi
 
     # colors for echo_*
+    COLOR_TITLE="$COLOR_LIGHT_YELLOW"
+    COLOR_TITLE_BORDER="$COLOR_YELLOW"
     COLOR_INFO="$COLOR_LIGHT_YELLOW"
     COLOR_STEP="$COLOR_WHITE"
     COLOR_SUBSTEP="$COLOR_WHITE"
@@ -1958,6 +1991,10 @@ export COLOR_WHITE COLOR_WHITE_E
 export COLOR_ORANGE COLOR_ORANGE_E
 export COLOR_CHARCOAL COLOR_CHARCOAL_E
 
+export TITLE_STYLE="+|+--+|+"
+export TITLE_STYLE="########"
+export TITLE_STYLE="[ [==] ]"
+export COLOR_TITLE; export COLOR_TITLE_BORDER
 export COLOR_INFO
 export COLOR_STEP
 export COLOR_SUBSTEP
@@ -2074,6 +2111,7 @@ export -f pipe_echo_prefix; export -f show_output
 
 export -f echo_quote
 export -f echo_line
+export -f echo_title
 export -f echo_info
 export -f echo_step
 export -f echo_substep

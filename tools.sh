@@ -264,7 +264,7 @@ function check_arg_switch
     then
         ARG_NAME_VAR="${2%|*}"
         ARG_NAME_VALUE="${2#*|}"
-        export ${ARG_NAME_VAR}="$ARG_NAME_VALUE"
+        test -n "$ARG_NAME_VAR" && export ${ARG_NAME_VAR}="$ARG_NAME_VALUE"
         CHECK_ARG_SHIFT+=1
         return 0
     fi
@@ -296,8 +296,17 @@ function check_arg_value
 
     if test "$1" = "--$ARG_NAME_LONG" -o "$1" = "-$ARG_NAME_SHORT"
     then
-        test $# -eq 1 && export ${ARG_NAME_VAR}="$ARG_NAME_VALUE" && CHECK_ARG_SHIFT+=1 && return 0 #echo_error "Missing value for argument \"$1\"" $OPTION_DEFAULT_ERROR_CODE
-        test "${2:0:1}" != "-" && export ${ARG_NAME_VAR}="$2" && CHECK_ARG_SHIFT+=1 || export ${ARG_NAME_VAR}="$ARG_NAME_VALUE"
+        if test $# -eq 1
+        then
+            test -n "${ARG_NAME_VAR}" && export ${ARG_NAME_VAR}="$ARG_NAME_VALUE"
+            CHECK_ARG_SHIFT+=1 && return 0 #echo_error "Missing value for argument \"$1\"" $OPTION_DEFAULT_ERROR_CODE
+        elif test "${2:0:1}" != "-"
+        then
+            test -n "${ARG_NAME_VAR}" && export ${ARG_NAME_VAR}="$2"
+            CHECK_ARG_SHIFT+=1
+        else
+            export ${ARG_NAME_VAR}="$ARG_NAME_VALUE"
+        fi
         CHECK_ARG_SHIFT+=1
         return 0
     fi
@@ -1335,6 +1344,59 @@ function pipe_from
     '
 }
 
+function pipe_cut
+{
+    local CUT_TYPE="$1"
+    local -i LENGTH_MAX="$2"
+
+    local BACKUP_IFS="$IFS"
+    IFS=''
+    while read LINE
+    do
+        #LINE="${LINE//[\t]/T}"
+        local -i LENGTH_TOTAL="${#LINE}"
+
+        test $LENGTH_TOTAL -le $LENGTH_MAX && echo "$LINE" && continue
+
+        #echo_debug_variable LENGTH_TOTAL LENGTH_MAX LINE
+
+        if test "$CUT_TYPE" = "center"
+        then
+            local -i LENGTH_LEFT
+            let LENGTH_LEFT="( $LENGTH_MAX - 3) / 2"
+            local -i LENGTH_RIGHT
+            let LENGTH_RIGHT="$LENGTH_MAX - $LENGTH_LEFT - 3"
+            local -i START_RIGHT
+            let START_RIGHT="$LENGTH_TOTAL - $LENGTH_RIGHT"
+            #echo_debug_variable LENGTH_LEFT START_RIGHT LENGTH_RIGHT
+            echo "${LINE:0:$LENGTH_LEFT}...${LINE:$START_RIGHT}"
+        elif test "$CUT_TYPE" = "left"
+        then
+            local -i LENGTH_RIGHT
+            let LENGTH_RIGHT="$LENGTH_MAX - 3"
+            local -i START_RIGHT
+            let START_RIGHT="$LENGTH_TOTAL - $LENGTH_RIGHT"
+            #echo_debug_variable START_RIGHT LENGTH_RIGHT
+            echo "...${LINE:$START_RIGHT}"
+        elif test "$CUT_TYPE" = "right"
+        then
+            local -i LENGTH_LEFT
+            let LENGTH_LEFT="$LENGTH_MAX - 3"
+            #echo_debug_variable LENGTH_LEFT
+            echo "${LINE:0:$LENGTH_LEFT}..."
+        fi
+    done
+    IFS="$BACKUP_IFS"
+}
+
+function echo_cut
+{
+    local CUT_TYPE="$1"
+    local -i LENGTH_MAX="$2"
+    shift 2
+    command echo "$@" | pipe_cut "$CUT_TYPE" "$LENGTH_MAX"
+}
+
 LOG_FILE=""
 LOG_WITHDATE="yes"
 LOG_DATE="%Y-%m-%d %H:%M:%S"
@@ -1405,7 +1467,7 @@ function log_output
 function pipe_log
 # pipe with command echo_log
 {
-    BACKUP_IFS="$IFS"
+    local BACKUP_IFS="$IFS"
     IFS=''
     while read LINE
     do
@@ -1422,7 +1484,7 @@ function echo_output
 function pipe_echo
 # pipe with echo_line
 {
-    BACKUP_IFS="$IFS"
+    local BACKUP_IFS="$IFS"
     IFS=''
     while read LINE
     do
@@ -1627,7 +1689,7 @@ function set_debug
     local OPTION
     for OPTION in $OPTIONS
     do
-        echo "$OPTION_DEBUG" | $GREP --quiet --word-regexp "$OPTION" || OPTION_DEBUG="$OPTION,$OPTION_DEBUG"
+        echo "$OPTION_DEBUG" | $GREP --quiet --word-regexp "$OPTION" || export OPTION_DEBUG="$OPTION,$OPTION_DEBUG"
     done
 }
 
@@ -2107,11 +2169,11 @@ function colors_init
 function check_arg_tools
 {
     check_arg_switch "|ignore-unknown" "OPTION_IGNORE_UNKNOWN|yes" "$@"
-    check_arg_switch "|debug" "OPTION_DEBUG|yes,$OPTION_DEBUG" "$@" && set_debug right
+    check_arg_switch "|debug" "" "$@" && set_debug yes
     check_arg_value "|debug-level" "OPTION_DEBUG_LEVEL|ALL" "$@" && set_debug_level $OPTION_DEBUG_LEVEL
-    check_arg_switch "|debug-right" "OPTION_DEBUG|right,$OPTION_DEBUG" "$@"
-    check_arg_switch "|debug-variable" "OPTION_DEBUG|variable,$OPTION_DEBUG" "$@"
-    check_arg_switch "|debug-function" "OPTION_DEBUG|function,$OPTION_DEBUG" "$@"
+    check_arg_switch "|debug-right" "" "$@" && set_debug right
+    check_arg_switch "|debug-variable" "" "$@" && set_debug variable
+    check_arg_switch "|debug-function" "" "$@" && set_debug function
     check_arg_value "|term" "OPTION_TERM|xterm" "$@"
     check_arg_value "|prefix" "OPTION_PREFIX|yes" "$@"
     check_arg_value "|color" "OPTION_COLOR|yes" "$@"
@@ -2298,6 +2360,8 @@ export -f cursor_move_down
 
 export -f pipe_remove_color
 export -f pipe_from
+export -f pipe_cut
+export -f echo_cut
 
 export SHOW_OUTPUT_PREFIX="  >  "
 export SHOW_OUTPUT_HIDELINES="" # regexp to hide lines

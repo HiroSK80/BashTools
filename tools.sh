@@ -155,7 +155,8 @@ function query_ny
 
 function assign
 {
-    export -n "$1"+="$2"
+    #export -n "$1"+="$2" !!!WHY?!!!
+    printf -v "$1" '%s' "$2"
 }
 
 function str_parse_args
@@ -1086,6 +1087,85 @@ function perf_end
     PERF_DATA[$PERF_VAR]=0
 }
 
+function command_options
+{
+    local TASK="$1"
+    shift
+    if test "$TASK" = "fill"
+    then
+        export COMMAND="$1"
+        export OPTIONS="$2 $3 $4 $5 $6 $7 $8 $9"
+        export OPTIONS2="$3 $4 $5 $6 $7 $8 $9 ${10}"
+        export OPTIONS3="$4 $5 $6 $7 $8 $9 $10 ${11}"
+        export OPTIONS4="$5 $6 $7 $8 $9 $10 $11 ${12}"
+        export OPTION="$2"
+        export OPTION1="$2"
+        export OPTION2="$3"
+        export OPTION3="$4"
+        export OPTION4="$5"
+        export OPTION5="$6"
+        export OPTION6="$7"
+        export OPTION7="$8"
+        export OPTION8="$9"
+        export OPTION9="${10}"
+        unset OPTIONS_A
+        declare -a OPTIONS_A=("$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}")
+    fi
+    if test "$TASK" = "parse"
+    then
+        export COMMAND="`str_get_arg "$INPUT" 1`"
+        export OPTIONS="`str_get_arg_from "$INPUT" 2`"
+        export OPTIONS2="`str_get_arg_from "$INPUT" 3`"
+        export OPTIONS3="`str_get_arg_from "$INPUT" 4`"
+        export OPTIONS4="`str_get_arg_from "$INPUT" 5`"
+        export OPTION="`str_get_arg "$INPUT" 2`"
+        export OPTION1="`str_get_arg "$INPUT" 2`"
+        export OPTION2="`str_get_arg "$INPUT" 3`"
+        export OPTION3="`str_get_arg "$INPUT" 4`"
+        export OPTION4="`str_get_arg "$INPUT" 5`"
+        export OPTION5="`str_get_arg "$INPUT" 6`"
+        export OPTION6="`str_get_arg "$INPUT" 7`"
+        export OPTION7="`str_get_arg "$INPUT" 8`"
+        export OPTION8="`str_get_arg "$INPUT" 9`"
+        export OPTION9="`str_get_arg "$INPUT" 10`"
+        unset OPTIONS_A
+        declare -a OPTIONS_A=("$OPTION" "$OPTION2" "$OPTION3" "$OPTION4" "$OPTION5" "$OPTION6" "$OPTION7" "$OPTION8" "$OPTION9")
+    fi
+    if test "$TASK" = "insert" -o "$TASK" = "insert_command"
+    then
+        # $1 command
+        # move command to options, insert new command
+        OPTION9="$OPTION8"
+        OPTION8="$OPTION7"
+        OPTION7="$OPTION6"
+        OPTION6="$OPTION5"
+        OPTION5="$OPTION4"
+        OPTION4="$OPTION3"
+        OPTION3="$OPTION2"
+        OPTION2="$OPTION1"
+        OPTION1="$COMMAND"
+        OPTION="$COMMAND"
+        OPTIONS2="$OPTIONS"
+        OPTIONS="$COMMAND $OPTIONS"
+        COMMAND="$1"
+    fi
+    if test "$TASK" = "debug"
+    then
+        echo_debug_variable COMMAND OPTION OPTION2 OPTION3 OPTION4 OPTION5 OPTION6 OPTION7 OPTION8 OPTION9
+    fi
+}
+
+function fill_command_options
+{
+    command_options fill "$@"
+}
+
+function insert_cmd
+{
+    command_options insert "$@"
+}
+
+
 function set_yes
 # $1=yes
 {
@@ -1095,45 +1175,6 @@ function set_yes
 function test_ne0
 {
     test $? -ne 0
-}
-
-function fill_command_options
-{
-    export COMMAND="$1"
-    export OPTIONS="$2 $3 $4 $5 $6 $7 $8 $9"
-    export OPTIONS2="$3 $4 $5 $6 $7 $8 $9"
-    export OPTION="$2"
-    export OPTION2="$3"
-    export OPTION3="$4"
-    export OPTION4="$4"
-    export OPTION5="$5"
-    export OPTION6="$6"
-    export OPTION7="$7"
-    export OPTION8="$8"
-    export OPTION9="$9"
-    unset OPTIONS_A
-    declare -a OPTIONS_A=("$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9")
-}
-
-function insert_cmd
-# $1 command
-# move command to options, insert new command
-{
-    OPTION9="$OPTION8"
-    OPTION8="$OPTION7"
-    OPTION7="$OPTION6"
-    OPTION6="$OPTION5"
-    OPTION5="$OPTION4"
-    OPTION4="$OPTION3"
-    OPTION3="$OPTION2"
-    OPTION2="$OPTION1"
-    OPTION1="$COMMAND"
-    OPTION="$COMMAND"
-    OPTIONS2="$OPTIONS"
-    OPTIONS="$COMMAND $OPTIONS"
-    COMMAND="$1"
-    INPUT_C="$1"
-    INPUT_N="$INPUT_N"
 }
 
 function test_boolean
@@ -1493,20 +1534,19 @@ function pipe_echo
     IFS="$BACKUP_IFS"
 }
 
-function show_output
-{
-    pipe_echo_prefix "$@"
-}
 
-function pipe_echo_prefix
+function pipe_prefix
 # pipe with pipe_echo and nice output
 # command | show_output
 # -c <command> | --command=<command>
 # -p <prefix> | --prefix=<prefix>
 {
-    local PREFIX="$SHOW_OUTPUT_PREFIX"
-    local HIDELINES="$SHOW_OUTPUT_HIDELINES"
-    local COMMAND="$SHOW_OUTPUT_COMMAND"
+    local PREFIX="$PIPE_PREFIX"
+    test -n "$SHOW_OUTPUT_PREFIX" && PREFIX="$SHOW_OUTPUT_PREFIX"
+    local HIDELINES="$PIPE_PREFIX_HIDELINES"
+    test -n "$SHOW_OUTPUT_HIDELINES" && HIDELINES="$SHOW_OUTPUT_HIDELINES"
+    local COMMAND="$PIPE_PREFIX_COMMAND"
+    test -n "$SHOW_OUTPUT_COMMAND" && HIDELINES="$SHOW_OUTPUT_COMMAND"
     local NEW_LINE="yes"
 
     while test $# -gt 0
@@ -1547,6 +1587,16 @@ function pipe_echo_prefix
         END { if (count>1) p=" ("count"x)"; else p=""; print prefix line p; }' | pipe_echo
 }
 
+function show_output
+{
+    pipe_prefix "$@" | pipe_echo
+}
+
+function pipe_echo_prefix
+# pipe with pipe_echo and nice output
+{
+    pipe_prefix "$@" | pipe_echo
+}
 
 function echo_quote
 # usage as standard echo with quoted arguments if needed
@@ -2192,7 +2242,12 @@ function tools_init
             test -f "$1" && TOOLS_FILE="$1"
             shift && continue
         fi
-        shift
+        if test "$1" = "--"
+        then
+            shift
+            command_options fill "$@"
+            break
+        fi
         test_no OPTION_IGNORE_UNKNOWN && echo_error "Unknown argument for tools: $1" 1
         shift
     done
@@ -2326,10 +2381,12 @@ export -f perf_end
 
 export -f set_yes
 
+export -f command_options;  export -f fill_command_options # = command_options fill
+                            export -f insert_cmd # = command_options insert
+
 export S_TAB="`command echo -e "\t"`"
 export S_NEWLINE="`command echo -e "\n"`"
 export -f test_ne0
-export -f fill_command_options
 export -f test_boolean
 export -f test_str_yes
 export -f test_yes
@@ -2338,7 +2395,7 @@ export -f test_no
 export -f test_ok
 export -f test_nok
 export -f test_integer
-export -f test_str;     export -f test_str_grep
+export -f test_str;         export -f test_str_grep
 export -f test_file
 export -f test_cmd
 export -f test_cmd_z
@@ -2363,10 +2420,10 @@ export -f pipe_from
 export -f pipe_cut
 export -f echo_cut
 
-export SHOW_OUTPUT_PREFIX="  >  "
-export SHOW_OUTPUT_HIDELINES="" # regexp to hide lines
-export SHOW_OUTPUT_COMMAND=""
-export SHOW_OUTPUT_DEDUPLICATE="yes"
+export PIPE_PREFIX="  >  "
+export PIPE_PREFIX_HIDELINES="" # regexp to hide lines
+export PIPE_PREFIX_COMMAND=""
+export PIPE_PREFIX_DEDUPLICATE="yes" ### !!!TODO!!!
 
 export -f log_init;         export -f log_file_init
 export -f log_done;         export -f log_file_done
@@ -2374,6 +2431,7 @@ export -f echo_log
 
 export -f pipe_log;         export -f log_output
 export -f pipe_echo;        export -f echo_output
+export -f pipe_prefix
 export -f pipe_echo_prefix; export -f show_output
 
 export -f echo_quote

@@ -151,7 +151,7 @@ function str_parse_args
 
     local ARRAY="${2}"
     local EVAL="`printf '%q\n' "$1"`"
-    EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\\":":g' --expression='s:`:_:g')"
+    EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\\":":g' --expression='s:\`:_:g')"
     #echo_debug "$EVAL"
 
     eval "set -- $EVAL"
@@ -173,7 +173,7 @@ function str_get_arg
 {
     local FROM="${2-1}"
     local EVAL="`printf '%q\n' "$1"`"
-    EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\\":":g' --expression='s:`:_:g')"
+    EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\\":":g' --expression='s:\`:_:g')"
     #echo_debug_variable EVAL
 
     eval "set -- $EVAL"
@@ -187,13 +187,23 @@ function str_get_arg_from
 {
     local FROM="${2-1}"
     local EVAL="`printf '%q\n' "$1"`"
-    EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\\":":g' --expression='s:`:_:g')"
-    #EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:`:_:g')"
+    EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\\":":g' --expression='s:\`:_:g')"
+    #EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\`:_:g')"
     #echo_debug "$EVAL"
 
     eval "set -- $EVAL"
     #echo_debug "$@"
     echo "${@:$FROM}"
+}
+
+function check_arg_init
+{
+    CHECK_ARG_SHIFT=0
+}
+
+function check_arg_shift
+{
+    test $CHECK_ARG_SHIFT -ne 0
 }
 
 function check_arg_switch
@@ -204,10 +214,10 @@ function check_arg_switch
 # example:
 # while test $# -gt 0
 # do
-#     CHECK_ARG_SHIFT=0
+#     check_arg_init
 #     check_arg_switch "d|debug" "OPTION_DEBUG|yes" "$@"
 #     check_arg_value "h|host" "OPTION_HOST" "$@"
-#     test $CHECK_ARG_SHIFT -ne 0 && shift $CHECK_ARG_SHIFT && continue
+#     check_arg_shift && shift $CHECK_ARG_SHIFT && continue
 #     echo_error "Unknown argument: $1" 1
 # done
 {
@@ -236,10 +246,10 @@ function check_arg_value
 # example:
 # while test $# -gt 0
 # do
-#     CHECK_ARG_SHIFT=0
+#     check_arg_init
 #     check_arg_switch "d|debug" "OPTION_DEBUG|yes" "$@"
 #     check_arg_value "h|host" "OPTION_HOST" "$@"
-#     test $CHECK_ARG_SHIFT -ne 0 && shift $CHECK_ARG_SHIFT && continue
+#     check_arg_shift && shift $CHECK_ARG_SHIFT && continue
 #     echo_error "Unknown argument: $1" 1
 # done
 {
@@ -276,10 +286,10 @@ function prepare_file
     local GROUP=""
     while test $# -gt 0
     do
-        CHECK_ARG_SHIFT=0
+        check_arg_init
         check_arg_switch "e|empty" "EMPTY|yes" "$@"
         check_arg_switch "r|roll" "ROLL|yes" "$@"
-        test $CHECK_ARG_SHIFT -ne 0 && shift $CHECK_ARG_SHIFT && continue
+        check_arg_shift && shift $CHECK_ARG_SHIFT && continue
         test -z "$FILE" && FILE="$1" && shift && continue
         echo_error_function "prepare_file" "Unknown argument: $1" 1
     done
@@ -299,9 +309,10 @@ function prepare_file
     test "$EMPTY" = "yes" && rm -f "$FILE"
 
     touch "$FILE"
+    test -f "$FILE" || echo_error_function "prepare_file" "Can't create the file: $FILE" 1
     chmod ug+w "$FILE" 2> /dev/null
-    chgrp  "$FILE" 2> /dev/null
-    chown  "$FILE" 2> /dev/null
+    test -n "$PREPARE_FILE_USER" && chgrp "$PREPARE_FILE_USER" "$FILE" 2> /dev/null
+    test -n "$PREPARE_FILE_GROUP" && chown "$PREPARE_FILE_GROUP" "$FILE" 2> /dev/null
 }
 
 function get_remote_file
@@ -997,6 +1008,13 @@ function cursor_move_down
     test $CURSOR_COLUMN -gt 0 && tput cuf $CURSOR_COLUMN
 }
 
+function pipe_remove_color
+{
+    sed --regexp-extended \
+        --expression="s/\x1B\[([0-9]{1,3}((;[0-9]{1,3})*)?)?[m|K]//g" \
+        --expression="s/\\\\033\[([0-9]{1,3}((;[0-9]{1,3})*)?)?[m|K]//g"
+}
+
 function show_output
 # -c <command> | --command=<command>
 # -p <prefix> | --prefix=<prefix>
@@ -1007,10 +1025,10 @@ function show_output
 
     while test $# -gt 0
     do
-        CHECK_ARG_SHIFT=0
+        check_arg_init
         check_arg_value "p|prefix" "PREFIX" "$@"
         check_arg_value "c|command" "COMMAND" "$@"
-        test $CHECK_ARG_SHIFT -ne 0 && shift $CHECK_ARG_SHIFT && continue
+        check_arg_shift && shift $CHECK_ARG_SHIFT && continue
         test -z "$HIDELINES" && HIDELINES="$1" && shift && continue
         echo_error_function "show_output" "Unknown argument: $1" 1
     done
@@ -1055,18 +1073,30 @@ function log_output
 
 LOG_FILE=""
 LOG_DATE="%Y-%m-%d %H:%M:%S"
-LOG_SECTION="====================================================="
+LOG_SECTION="=============================================================================="
 LOG_SPACE=""
 
-function init_log_file
+function log_file_init
 {
+    local LOG_TITLE="$0 - Log file init"
     test $# -eq 2 && LOG_TITLE="$1" && shift
     test -n "$1" && LOG_FILE="$1"
-    test -z "$LOG_FILE" && echo_error_function "init_log_file" "Log file is not specified"
+    test -z "$LOG_FILE" && echo_error_function "log_file_init" "Log file is not specified"
 
     prepare_file "$LOG_FILE"
     echo "$LOG_SECTION" >> "$LOG_FILE"
     echo "`date +"$LOG_DATE"` $LOG_TITLE" >> "$LOG_FILE"
+}
+
+function log_file_done
+{
+    local LOG_TITLE="$0 - Log file done"
+    test $# -eq 2 && LOG_TITLE="$1" && shift
+    test -z "$LOG_FILE" && echo_error_function "log_file_done" "Log file is not specified"
+
+    prepare_file "$LOG_FILE"
+    echo "`date +"$LOG_DATE"` $LOG_TITLE" >> "$LOG_FILE"
+    echo "$LOG_SECTION" >> "$LOG_FILE"
 }
 
 function echo_log
@@ -1075,7 +1105,7 @@ function echo_log
 
     prepare_file "$LOG_FILE"
     #echo "${LOG_SPACE}$@" | sed --expression='s/\\n/\n                    /g' --expression='s/^/                    /g' >> "$LOG_FILE"
-    echo "${LOG_SPACE}$@" | sed --regexp-extended --expression="s/\x1B\[([0-9]{1,3}((;[0-9]{1,3})*)?)?[m|K]//g" --expression="s/\\\\033\[([0-9]{1,3}((;[0-9]{1,3})*)?)?[m|K]//g" >> "$LOG_FILE"
+    echo "${LOG_SPACE}$@" | pipe_remove_color >> "$LOG_FILE"
 }
 
 # echo $TERM
@@ -1333,11 +1363,14 @@ export PARSE_ARGS=()
 export -f str_parse_args
 export -f str_get_arg
 export -f str_get_arg_from
+
 declare -i CHECK_ARG_SHIFT=0
 export CHECK_ARG_SHIFT
 export -f check_arg_switch
 export -f check_arg_value
 
+export PREPARE_FILE_USER=""
+export PREPARE_FILE_GROUP=""
 export -f prepare_file
 
 export -f get_remote_file
@@ -1405,7 +1438,8 @@ export SHOW_OUTPUT_COMMAND=""
 export SHOW_OUTPUT_DEDUPLICATE="yes"
 export -f show_output
 
-export -f init_log_file
+export -f log_file_init
+export -f log_file_done
 export -f echo_log
 
 export -f echo_info
@@ -1427,13 +1461,13 @@ export -f echo_warning
 
 while test $# -gt 0
 do
-    CHECK_ARG_SHIFT=0
+    check_arg_init
     check_arg_switch "d|debug" "OPTION_DEBUG|yes" "$@" && set_debug right
     check_arg_switch "|debug-right" "OPTION_DEBUG|right,$OPTION_DEBUG" "$@"
     check_arg_switch "p|prefix" "OPTION_PREFIX|yes" "$@"
     check_arg_value "c|color" "OPTION_COLOR" "$@"
     check_arg_value "u|uname" "OPTION_UNAME" "$@"
-    test $CHECK_ARG_SHIFT -ne 0 && shift $CHECK_ARG_SHIFT && continue
+    check_arg_shift && shift $CHECK_ARG_SHIFT && continue
     if test -z "$TOOLS"
     then
         TOOLS="$1"

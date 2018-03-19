@@ -809,7 +809,7 @@ function kill_tree
 
 function kill_tree_name
 {
-    kill_tree `ps -ef | awk --assign p="$1" --assign s="$$" '$3==s { next; } $0~p { print $2; }'`
+    kill_tree `ps -ef | grep -v $$ | awk --assign p="$1" --assign s="$$" '$3==s { next; } $0~p { print $2; }'`
 }
 
 function fd_check

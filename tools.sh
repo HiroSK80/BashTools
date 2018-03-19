@@ -236,16 +236,18 @@ function insert_cmd
 
 function assign
 {
-    test $# = 2 && printf -v "$1" '%s' "$2" && return 0
-    test $# = 1 && printf -v "${1%%=*}" '%s' "${1#*=}" && return 0
-    echo_error_function "Wrong arguments count: $#"
+    test $# = 2 -a -n "$1" && printf -v "$1" '%s' "$2" && return 0
+    test $# = 1 -a -n "${1%%=*}" && printf -v "${1%%=*}" '%s' "${1#*=}" && return 0
+    test $# != 1 -a $# != 2 && echo_error_function "Wrong arguments count: $#" $ERROR_CODE_DEFAULT
+    echo_error_function "Empty variable name argument" $ERROR_CODE_DEFAULT
 }
 
 function assign_array
 {
     test $# = 2 && eval "$1"="$2" && return 0
     test $# = 1 && eval "${1%%=*}"="${1#*=}" && return 0
-    echo_error_function "Wrong arguments count: $#"
+    test $# != 1 -a $# != 2 && echo_error_function "Wrong arguments count: $#" $ERROR_CODE_DEFAULT
+    echo_error_function "Empty variable name argument" $ERROR_CODE_DEFAULT
 }
 
 function array_convert
@@ -259,7 +261,7 @@ function array_convert
         local VAR=""
         local TMP="$1"
     else
-        echo_error_function "Wrong arguments count: $#"
+        echo_error_function "Wrong arguments count: $#" $ERROR_CODE_DEFAULT
     fi
 
     if test_str "$TMP" "^[(].*[)]$"
@@ -276,6 +278,7 @@ function array_convert
     else
         ARRAY_CONVERT="($TMP)"
     fi
+
     test -n "$VAR" && assign "$VAR=$ARRAY_CONVERT" || command echo -n "$ARRAY_CONVERT"
     return 0
 }
@@ -289,6 +292,32 @@ function str_trim
     STR="${STR#"${STR%%[![:space:]]*}"}"   # delete leading whitespace characters
     STR="${STR%"${STR##*[![:space:]]}"}"   # delete trailing whitespace characters
     test -n "${!@+exist}" && assign "${@}" "$STR" || command echo -n "$STR"
+}
+
+function str_count_chars
+# $1 [variable]
+# $2 string
+# $3 character to count
+{
+    if test $# = 3
+    then
+        local VAR="$1"
+        local STR="$2"
+        local CHR="$3"
+    elif test $# = 2
+    then
+        local VAR=""
+        local STR="$1"
+        local CHR="$2"
+    else
+        echo_error_function "Wrong arguments count: $#" $ERROR_CODE_DEFAULT
+    fi
+
+    STR="${STR//[^$CHR]}"
+    local -i CNT=${#STR}
+
+    test -n "$VAR" && assign "$VAR" $CNT || command echo -n $CNT
+    return 0
 }
 
 function str_word
@@ -488,7 +517,7 @@ function arguments
 function arguments_check
 # $1 type: switch
 # $2 argument name: short|long
-# $3 argument store: variable|value
+# $3 argument store: variable|value|tester
 # $4 arguments: "$@"
 
 # $1 type: value
@@ -508,16 +537,41 @@ function arguments_check
     shift
     case "$CHECK" in
         switch)
-            local ARG_SHORT="${1%|*}"
-            local ARG_LONG="${1#*|}"
-            local ARG_VAR="${2%|*}"
-            local ARG_VALUE="${2#*|}"
-            local ARG_TEST=""
+            if test_str "$1" "^.*\|.*$"
+            then
+                local ARG_SHORT="${1%|*}"
+                local ARG_LONG="${1#*|}"
+            else
+                local ARG_SHORT="$1"
+                local ARG_LONG=""
+            fi
+            if test_str "$2" "^.*\|.*\|.*$"
+            then
+                local ARG_VAR="${2%%|*}"
+                local ARG_VALUE="${2#*|}"
+                local ARG_VALUE="${ARG_VALUE%|*}"
+                local ARG_TEST="${2##*|}"
+            elif test_str "$2" "^.*\|.*$"
+            then
+                local ARG_VAR="${2%|*}"
+                local ARG_VALUE="${2#*|}"
+                local ARG_TEST=""
+            else
+                local ARG_VAR="$2"
+                local ARG_VALUE=""
+                local ARG_TEST=""
+            fi
             shift 2
             ;;
         value)
-            local ARG_SHORT="${1%|*}"
-            local ARG_LONG="${1#*|}"
+            if test_str "$1" "^.*\|.*$"
+            then
+                local ARG_SHORT="${1%|*}"
+                local ARG_LONG="${1#*|}"
+            else
+                local ARG_SHORT="$1"
+                local ARG_LONG=""
+            fi
             if test_str "$2" "^.*\|.*$"
             then
                 local ARG_VAR="${2%|*}"
@@ -551,14 +605,18 @@ function arguments_check
                 then
                     array_convert ARG_TEST "$ARG_TEST"
                     ARG_TEST="${ARG_TEST:1:${#ARG_TEST}-2}"
+                    #echo_debug "Possible values for test $ARG_TEST vs $ARG_OPTION"
                     str_word check ARG_TEST "$ARG_OPTION" || echo_error "Argument `echo_quote "$ARG_OPTION"` is not supported. Available: $ARG_TEST" $ERROR_CODE_DEFAULT
                 else
                     shift
+                    #echo_debug "Initial variable value for testers $ARG_TEST: original=\"$ARGUMENTS_VALUE_ORIGINAL\" input=\"$ARGUMENTS_VALUE\""
                     for TEST in $ARG_TEST
                     do
                         arguments_tester_$TEST "$@"
-                        test_ne0 && RESULT=1
+                        test_ne0 && RESULT=1 && break
+                        ARGUMENTS_VALUE_ORIGINAL="$ARGUMENTS_VALUE" # new original value from testers
                     done
+                    #echo_debug "Final value from testers with exit code $RESULT: output=\"$ARGUMENTS_VALUE\""
                 fi
             fi
             return $RESULT
@@ -568,60 +626,71 @@ function arguments_check
             ;;
     esac
 
+    test_str "$ARG_VAR" "/" && ARGUMENTS_VALUE_ORIGINAL="" || ARGUMENTS_VALUE_ORIGINAL="${!ARG_VAR}"
+    #echo ARG_VAR=$ARG_VAR ARGUMENTS_VALUE_ORIGINAL=$ARGUMENTS_VALUE_ORIGINAL
+
+    local ARG_ASSIGN="no"
+    ARGUMENTS_VALUE=""
     case "$CHECK" in
         switch)
+            local -i ARG_FOUND_COUNT=0
             if test "$1" = "--$ARG_LONG" -o "$1" = "-$ARG_SHORT"
             then # single long or single short switch
-                test -n "$ARG_VAR" && assign "$ARG_VAR" "$ARG_VALUE"
                 let ARGUMENTS_SHIFT++
-                #echo_debug_variable ARG_SHORT ARG_LONG ARG_VAR ARG_VALUE $ARG_VAR
-                return 0
+                ARG_FOUND_COUNT=1
             fi
-            if test_str "$1" "^-[^-]" && test "${#1}" -ge 3 && test_str "$1" "$ARG_SHORT"
+            if test -n "$ARG_SHORT" && test_str "$1" "^-[^-]" && test "${#1}" -ge 3 && test_str "$1" "$ARG_SHORT"
             then # multiple short switches
-                test -n "$ARG_VAR" && assign "$ARG_VAR" "$ARG_VALUE"
                 test -z "$ARGUMENTS_SWITCHES_FOUND" && ARGUMENTS_SWITCHES_FOUND="${1:1};"
                 ARGUMENTS_SWITCHES_FOUND="${ARGUMENTS_SWITCHES_FOUND}$ARG_SHORT"
-                return 0
+                str_count_chars ARG_FOUND_COUNT "$1" "$ARG_SHORT"
             fi
+
+            test $ARG_FOUND_COUNT = 0 && return 1
+            test -z "$ARG_VAR" && return 0
+            ARGUMENTS_VALUE="$ARG_VALUE"
+            local -i ARG_FOUND_COUNT_I=0
+            while test $ARG_FOUND_COUNT_I -lt $ARG_FOUND_COUNT
+            do
+                arguments_check tester "$ARG_TEST" "$@"
+                let ARG_FOUND_COUNT_I++
+            done
+            set_yes ARG_ASSIGN
             ;;
         value)
             if test "$1" = "--$ARG_LONG" -o "$1" = "-$ARG_SHORT"
             then
-                if test $# -eq 1
-                then
-                    echo_error "Missing value for argument \"$1\"" $ERROR_CODE_DEFAULT
-                elif test "${2:0:1}" != "-"
-                then
-                    test -n "$ARG_VAR" && assign "$ARG_VAR" "$2"
-                    let ARGUMENTS_SHIFT++
-                else
-                    echo_error "Missing value for argument \"$1\"" $ERROR_CODE_DEFAULT
-                fi
-                shift && arguments_check tester "$ARG_TEST" "$@" && let ARGUMENTS_SHIFT++
-                #echo_debug_variable ARG_SHORT ARG_LONG ARG_VAR $ARG_VAR ARG_TEST
-                return 0
+                test $# -eq 1 -o "${2:0:1}" = "-" && echo_error "Missing value for argument \"$1\"" $ERROR_CODE_DEFAULT
+                ARGUMENTS_VALUE="$2"
+                shift && arguments_check tester "$ARG_TEST" "$@" && set_yes ARG_ASSIGN && let ARGUMENTS_SHIFT+=2
             fi
 
             if test "${1%%=*}" = "--$ARG_LONG"
             then
-                assign "$ARG_VAR" "${1#*=}"
-                shift && arguments_check tester "$ARG_TEST" "${!ARG_VAR}" "$@" && let ARGUMENTS_SHIFT++
-                #echo_debug_variable ARG_SHORT ARG_LONG ARG_VAR $ARG_VAR ARG_TEST
-                return 0
+                ARGUMENTS_VALUE="${1#*=}"
+                shift && arguments_check tester "$ARG_TEST" "$ARGUMENTS_VALUE" "$@" && set_yes ARG_ASSIGN && let ARGUMENTS_SHIFT++
             fi
             ;;
         option)
             test_yes ARGUMENTS_OPTION_FOUND && return 1
             test "${1:0:1}" = "-" && return 1
-            test -n "${!ARG_VAR}" && return 1
-            test -n "$ARG_VAR" && assign "$ARG_VAR" "$1"
-            #echo_debug_variable ARG_VAR $ARG_VAR ARG_TEST
-            arguments_check tester "$ARG_TEST" "$@" && set_yes ARGUMENTS_OPTION_FOUND && let ARGUMENTS_SHIFT++
-            return 0
+            test -n "$ARGUMENTS_VALUE_ORIGINAL" && return 1
+            ARGUMENTS_VALUE="$1"
+            arguments_check tester "$ARG_TEST" "$@" && set_yes ARG_ASSIGN ARGUMENTS_OPTION_FOUND && let ARGUMENTS_SHIFT++
             ;;
     esac
 
+    if test_yes ARG_ASSIGN
+    then
+        if test_str "$ARG_VAR" "/append"
+        then
+            ARG_VAR="${ARG_VAR%/*}"
+            test -z "${!ARG_VAR}" && assign "$ARG_VAR" "$ARGUMENTS_VALUE" || assign "$ARG_VAR" "${!ARG_VAR}$ARGUMENTS_VALUE_DELIMITER$ARGUMENTS_VALUE"
+        else
+            assign "$ARG_VAR" "$ARGUMENTS_VALUE"
+        fi
+        return 0
+    fi
     return 1
 }
 
@@ -655,9 +724,24 @@ function arguments_tester_file_write
     test -w "$1" || echo_error "Specified file: `echo_quote "$1"` can't be written" $ERROR_CODE_DEFAULT
 }
 
+function arguments_tester_file_canonicalize
+{
+    ARGUMENTS_VALUE="`readlink --canonicalize "$ARGUMENTS_VALUE"`"
+}
+
 function arguments_tester_ping
 {
     check_ping "$1" || echo_error "Specified host: `echo_quote "$1"` is not reachable, ping problem" $ERROR_CODE_DEFAULT
+}
+
+function arguments_tester_increase
+{
+    test -n "$ARGUMENTS_VALUE_ORIGINAL" && ARGUMENTS_VALUE="$ARGUMENTS_VALUE_ORIGINAL" # reuse already assigned value - do not use switch value
+    test_integer "$ARGUMENTS_VALUE" || echo_error "Argument value: `echo_quote "$ARGUMENTS_VALUE_NEW"` is not integer" $ERROR_CODE_DEFAULT
+
+    local -i ARGUMENTS_VALUE_INTEGER=$ARGUMENTS_VALUE
+    let ARGUMENTS_VALUE_INTEGER++ # increase value in local integer variable
+    ARGUMENTS_VALUE=$ARGUMENTS_VALUE_INTEGER
 }
 
 #NAMESPACE/string/end
@@ -710,8 +794,8 @@ function file_prepare
         arguments check switch "r|roll" "ROLL|yes" "$@"
         arguments check switch "u|user" "USER|" "$@"
         arguments check switch "g|group" "GROUP|" "$@"
+        arguments check option "FILE" "$@"
         arguments shift && shift $ARGUMENTS_SHIFT && continue
-        test -z "$FILE" && FILE="$1" && shift && continue
         echo_error_function "Unknown argument: $1" $ERROR_CODE_DEFAULT
     done
     arguments done
@@ -741,22 +825,18 @@ function file_prepare
     return 0
 }
 
-function prepare_file
-{
-    file_prepare "$@"
-}
-
 function file_remote
 # $1 get / put
-# $1 user@host:remote_file
-# $2 local file
+# $2 user@host:remote_file
+# $3 local file
 {
-    local SSH="${1%%:*}"
-    local FILE="${1#*:}"
+    local TASK="$1"
+    local SSH="${2%%:*}"
+    local FILE="${2#*:}"
     FILE_REMOTE="`file_temporary_name file_remote "$FILE"`"
-    test -n "$2" && FILE_REMOTE="$2"
+    test -n "$3" && FILE_REMOTE="$3"
 
-    case "$1" in
+    case "$TASK" in
         get)
             file_delete "$FILE_REMOTE"
             $SCPq "$SSH":"$FILE" "$FILE_REMOTE" || return 1
@@ -1439,31 +1519,29 @@ function fd_find_free
 #NAMESPACE/shell/end
 
 #NAMESPACE/misc/start
-function perf_start
+function performance
 {
-    local PERF_VAR="${1:-default}"
+    local TASK="$1"
     shift
-    PERF_MSG[$PERF_VAR]="$@"
-    test -n "${PERF_MSG[$PERF_VAR]}" && local MSG=" \"${PERF_MSG[$PERF_VAR]}\""
-    PERF_DATA[$PERF_VAR]="`date "+%s.%N"`"
-    echo_line "Performance$MSG started on date `date +"%Y-%m-%d %H:%M:%S"` time: ${PERF_DATA[$PERF_VAR]}"
-}
-
-function perf_now
-{
-    local PERF_VAR="${1:-default}"
+    local VAR="${1:-default}"
+    shift
+    test $# -gt 0 && PERFORMANCE_MESSAGES[$VAR]="$@"
+    test -n "${PERFORMANCE_MESSAGES[$VAR]}" && local MSG=" \"${PERFORMANCE_MESSAGES[$VAR]}\"" || local MSG=""
     local PERF_DATA_NOW="`date "+%s.%N"`"
-    test -n "${PERF_MSG[$PERF_VAR]}" && local MSG=" \"${PERF_MSG[$PERF_VAR]}\""
-    echo_line "Performance$MSG on date `date +"%Y-%m-%d %H:%M:%S"` time: $PERF_DATA_NOW elapsed: `command echo | $AWK "{ print $PERF_DATA_NOW - ${PERF_DATA[$PERF_VAR]}; }"`s"
-}
-
-function perf_end
-{
-    local PERF_VAR="${1:-default}"
-    local PERF_DATA_NOW="`date "+%s.%N"`"
-    test -n "${PERF_MSG[$PERF_VAR]}" && local MSG=" \"${PERF_MSG[$PERF_VAR]}\""
-    echo_line "Performance$MSG ended on date `date +"%Y-%m-%d %H:%M:%S"` time: $PERF_DATA_NOW elapsed: `command echo | $AWK "{ print $PERF_DATA_NOW - ${PERF_DATA[$PERF_VAR]}; }"`s"
-    PERF_DATA[$PERF_VAR]=0
+    local PERF_DATA_STR="`date +"%Y-%m-%d %H:%M:%S"`"
+    case "$TASK" in
+        start)
+            PERFORMANCE_DATA[$VAR]="$PERF_DATA_NOW"
+            echo_line "Performance$MSG started on date $PERF_DATA_STR time: ${PERF_DATA[$VAR]}"
+            ;;
+        now)
+            echo_line "Performance$MSG on date $PERF_DATA_STR time: $PERF_DATA_NOW elapsed: `command echo | $AWK "{ print $PERF_DATA_NOW - ${PERFORMANCE_DATA[$VAR]}; }"`s"
+            ;;
+        end)
+            echo_line "Performance$MSG ended on date $PERF_DATA_STR time: $PERF_DATA_NOW elapsed: `command echo | $AWK "{ print $PERF_DATA_NOW - ${PERFORMANCE_DATA[$VAR]}; }"`s"
+            PERFORMANCE_DATA[$VAR]=0
+            ;;
+    esac
 }
 #NAMESPACE/misc/end
 
@@ -1471,13 +1549,21 @@ function perf_end
 function set_yes
 # $1=yes
 {
-    assign "$1" yes
+    local VAR
+    for VAR in "$@"
+    do
+        assign "$VAR" yes
+    done
 }
 
 function set_no
 # $1=no
 {
-    assign "$1" no
+    local VAR
+    for VAR in "$@"
+    do
+        assign "$VAR" no
+    done
 }
 
 function test_ne0
@@ -1722,7 +1808,7 @@ function pipe_cut
         case "$CUT_TYPE" in
             center)
                 local -i LENGTH_LEFT
-                let LENGTH_LEFT="( $LENGTH_MAX - 3) / 2"
+                let LENGTH_LEFT="($LENGTH_MAX - 3) / 2"
                 local -i LENGTH_RIGHT
                 let LENGTH_RIGHT="$LENGTH_MAX - $LENGTH_LEFT - 3"
                 local -i START_RIGHT
@@ -1764,11 +1850,6 @@ LOG_SECTION="===================================================================
 LOG_SPACE=""
 LOG_START="`date -u +%s`"
 
-function log_file_init
-{
-    log_init "$@"
-}
-
 function log_init
 {
     local LOG_TITLE="$0 - Log init"
@@ -1783,11 +1864,6 @@ function log_init
     file_prepare "$LOG_FILE"
     command echo "$LOG_SECTION" >> "$LOG_FILE"
     echo_log "`uname -n`: $LOG_TITLE"
-}
-
-function log_file_done
-{
-    log_done "$@"
 }
 
 function log_done
@@ -2303,7 +2379,7 @@ function echo_debug_right
             local DEBUG_MESSAGE_STR="$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$@"
         fi
         local -i SHIFT_MESSAGE="`tput cols`"
-        let SHIFT_MESSAGE="$SHIFT_MESSAGE-${#DEBUG_MESSAGE_STR}"
+        let SHIFT_MESSAGE="$SHIFT_MESSAGE - ${#DEBUG_MESSAGE_STR}"
 
 ##############OLD
         #cursor_get_position
@@ -2800,11 +2876,16 @@ declare -x -f arguments_check       # switch / value / option / tools
 declare -x -f arguments_check_info
 declare -x -f arguments_check_tools # checks for standard tools.sh arguments
 #declare -x -f arguments_tester_${check}
+declare -x    ARGUMENTS_VALUE_ORIGINAL  # tester can obtain original value set in variable before
+declare -x    ARGUMENTS_VALUE           # current proposed value from switch / value / option, can be changed
+declare -x    ARGUMENTS_VALUE_DELIMITER=" " # delimiter to use for /append variable
 declare -x -f arguments_tester_info
 declare -x -f arguments_tester_file_exist
 declare -x -f arguments_tester_file_read
 declare -x -f arguments_tester_file_write
+declare -x -f arguments_tester_file_canonicalize
 declare -x -f arguments_tester_ping
+declare -x -f arguments_tester_increase
 
 declare -x -f file_temporary_name
 declare -x -f file_delete
@@ -2850,12 +2931,10 @@ declare -x -f kill_tree
 declare -x -f fd_check
 declare -x -f fd_find_free
 
-declare -x -A PERF_DATA
-declare -x -A PERF_MSG
+declare -x -A PERFORMANCE_DATA
+declare -x -A PERFORMANCE_MESSAGES
 #PERF_DATA["default"]=0
-declare -x -f perf_start
-declare -x -f perf_now
-declare -x -f perf_end
+declare -x -f performance       # start / now /end
 
 declare -x -f set_yes
 declare -x -f test_ne0
@@ -2955,7 +3034,7 @@ declare -x -f history_restore
 declare -x -f history_store
 
 declare -x OPTION_IGNORE_UNKNOWN="yes"
-declare -x -f arguments_tools
+declare -x -f arguments_check_tools
 declare -x -f tools_init
 declare -x -f colors_init
 

@@ -820,6 +820,7 @@ function call_command
     while test $# -gt 0
     do
         test "$1" = "--debug" && DEBUG="yes" && shift && continue
+        test "$1" = "--debug-right" && DEBUG="right" && shift && continue
         test "$1" = "--nodebug" && DEBUG="no" && shift && continue
         test "$1" = "--term" -o "$1" = "-t" && TOPT="-t" && shift && continue
         test "$1" = "--tterm" -o "$1" = "-tt" && TOPT="-tt" && shift && continue
@@ -1143,6 +1144,12 @@ function pipe_remove_color
         --expression="s/\\\\033\[([0-9]{1,3}((;[0-9]{1,3})*)?)?[m|K]//g"
 }
 
+function pipe_remove_lines
+# removes color control codes from pipe
+{
+    awk '$0=="" { next; } { print; }' | tr '\n' ' ' | xargs
+}
+
 function pipe_from
 # command | pipe_from "from this line"
 {
@@ -1262,12 +1269,14 @@ function pipe_echo_prefix
     local PREFIX="$SHOW_OUTPUT_PREFIX"
     local HIDELINES="$SHOW_OUTPUT_HIDELINES"
     local COMMAND="$SHOW_OUTPUT_COMMAND"
+    local NEW_LINE="yes"
 
     while test $# -gt 0
     do
         check_arg_init
         check_arg_value "p|prefix" "PREFIX" "$@"
         check_arg_value "c|command" "COMMAND" "$@"
+        check_arg_switch "l|newline" "NEW_LINE|no" "$@"
         check_arg_shift && shift $CHECK_ARG_SHIFT && continue
         test -z "$HIDELINES" && HIDELINES="$1" && shift && continue
         echo_error_function "show_output" "Unknown argument: $1" 1
@@ -1278,7 +1287,7 @@ function pipe_echo_prefix
     #    echo "$PREFIX$LINE"
     #done
 
-    "$AWK" --assign=prefix="$PREFIX" --assign=hideline="$HIDELINES" --assign=command="$COMMAND" '
+    "$AWK" --assign=prefix="$PREFIX" --assign=hideline="$HIDELINES" --assign=command="$COMMAND" --assign=newline="$NEW_LINE" '
         BEGIN { line=""; count=0; }
         command=="" { current=$0; }
         command!="" {
@@ -1291,6 +1300,7 @@ function pipe_echo_prefix
             #print $0 " -> " current;
         }
 
+        newline=="no" && $0=="" { next; }
         hideline!="" && current~hideline { next; }
         current==line { count++; next; }
         count==0 { line=current; count++; next; }
@@ -1770,13 +1780,13 @@ function colors_init
 
 function check_arg_tools
 {
-    check_arg_switch "i|ignore-unknown" "OPTION_IGNORE_UNKNOWN|yes" "$@"
-    check_arg_switch "d|debug" "OPTION_DEBUG|yes,$OPTION_DEBUG" "$@" && set_debug right
+    check_arg_switch "|ignore-unknown" "OPTION_IGNORE_UNKNOWN|yes" "$@"
+    check_arg_switch "|debug" "OPTION_DEBUG|yes,$OPTION_DEBUG" "$@" && set_debug right
     check_arg_switch "|debug-right" "OPTION_DEBUG|right,$OPTION_DEBUG" "$@"
     check_arg_switch "|debug-function" "OPTION_DEBUG|function,$OPTION_DEBUG" "$@"
-    check_arg_value "p|prefix" "OPTION_PREFIX|yes" "$@"
-    check_arg_value "c|color" "OPTION_COLOR|yes" "$@"
-    check_arg_value "u|uname" "OPTION_UNAME|yes" "$@"
+    check_arg_value "|prefix" "OPTION_PREFIX|yes" "$@"
+    check_arg_value "|color" "OPTION_COLOR|yes" "$@"
+    check_arg_value "|uname" "OPTION_UNAME|yes" "$@"
 }
 
 function tools_init

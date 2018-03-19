@@ -236,6 +236,7 @@ function insert_cmd
 
 function assign
 {
+    #unset -v "$1" || echo_error_function "Invalid variable name: $1" $ERROR_CODE_DEFAULT
     test $# = 2 -a -n "$1" && printf -v "$1" '%s' "$2" && return 0
     test $# = 1 -a -n "${1%%=*}" && printf -v "${1%%=*}" '%s' "${1#*=}" && return 0
     test $# != 1 -a $# != 2 && echo_error_function "Wrong arguments count: $#" $ERROR_CODE_DEFAULT
@@ -244,10 +245,17 @@ function assign
 
 function assign_array
 {
+    #unset -v "$1" || echo_error_function "Invalid variable name: $1" $ERROR_CODE_DEFAULT
     test $# = 2 && eval "$1"="$2" && return 0
     test $# = 1 && eval "${1%%=*}"="${1#*=}" && return 0
     test $# != 1 -a $# != 2 && echo_error_function "Wrong arguments count: $#" $ERROR_CODE_DEFAULT
     echo_error_function "Empty variable name argument" $ERROR_CODE_DEFAULT
+}
+
+function array_variable
+{
+    read LINE < <(declare -p "$1")
+    test_str "$LINE" "^declare -[aA]"
 }
 
 function array_convert
@@ -861,7 +869,7 @@ function file_line_delete_local
         cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
         if diff "$FILE" "$TEMP_FILE" > /dev/null 2> /dev/null
         then
-            cat "$TEMP_FILE" 2> /dev/null | $GREP --invert-match "$REGEXP" > "$FILE" 2> /dev/null
+            $GREP --invert-match "$REGEXP" "$TEMP_FILE" > "$FILE" 2> /dev/null
             file_delete "$TEMP_FILE"
         else
             file_delete "$TEMP_FILE"
@@ -892,12 +900,12 @@ function file_line_add_local
         cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
         if test -n "$REGEXP_REPLACE" && `cat "$TEMP_FILE" | $AWK 'BEGIN { f=1; } /'"$REGEXP_REPLACE"'/ { f=0; } END { exit f; }'`
         then
-            cat "$TEMP_FILE" | $AWK --assign=line="$LINE" 'BEGIN { p=0; gsub(/\n/, "\\n", line); } p==0&&/'"$REGEXP_REPLACE"'/ { p=1; print line; next } { print; } END { if (p==0) print line; }' > "$FILE"
+            $AWK --assign=line="$LINE" 'BEGIN { p=0; gsub(/\n/, "\\n", line); } p==0&&/'"$REGEXP_REPLACE"'/ { p=1; print line; next } { print; } END { if (p==0) print line; }' "$TEMP_FILE" > "$FILE"
         elif test -n "$REGEXP_AFTER" && `cat "$TEMP_FILE" | $AWK 'BEGIN { f=1; } /'"$REGEXP_AFTER"'/ { f=0; } END { exit f; }'`
         then
-            cat "$TEMP_FILE" | $AWK --assign=line="$LINE" 'BEGIN { p=0; gsub(/\n/, "\\n", line); } p==0&&/'"$REGEXP_AFTER"'/ { print $0; p=1; print line; next } { print; } END { if (p==0) print line; }' > "$FILE"
+            $AWK --assign=line="$LINE" 'BEGIN { p=0; gsub(/\n/, "\\n", line); } p==0&&/'"$REGEXP_AFTER"'/ { print $0; p=1; print line; next } { print; } END { if (p==0) print line; }' "$TEMP_FILE" > "$FILE"
         else
-            cat "$TEMP_FILE" | $AWK --assign=line="$LINE" 'BEGIN { gsub(/\n/, "\\n", line); } { print; } END { print line; }' > "$FILE"
+            $AWK --assign=line="$LINE" 'BEGIN { gsub(/\n/, "\\n", line); } { print; } END { print line; }' "$TEMP_FILE" > "$FILE"
         fi
         if test -s "$FILE"
         then
@@ -1068,7 +1076,7 @@ function file_replace
     if test -e "$FILE"
     then
         cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG, temporary file create `echo_quote "$TEMP_FILE"` problem" $ERROR_CODE_DEFAULT
-        cat "$TEMP_FILE" | sed --expression="s|$SEARCH|$REPLACE|g" > "$FILE" || echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
+        sed --expression="s|$SEARCH|$REPLACE|g" "$TEMP_FILE" > "$FILE" || echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
         file_delete "$TEMP_FILE"
     fi
 }
@@ -1132,13 +1140,13 @@ function is_localhost
     test -z "$1" -o "$1" = "localhost" -o "$1" = "127.0.0.1" && return 0
 
     # name test
-    UNAME_N="`uname -n`"
+    local UNAME_N="`uname -n`"
     #echo_debug_variable UNAME_N
     test "$1" = "$UNAME_N" && return 0
 
     # IP test
-    UNAME_IP="`get_ip "$UNAME_N"`"
-    REMOTE_IP="`get_ip "$1"`"
+    local UNAME_IP="`get_ip "$UNAME_N"`"
+    local REMOTE_IP="`get_ip "$1"`"
     #echo_debug_variable UNAME_IP REMOTE_IP
     test "$REMOTE_IP" = "$UNAME_IP" && return 0
 
@@ -1379,8 +1387,8 @@ function call_command
     local USER="$CALL_COMMAND_DEFAULT_USER"
     local USER_SET="no"
     local LOCAL_DEBUG="no"
-    debug_check command && set_yes LOCAL_DEBUG
-    debug_check command && debug_check right && LOCAL_DEBUG="right"
+    debug check command && set_yes LOCAL_DEBUG
+    debug check command && debug check right && LOCAL_DEBUG="right"
     while test $# -gt 0
     do
         test "$1" = "--debug" && set_yes LOCAL_DEBUG && shift && continue
@@ -1527,18 +1535,20 @@ function performance
     shift
     test $# -gt 0 && PERFORMANCE_MESSAGES[$VAR]="$@"
     test -n "${PERFORMANCE_MESSAGES[$VAR]}" && local MSG=" \"${PERFORMANCE_MESSAGES[$VAR]}\"" || local MSG=""
-    local PERF_DATA_NOW="`date "+%s.%N"`"
-    local PERF_DATA_STR="`date +"%Y-%m-%d %H:%M:%S"`"
+    local DATE_NOW="`date "+%s.%N" | $AWK '{ printf "%.3f", $1; }'`"
+    local DATE_NOW_STR="`date +"%Y-%m-%d %H:%M:%S"`"
     case "$TASK" in
         start)
-            PERFORMANCE_DATA[$VAR]="$PERF_DATA_NOW"
-            echo_line "Performance$MSG started on date $PERF_DATA_STR time: ${PERF_DATA[$VAR]}"
+            PERFORMANCE_DATA[$VAR]="$DATE_NOW"
+            test_yes PERFORMANCE_DETAILS && echo_line "Performance$MSG started on date $DATE_NOW_STR timestamp: $DATE_NOW"
             ;;
         now)
-            echo_line "Performance$MSG on date $PERF_DATA_STR time: $PERF_DATA_NOW elapsed: `command echo | $AWK "{ print $PERF_DATA_NOW - ${PERFORMANCE_DATA[$VAR]}; }"`s"
+            local ELAPSED="`command echo | $AWK '{ printf "%.3f", ('$DATE_NOW' - '${PERFORMANCE_DATA[$VAR]}'); }'`"
+            test_yes PERFORMANCE_DETAILS && echo_line "Performance$MSG on date $DATE_NOW_STR timestamp: $DATE_NOW elapsed: ${ELAPSED}s" || echo_line "Performance$MSG: ${ELAPSED}s"
             ;;
         end)
-            echo_line "Performance$MSG ended on date $PERF_DATA_STR time: $PERF_DATA_NOW elapsed: `command echo | $AWK "{ print $PERF_DATA_NOW - ${PERFORMANCE_DATA[$VAR]}; }"`s"
+            local ELAPSED="`command echo | $AWK '{ printf "%.3f", ('$DATE_NOW' - '${PERFORMANCE_DATA[$VAR]}'); }'`"
+            test_yes PERFORMANCE_DETAILS && echo_line "Performance$MSG ended on date $DATE_NOW_STR timestamp: $DATE_NOW elapsed: ${ELAPSED}s" || echo_line "Performance$MSG: ${ELAPSED}s"
             PERFORMANCE_DATA[$VAR]=0
             ;;
     esac
@@ -1675,7 +1685,7 @@ function test_file
 
     test -f "$2" || return 1
 
-    $GREP --quiet --extended-regexp "$1" "$2"
+    test_str "$1" "$2"
     return $?
 }
 
@@ -1691,7 +1701,7 @@ function test_cmd
         shift
     fi
 
-    command echo "$CMD" | $GREP --extended-regexp --quiet "$1"
+    test_str "$CMD" "$1"
     return $?
 }
 
@@ -1763,6 +1773,61 @@ function cursor_move_down
     echo
     let CURSOR_COLUMN--
     test $CURSOR_COLUMN -gt 0 && tput cuf $CURSOR_COLUMN
+}
+
+#NAMESPACE/pipes/start
+function pipe_prefix
+# pipe nice output
+# command | pipe_prefix
+# -c <command> | --command=<command>
+# -p <prefix> | --prefix=<prefix>
+{
+    local PREFIX="$PIPE_PREFIX"
+    test -n "$SHOW_OUTPUT_PREFIX" && PREFIX="$SHOW_OUTPUT_PREFIX"
+    local HIDELINES="$PIPE_PREFIX_HIDELINES"
+    test -n "$SHOW_OUTPUT_HIDELINES" && HIDELINES="$SHOW_OUTPUT_HIDELINES"
+    local COMMAND="$PIPE_PREFIX_COMMAND"
+    test -n "$SHOW_OUTPUT_COMMAND" && HIDELINES="$SHOW_OUTPUT_COMMAND"
+    local NEW_LINE="yes"
+
+    arguments init
+    while test $# -gt 0
+    do
+        arguments loop
+        arguments check value "p|prefix" "PREFIX" "$@"
+        arguments check value "c|command" "COMMAND" "$@"
+        arguments check switch "l|newline" "NEW_LINE|no" "$@"
+        arguments check option "HIDELINES" "$@"
+        arguments shift && shift $ARGUMENTS_SHIFT && continue
+        echo_error_function "Unknown argument: $1" $ERROR_CODE_DEFAULT
+    done
+    arguments done
+
+    #while read LINE
+    #do
+    #    echo "$PREFIX$LINE"
+    #done
+
+    $AWK --assign=prefix="$PREFIX" --assign=hideline="$HIDELINES" --assign=command="$COMMAND" --assign=newline="$NEW_LINE" '
+        BEGIN { line=""; count=0; }
+        command=="" { current=$0; }
+        command!="" {
+            current="";
+            cmd = command " \"" $0 "\"";
+            while (cmd | getline cmd_line) {
+                current=current cmd_line;
+            }
+            close(cmd)
+            #print $0 " -> " current;
+        }
+
+        newline=="no" && $0=="" { next; }
+        hideline!="" && current~hideline { next; }
+        current==line { count++; next; }
+        count==0 { line=current; count++; next; }
+        count==1 { print prefix line; line=current; count=1; next; }
+        count>1 { print prefix line " ("count"x)"; line=current; count=1; next; }
+        END { if (count>1) p=" ("count"x)"; else p=""; print prefix line p; }'
 }
 
 function pipe_remove_color
@@ -1842,57 +1907,60 @@ function echo_cut
     shift 2
     command echo "$@" | pipe_cut "$CUT_TYPE" "$LENGTH_MAX"
 }
+#NAMESPACE/pipes/end
 
-LOG_FILE=""
-LOG_WITHDATE="yes"
-LOG_DATE="%Y-%m-%d %H:%M:%S"
-LOG_SECTION="=============================================================================="
-LOG_SPACE=""
-LOG_START="`date -u +%s`"
-
-function log_init
+function log
+# [log file pathname]
 {
-    local LOG_TITLE="$0 - Log init"
+    TASK="$1"
+    shift
+    local LOG_TITLE="Log $TASK from $0"
 
-    while test $# -gt 0
-    do
-        test "${1:0:1}" = "/" && LOG_FILE="$1" || LOG_TITLE="${1:-$LOG_TITLE}"
-        shift
-    done
-    test -z "$LOG_FILE" && LOG_FILE="${SCRIPT_FILE_NOEXT}.log"
+    case "$TASK" in
+        init)
+            LOG_FILE="$1"
+            test -z "$LOG_FILE" && LOG_FILE="${SCRIPT_FILE_NOEXT}.log"
 
-    file_prepare "$LOG_FILE"
-    command echo "$LOG_SECTION" >> "$LOG_FILE"
-    echo_log "`uname -n`: $LOG_TITLE"
-}
+            log section
+            log log "$LOG_TITLE started on `hostname --fqdn`" >> "$LOG_FILE"
+            ;;
+        done)
+            test -z "$LOG_FILE" && echo_error_function "Log file is not specified"
 
-function log_done
-{
-    local LOG_TITLE="$0 - Log done"
-    test $# -eq 2 && LOG_TITLE="$1" && shift
-    test -z "$LOG_FILE" && echo_error_function "Log file is not specified"
+            local LOG_DURATION
+            let LOG_DURATION="`date -u +%s` - $LOG_START"
 
-    local LOG_DURATION
-    let LOG_DURATION=`date -u +%s`-$LOG_START
+            log log "$LOG_TITLE, script runtime $LOG_DURATION seconds" >> "$LOG_FILE"
+            log section
+            ;;
+        section)
+            test -z "$LOG_FILE" && return
 
-    file_prepare "$LOG_FILE"
-    command echo "`date +"$LOG_DATE"` $LOG_TITLE, script runtime $LOG_DURATION seconds" >> "$LOG_FILE"
-    command echo "$LOG_SECTION" >> "$LOG_FILE"
-}
+            file_prepare "$LOG_FILE"
+            command echo "$LOG_SECTION" >> "$LOG_FILE"
+            ;;
+        log)  # store pure arguments only to log file
+            test -z "$LOG_FILE" && return
 
-function echo_log
-# echoes arguments only to log file
-{
-    test -z "$LOG_FILE" && return
+            file_prepare "$LOG_FILE"
+            command echo "$@" >> "$LOG_FILE"
+            ;;
+        echo)  # echoes arguments only to log file
+            test -z "$LOG_FILE" && return
 
-    local LOG_DATE_STRING=""
-    test_str "$1" "^(-d|--date)$" && LOG_DATE_STRING="`date +"$LOG_DATE"`" shift
-    test_yes "$LOG_WITHDATE" && LOG_DATE_STRING="`date +"$LOG_DATE"`"
+            local LOG_DATE_STRING=""
+            test_str "$1" "^(-d|--date)$" && LOG_DATE_STRING="`date +"$LOG_DATE"`" shift
+            test_yes "$LOG_WITHDATE" && LOG_DATE_STRING="`date +"$LOG_DATE"`"
 
-    file_prepare "$LOG_FILE"
-    #echo "${LOG_SPACE}$@" | sed --expression='s/\\n/\n                    /g' --expression='s/^/                    /g' >> "$LOG_FILE"
-    command echo "${LOG_SPACE}${LOG_DATE_STRING} $@" | pipe_remove_color >> "$LOG_FILE"
-    #command echo "${LOG_SPACE}${LOG_DATE_STRING} $@" >> "$LOG_FILE"
+            file_prepare "$LOG_FILE"
+            #echo "${LOG_SPACE}$@" | sed --expression='s/\\n/\n                    /g' --expression='s/^/                    /g' >> "$LOG_FILE"
+            command echo "${LOG_SPACE}${LOG_DATE_STRING} $@" | pipe_remove_color >> "$LOG_FILE"
+            #command echo "${LOG_SPACE}${LOG_DATE_STRING} $@" >> "$LOG_FILE"
+            ;;
+        *)
+            log echo "$@"
+            ;;
+    esac
 }
 
 function log_output
@@ -1901,13 +1969,13 @@ function log_output
 }
 
 function pipe_log
-# pipe with command echo_log
+# pipe with command log echo
 {
     local BACKUP_IFS="$IFS"
     IFS=''
     while read LINE
     do
-        echo_log "$LINE"
+        log echo "$LINE"
     done
     IFS="$BACKUP_IFS"
 }
@@ -1929,60 +1997,6 @@ function pipe_echo
     IFS="$BACKUP_IFS"
 }
 
-
-function pipe_prefix
-# pipe with pipe_echo and nice output
-# command | show_output
-# -c <command> | --command=<command>
-# -p <prefix> | --prefix=<prefix>
-{
-    local PREFIX="$PIPE_PREFIX"
-    test -n "$SHOW_OUTPUT_PREFIX" && PREFIX="$SHOW_OUTPUT_PREFIX"
-    local HIDELINES="$PIPE_PREFIX_HIDELINES"
-    test -n "$SHOW_OUTPUT_HIDELINES" && HIDELINES="$SHOW_OUTPUT_HIDELINES"
-    local COMMAND="$PIPE_PREFIX_COMMAND"
-    test -n "$SHOW_OUTPUT_COMMAND" && HIDELINES="$SHOW_OUTPUT_COMMAND"
-    local NEW_LINE="yes"
-
-    arguments init
-    while test $# -gt 0
-    do
-        arguments loop
-        arguments check value "p|prefix" "PREFIX" "$@"
-        arguments check value "c|command" "COMMAND" "$@"
-        arguments check switch "l|newline" "NEW_LINE|no" "$@"
-        arguments shift && shift $ARGUMENTS_SHIFT && continue
-        test -z "$HIDELINES" && HIDELINES="$1" && shift && continue
-        echo_error_function "Unknown argument: $1" $ERROR_CODE_DEFAULT
-    done
-    arguments done
-
-    #while read LINE
-    #do
-    #    echo "$PREFIX$LINE"
-    #done
-
-    $AWK --assign=prefix="$PREFIX" --assign=hideline="$HIDELINES" --assign=command="$COMMAND" --assign=newline="$NEW_LINE" '
-        BEGIN { line=""; count=0; }
-        command=="" { current=$0; }
-        command!="" {
-            current="";
-            cmd = command " \"" $0 "\"";
-            while (cmd | getline cmd_line) {
-                current=current cmd_line;
-            }
-            close(cmd)
-            #print $0 " -> " current;
-        }
-
-        newline=="no" && $0=="" { next; }
-        hideline!="" && current~hideline { next; }
-        current==line { count++; next; }
-        count==0 { line=current; count++; next; }
-        count==1 { print prefix line; line=current; count=1; next; }
-        count>1 { print prefix line " ("count"x)"; line=current; count=1; next; }
-        END { if (count>1) p=" ("count"x)"; else p=""; print prefix line p; }' | pipe_echo
-}
 
 function show_output
 {
@@ -2055,7 +2069,7 @@ function echo_line
 # echoes arguments to standard output and log to the file
 {
     command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$@"
-    echo_log "$ECHO_PREFIX$ECHO_UNAME$@"
+    log echo "$ECHO_PREFIX$ECHO_UNAME$@"
 }
 
 function echo_title
@@ -2079,9 +2093,9 @@ function echo_title
         command echo "$ECHO_PREFIX$ECHO_UNAME$TITLE_TAIL"
     fi
 
-    echo_log "$ECHO_PREFIX$ECHO_UNAME$TITLE_HEAD"
-    echo_log "$ECHO_PREFIX$ECHO_UNAME$TITLE_MSG"
-    echo_log "$ECHO_PREFIX$ECHO_UNAME$TITLE_TAIL"
+    log echo "$ECHO_PREFIX$ECHO_UNAME$TITLE_HEAD"
+    log echo "$ECHO_PREFIX$ECHO_UNAME$TITLE_MSG"
+    log echo "$ECHO_PREFIX$ECHO_UNAME$TITLE_TAIL"
     return 0
 }
 
@@ -2095,19 +2109,19 @@ function echo_info
         command echo "$ECHO_PREFIX$ECHO_UNAME$@"
     fi
 
-    echo_log "$ECHO_PREFIX$ECHO_UNAME$@"
+    log echo "$ECHO_PREFIX$ECHO_UNAME$@"
     return 0
 }
 
 function echo_step
 {
-    local -i STEP_NUMBER=""
+    local STEP_NUMBER=""
     local STEP_NUMBER_STR=""
     if test $# -ge 2
     then
         STEP_VARIABLE="$1"
         STEP_NUMBER=${!STEP_VARIABLE}
-        STEP_NUMBER_STR="${STEP_NUMBER}. "
+        STEP_NUMBER_STR="${!STEP_VARIABLE}. "
         shift
     fi
 
@@ -2119,9 +2133,9 @@ function echo_step
         command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_STEP$STEP_NUMBER_STR$@"
     fi
 
-    echo_log "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_STEP$STEP_NUMBER_STR$@"
+    log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_STEP$STEP_NUMBER_STR$@"
 
-    test_integer "$STEP_NUMBER" && let STEP_NUMBER++ && let $STEP_VARIABLE=$STEP_NUMBER
+    test_integer "$STEP_NUMBER" && let STEP_NUMBER++ && assign "$STEP_VARIABLE" $STEP_NUMBER
     test_str "$STEP_NUMBER" "^[a-z]$" && assign $STEP_VARIABLE "`command echo "$STEP_NUMBER" | tr "a-z" "b-z_"`"
     test_str "$STEP_NUMBER" "^[A-Z]$" && assign $STEP_VARIABLE "`command echo "$STEP_NUMBER" | tr "A-Z" "B-Z_"`"
     return 0
@@ -2137,149 +2151,154 @@ function echo_substep
         command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_SUBSTEP$@"
     fi
 
-    echo_log "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_SUBSTEP$@"
+    log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_SUBSTEP$@"
     return 0
 }
 
-function debug_init
+#NAMESPACE/debug/start
+function debug
 {
-    # in order to speed up script start, namespaces are init in echo_error_function / echo_debug_function
-    #debug_init_namespaces
-    set_no DEBUG_INIT_NAMESPACES
-    return 0
-}
+    TASK="$1"
+    shift
+    case "$TASK" in
+        init)
+            set_no DEBUG_INIT_NAMESPACES
+            # in order to speed up script start, namespaces are init in echo_error_function / echo_debug_function
+            #debug init_namespaces
+            ;;
+        init_namespaces)
+            test_yes "$DEBUG_INIT_NAMESPACES" && return 0
+            set_yes DEBUG_INIT_NAMESPACES
 
-function debug_init_namespaces
-{
-    set_yes DEBUG_INIT_NAMESPACES
-
-    FUNCTION_NAMESPACES[main]="$SCRIPT_NAME"
-    local SCRIPT
-    for SCRIPT in "$TOOLS_FILE" "$SCRIPT_FILE" "$@"
-    do
-        test ! -r "$SCRIPT" && continue
-        local LINE
-        local INCLUDE="${SCRIPT##*/}"
-        local INCLUDE="${INCLUDE%.sh}/"
-        local NAMESPACE=""
-        while read LINE
-        do
-            [[ "$LINE" =~ ^[#]NAMESPACE/([^/]+)/start$ ]] && NAMESPACE="${BASH_REMATCH[1]}/"
-            [[ "$LINE" =~ ^[#]NAMESPACE/[^/]+/end$ ]] && NAMESPACE=""
-            if [[ "$LINE" =~ ^function[\ ] ]] || [[ "$LINE" =~ [A-Za-z0-9_]\(\)$  ]]
-            then
-                local F="$LINE"
-                str_trim F
-                F="${F#function}"
-                F="${F%{}"
-                str_trim F
-                F="${F%()}"
-                str_trim F
-                #echo FUNCTION_NAMESPACES[$F]="$INCLUDE$NAMESPACE$F"
-                FUNCTION_NAMESPACES[$F]="$INCLUDE$NAMESPACE$F"
-            fi
-        done < "$SCRIPT"
-    done
-
-    return 0
-}
-
-function debug_set
-{
-    test $# = 0 && local OPTIONS="debug" || local OPTIONS="$@"
-    str_word add OPTION_DEBUG $OPTIONS
-}
-
-function debug_unset
-{
-    test $# = 0 && local OPTIONS="debug" || local OPTIONS="$@"
-    str_word delete OPTION_DEBUG $OPTIONS
-}
-
-function debug_check
-{
-    local OPTION="${1:-debug}"
-    str_word check OPTION_DEBUG $OPTION
-}
-
-function debug_level_check
-{
-    test_integer "$1" && return 0
-    test -z "$1" && return 1
-    local I="${DEBUG_LEVELS[$1]}"
-    test_integer "$I" && return 0 || return 1
-}
-
-function debug_level_parse
-{
-#DEBUG_LEVELS[ALL]=100
-#DEBUG_LEVELS[TRACE]=90
-#DEBUG_LEVELS[DEBUG]=80
-#DEBUG_LEVELS[INFO]=50
-#DEBUG_LEVELS[WARN]=30
-#DEBUG_LEVELS[ERROR]=20
-#DEBUG_LEVELS[FATAL]=10
-#DEBUG_LEVELS[FORCE]=1
-#DEBUG_LEVELS[OFF]=0
-    if test $# = 1
-    then
-        if test -z "$1"
-        then
-            DEBUG_LEVEL_PARSE[0]=""
-            DEBUG_LEVEL_PARSE[1]=""
-        elif test_integer "$1"
-        then
-            local S
-            for S in ${!DEBUG_LEVELS[@]}
+            FUNCTION_NAMESPACES[main]="$SCRIPT_NAME"
+            local SCRIPT
+            for SCRIPT in "$TOOLS_FILE" "$SCRIPT_FILE" "$@"
             do
-                test "$1" = "${DEBUG_LEVELS[$S]}" && DEBUG_LEVEL_PARSE[0]=$1 && DEBUG_LEVEL_PARSE[1]="$S" && return 0
+                test ! -r "$SCRIPT" && continue
+                local LINE
+                local INCLUDE="${SCRIPT##*/}"
+                local INCLUDE="${INCLUDE%.sh}/"
+                local NAMESPACE=""
+                while read LINE
+                do
+                    [[ "$LINE" =~ ^[#]NAMESPACE/([^/]+)/start$ ]] && NAMESPACE="${BASH_REMATCH[1]}/"
+                    [[ "$LINE" =~ ^[#]NAMESPACE/[^/]+/end$ ]] && NAMESPACE=""
+                    if [[ "$LINE" =~ ^function[\ ] ]] || [[ "$LINE" =~ [A-Za-z0-9_]\(\)$  ]]
+                    then
+                        local F="$LINE"
+                        str_trim F
+                        F="${F#function}"
+                        F="${F%{}"
+                        str_trim F
+                        F="${F%()}"
+                        str_trim F
+                        #echo FUNCTION_NAMESPACES[$F]="$INCLUDE$NAMESPACE$F"
+                        FUNCTION_NAMESPACES[$F]="$INCLUDE$NAMESPACE$F"
+                    fi
+                done < "$SCRIPT"
             done
-            DEBUG_LEVEL_PARSE[0]=$1
-            DEBUG_LEVEL_PARSE[1]=""
-        else
+            return 0
+            ;;
+        reinit_namespaces)
+            set_no DEBUG_INIT_NAMESPACES
+            debug init_namespaces
+            ;;
+        set)
+            test $# = 0 && local OPTIONS="debug" || local OPTIONS="$@"
+            str_word add OPTION_DEBUG $OPTIONS
+            ;;
+        unset)
+            test $# = 0 && local OPTIONS="debug" || local OPTIONS="$@"
+            str_word delete OPTION_DEBUG $OPTIONS
+            ;;
+        check)
+            local OPTION="${1:-debug}"
+            str_word check OPTION_DEBUG $OPTION
+            ;;
+        parse_type)
+            #DEBUG_TYPES[debug]="D"
+            #DEBUG_TYPES[right]="R"
+            #DEBUG_TYPES[function]="F"
+            #DEBUG_TYPES[variable]="V"
+            DEBUG_PARSE_TYPE="${DEBUG_TYPES[$1]}"
+            test -n "$DEBUG_PARSE_TYPE" && DEBUG_PARSE_TYPE="[$DEBUG_PARSE_TYPE] "
+            ;;
+        set_level)
+            debug parse_level "$@"
+            DEBUG_LEVEL=$DEBUG_PARSE_LEVEL
+            DEBUG_LEVEL_STR="$DEBUG_PARSE_LEVEL_STR"
+            ;;
+        set_level_default)  # default level for echo_debug without argument
+            debug parse_level "$@"
+            DEBUG_LEVEL_DEFAULT=DEBUG_PARSE_LEVEL
+            DEBUG_LEVEL_DEFAULT_STR="$DEBUG_PARSE_LEVEL_STR"
+            ;;
+        check_level)
+            test -z "$1" && return 1
+            test_integer "$1" && return 0
             local I="${DEBUG_LEVELS[$1]}"
-            test_integer "$I" || echo_error_function "Unknown error level \"$1\""
-            DEBUG_LEVEL_PARSE[0]=$I
-            DEBUG_LEVEL_PARSE[1]="$1"
-        fi
-        return 0
-    fi
-    if test $# = 2
-    then
-        test_integer "$1" || echo_error_function "Wrong error level \"$1\""
-        DEBUG_LEVEL_PARSE[0]=$1
-        DEBUG_LEVEL_PARSE[1]="$2"
-        return 0
-    fi
+            test_integer "$I" && return 0 || return 1
+            ;;
+        parse_level)
+            #DEBUG_LEVELS[ALL]=100
+            #DEBUG_LEVELS[TRACE]=90
+            #DEBUG_LEVELS[DEBUG]=80
+            #DEBUG_LEVELS[INFO]=50
+            #DEBUG_LEVELS[WARN]=30
+            #DEBUG_LEVELS[ERROR]=20
+            #DEBUG_LEVELS[FATAL]=10
+            #DEBUG_LEVELS[FORCE]=1
+            #DEBUG_LEVELS[OFF]=0
+            if test $# = 1
+            then
+                if test -z "$1"
+                then
+                    DEBUG_PARSE_LEVEL=""
+                    DEBUG_PARSE_LEVEL_STR=""
+                elif test_integer "$1"
+                then
+                    local S
+                    for S in ${!DEBUG_LEVELS[@]}
+                    do
+                        test "$1" = "${DEBUG_LEVELS[$S]}" && DEBUG_PARSE_LEVEL=$1 && DEBUG_PARSE_LEVEL_STR="$S" && return 0
+                    done
+                    DEBUG_PARSE_LEVEL=$1
+                    DEBUG_PARSE_LEVEL_STR=""
+                else
+                    local I="${DEBUG_LEVELS[$1]}"
+                    test_integer "$I" || echo_error_function "Unknown error level \"$1\""
+                    DEBUG_PARSE_LEVEL=$I
+                    DEBUG_PARSE_LEVEL_STR="$1"
+                fi
+                return 0
+            fi
+            if test $# = 2
+            then
+                test_integer "$1" || echo_error_function "Wrong error level \"$1\""
+                DEBUG_PARSE_LEVEL=$1
+                DEBUG_PARSE_LEVEL_STR="$2"
+                return 0
+            fi
+            ;;
+    esac
 }
-
-function debug_level_set
-{
-    debug_level_parse "$@"
-    DEBUG_LEVEL=${DEBUG_LEVEL_PARSE[0]}
-    DEBUG_LEVEL_STR="${DEBUG_LEVEL_PARSE[1]}"
-}
-
-function debug_level_set_default
-# default level for echo_debug without argument
-{
-    debug_level_parse "$@"
-    DEBUG_LEVEL_DEFAULT=${DEBUG_LEVEL_PARSE[0]}
-    DEBUG_LEVEL_DEFAULT_STR="${DEBUG_LEVEL_PARSE[1]}"
-}
+#NAMESPACE/debug/end
 
 function echo_debug_custom
 # $1 debug string to be compared to OPTION_DEBUG
 {
-    if debug_check "$1"
+    if debug check "$1"
     then
+        local ECHO_DEBUG_TYPE
+        debug parse_type "$1"
+        ECHO_DEBUG_TYPE="$DEBUG_PARSE_TYPE"
         shift
         local ECHO_DEBUG_LEVEL
         if test $# -ge 2 -a "$1" != "--"
         then
-            debug_level_parse "$1"
-            local LEVEL=${DEBUG_LEVEL_PARSE[0]}
-            test -n "${DEBUG_LEVEL_PARSE[1]}" && ECHO_DEBUG_LEVEL="[${DEBUG_LEVEL_PARSE[1]}] "
+            debug parse_level "$1"
+            local LEVEL=$DEBUG_PARSE_LEVEL
+            test -n "$DEBUG_PARSE_LEVEL_STR" && ECHO_DEBUG_LEVEL="[$DEBUG_PARSE_LEVEL_STR] "
             shift
         else
             local LEVEL=$DEBUG_LEVEL_DEFAULT
@@ -2290,12 +2309,12 @@ function echo_debug_custom
         then
             if test_yes "$OPTION_COLOR"
             then
-                command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_DEBUG$ECHO_DEBUG_LEVEL$@$COLOR_RESET" > $REDIRECT_DEBUG
+                command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@$COLOR_RESET" > $REDIRECT_DEBUG
             else
-                command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$ECHO_DEBUG_LEVEL$@" > $REDIRECT_DEBUG
+                command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@" > $REDIRECT_DEBUG
             fi
 
-            echo_log --date "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$ECHO_DEBUG_LEVEL$@"
+            log echo --date "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@"
         fi
     fi
     return 0
@@ -2308,18 +2327,30 @@ function echo_debug
 
 function echo_debug_variable
 {
-    if debug_check variable
+    if debug check variable
     then
         local LEVEL=""
-        debug_level_check "$1" && LEVEL="$1" && shift
+        debug check_level "$1" && LEVEL="$1" && shift
 
         local VAR_LIST=""
         while test $# -gt 0
         do
             local VAR_NAME="$1"
             shift
-            test -n "$VAR_LIST" && VAR_LIST="$VAR_LIST "
-            VAR_LIST="${VAR_LIST}${VAR_NAME}=\"${!VAR_NAME}\""
+            if array_variable "$VAR_NAME"
+            then
+                eval "local VAR_ARRAY_INDEXES=(\${!$VAR_NAME[@]})"
+                #echo VAR_ARRAY_INDEXES=$VAR_ARRAY_INDEXES
+                #echo \$VAR_ARRAY_INDEXES[@]=${VAR_ARRAY_INDEXES[@]}
+                for VAR_ARRAY_INDEX in "${VAR_ARRAY_INDEXES[@]}"
+                do
+                    test -n "$VAR_LIST" && VAR_LIST="$VAR_LIST "
+                    eval "VAR_LIST=\"\${VAR_LIST}\$VAR_NAME[\$VAR_ARRAY_INDEX]=\\\"\${$VAR_NAME[$VAR_ARRAY_INDEX]}\"\\\""
+                done
+            else
+                test -n "$VAR_LIST" && VAR_LIST="$VAR_LIST "
+                VAR_LIST="${VAR_LIST}${VAR_NAME}=\"${!VAR_NAME}\""
+            fi
         done
         echo_debug_custom variable $LEVEL "$VAR_LIST"
     fi
@@ -2328,10 +2359,10 @@ function echo_debug_variable
 
 function echo_debug_function
 {
-    if debug_check function
+    if debug check function
     then
         local LEVEL=""
-        debug_level_check "$1" && LEVEL="$1" && shift
+        debug check_level "$1" && LEVEL="$1" && shift
 
         #FUNCTION_INFO="${FUNCNAME[@]}"
         #FUNCTION_INFO="${FUNCTION_INFO/echo_debug_function /}"
@@ -2341,7 +2372,7 @@ function echo_debug_function
         #echo_quote "$@" > /dev/null
         #FUNCTION_INFO="${FUNCTION_INFO/ /($ECHO_QUOTE) }"
 
-        test_no "$DEBUG_INIT_NAMESPACES" && debug_init_namespaces
+        debug init_namespaces
 
         local F
         F="${FUNCNAME[1]}"
@@ -2354,8 +2385,6 @@ function echo_debug_function
             FUNCTION_INFO="$FUNCTION_INFO < $F"
         done
 
-        FUNCTION_INFO="<<< $FUNCTION_INFO"
-
         echo_debug_custom function $LEVEL "$FUNCTION_INFO"
     fi
     return 0
@@ -2367,7 +2396,7 @@ function echo_debug_right
 {
     local SHIFT1="no"
     local SHIFT1_MIN_FREE="20"
-    if debug_check right
+    if debug check right
     then
         test "$1" = "-1" && SHIFT1="yes" && shift
         if test_yes "$OPTION_COLOR"
@@ -2409,7 +2438,8 @@ function echo_debug_right
             command echo -e "\r$DEBUG_MESSAGE" > $REDIRECT_DEBUG
         fi
 
-        echo_log --date "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$@"
+        debug parse_type right
+        log echo --date "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$DEBUG_PARSE_TYPE$@"
     fi
     return 0
 }
@@ -2427,7 +2457,7 @@ function echo_error
         command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_ERROR$ECHO_ERROR!" >&$REDIRECT_ERROR
     fi
 
-    echo_log "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_ERROR$ECHO_ERROR!"
+    log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_ERROR$ECHO_ERROR!"
 
     test -n "$EXIT_CODE" && exit $EXIT_CODE
     return 0
@@ -2451,7 +2481,7 @@ function echo_error_function
     ##ECHO_FUNCTION="${ECHO_FUNCTION/ */}"
     #ECHO_FUNCTION="${ECHO_FUNCTION// / < }"
 
-    test_no "$DEBUG_INIT_NAMESPACES" && debug_init_namespaces
+    debug init_namespaces
 
     local ECHO_FUNCTION="${FUNCNAME[1]}"
     test -n "${FUNCTION_NAMESPACES[$ECHO_FUNCTION]}" && ECHO_FUNCTION="${FUNCTION_NAMESPACES[$ECHO_FUNCTION]}"
@@ -2495,56 +2525,83 @@ function echo_warning
         command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_WARNING$ECHO_WARNING." >&$REDIRECT_WARNING
     fi
 
-    echo_log "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_WARNING$ECHO_WARNING."
+    log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_WARNING$ECHO_WARNING."
 
     test -n "$EXIT_CODE" && exit $EXIT_CODE
     return 0
 }
 
-# __HISTORY_FUNCTIONS_START__
-function history_init
-# [$1] history file
+#NAMESPACE/history/start
+function history
+# init [history file]
+# restore
+# store <item> - store item into history (if is not empty and same as previous)
 {
-    shopt -u histappend
-    if test -z "$1"
-    then
-        HISTFILE="${SCRIPT_FILE_NOEXT}.history"
-    else
-        HISTFILE="$1"
-    fi
-    HISTCMD=1001
-    HISTCONTROL=ignoredups
-    HISTSIZE=1000
-    HISTFILESIZE=1000
-    touch "$HISTFILE"
-    #set -o history
+    TASK="$1"
+    shift
+    case "$TASK" in
+        init)
+            shopt -u histappend
 
-    history_restore
+            HISTFILE="${SCRIPT_FILE_NOEXT}.history"
+            test -n "$1" && HISTFILE="$1"
+            file_prepare "$HISTFILE"
+
+            HISTCMD=1001
+            HISTCONTROL=ignoredups
+            HISTSIZE=1000
+            HISTFILESIZE=1000
+            #set -o history
+
+            history restore
+            ;;
+        restore)
+            test -z "$HISTFILE" && echo_error_function "History file is not specified for restore"
+
+            history -r
+
+            HISTORY=()
+            while read LINE
+            do
+                test -n "$LINE" && HISTORY+=("$LINE")
+            done <<< "`tac "$HISTFILE"`"
+            ;;
+        store)
+            test -z "$1" -o "$1" = "${HISTORY[0]}" && return 0
+
+            HISTORY=("$1" "${HISTORY[@]}")
+            command echo "$1" >> "$HISTFILE"
+            history -s "$1"
+            ;;
+        *)
+            command history "$@"
+    esac
+}
+#NAMESPACE/history/end
+
+function arguments_check_tools
+{
+    arguments check switch "|ignore-unknown" "OPTION_IGNORE_UNKNOWN|yes" "$@"
+    arguments check switch "|debug" "" "$@" && debug set debug
+    arguments check switch "|debug-variable" "" "$@" && debug set variable
+    arguments check switch "|debug-function" "" "$@" && debug set function
+    arguments check switch "|debug-command" "" "$@" && debug set command
+    arguments check switch "|debug-right" "" "$@" && debug set right
+    arguments check value "|debug-level" "DEBUG_LEVEL|ALL" "$@" && debug set_level $DEBUG_LEVEL
+    arguments check value "|term" "OPTION_TERM|xterm" "$@"
+    arguments check value "|prefix" "OPTION_PREFIX|yes" "$@"
+    arguments check value "|color" "OPTION_COLOR|yes" "$@" && colors_init
+    arguments check value "|no-color" "OPTION_COLOR|no" "$@" && colors_init
+    arguments check value "|uname" "OPTION_UNAME|yes" "$@"
 }
 
-function history_restore
+function init_debug
 {
-    history -r
-
-    HISTORY=()
-    while read LINE
-    do
-        test -n "$LINE" && HISTORY+=("$LINE")
-    done <<< "`tac "$HISTFILE"`"
+    debug init
+    return 0
 }
 
-function history_store
-# $1 store item into history (if is not empty and same as previous)
-{
-    test -z "$1" -o "$1" = "${HISTORY[0]}" && return 0
-
-    HISTORY=("$1" "${HISTORY[@]}")
-    command echo "$1" >> "$HISTFILE"
-    history -s "$1"
-}
-# __HISTORY_FUNCTIONS_END__
-
-function colors_init
+function init_colors
 {
     # set colors to current terminal
     #echo "Initial color usage is set to $OPTION_COLOR and using $OPTION_COLORS colors"
@@ -2706,25 +2763,9 @@ function colors_init
     #echo "Color usage is now set to $OPTION_COLOR and using $OPTION_COLORS colors for $TERM"
 }
 
-function arguments_check_tools
+function init_tools
 {
-    arguments check switch "|ignore-unknown" "OPTION_IGNORE_UNKNOWN|yes" "$@"
-    arguments check switch "|debug" "" "$@" && debug_set debug
-    arguments check switch "|debug-variable" "" "$@" && debug_set variable
-    arguments check switch "|debug-function" "" "$@" && debug_set function
-    arguments check switch "|debug-command" "" "$@" && debug_set command
-    arguments check switch "|debug-right" "" "$@" && debug_set right
-    arguments check value "|debug-level" "DEBUG_LEVEL|ALL" "$@" && debug_level_set $DEBUG_LEVEL
-    arguments check value "|term" "OPTION_TERM|xterm" "$@"
-    arguments check value "|prefix" "OPTION_PREFIX|yes" "$@"
-    arguments check value "|color" "OPTION_COLOR|yes" "$@" && colors_init
-    arguments check value "|no-color" "OPTION_COLOR|no" "$@" && colors_init
-    arguments check value "|uname" "OPTION_UNAME|yes" "$@"
-}
-
-function tools_init
-{
-    debug_level_set ALL
+    debug set_level ALL
 
     arguments init
     while test $# -gt 0
@@ -2843,7 +2884,9 @@ declare -x -f command_options;  declare -x -f fill_command_options # = command_o
                                 declare -x -f insert_cmd # = command_options insert $@
 
 declare -x -f assign
+declare -x -f assign_array
 declare -x -a ARRAY_CONVERT=()
+declare -x -f array_variable
 declare -x -f array_convert
 
 declare -x -r S_TAB="`command echo -e "\t"`"
@@ -2931,6 +2974,7 @@ declare -x -f kill_tree
 declare -x -f fd_check
 declare -x -f fd_find_free
 
+declare -x    PERFORMANCE_DETAILS="yes"
 declare -x -A PERFORMANCE_DATA
 declare -x -A PERFORMANCE_MESSAGES
 #PERF_DATA["default"]=0
@@ -2963,24 +3007,27 @@ declare -x -i CURSOR_ROW=0
 declare -x -f cursor_get_position
 declare -x -f cursor_move_down
 
+declare -x PIPE_PREFIX="  >  "
+declare -x PIPE_PREFIX_HIDELINES="" # regexp to hide lines
+declare -x PIPE_PREFIX_COMMAND=""
+declare -x PIPE_PREFIX_DEDUPLICATE="yes" ### !!!TODO!!!
+declare -x -f pipe_prefix
 declare -x -f pipe_remove_color
 declare -x -f pipe_join_lines
 declare -x -f pipe_from
 declare -x -f pipe_cut
 declare -x -f echo_cut
 
-declare -x PIPE_PREFIX="  >  "
-declare -x PIPE_PREFIX_HIDELINES="" # regexp to hide lines
-declare -x PIPE_PREFIX_COMMAND=""
-declare -x PIPE_PREFIX_DEDUPLICATE="yes" ### !!!TODO!!!
-
-declare -x -f log_init
-declare -x -f log_done
-declare -x -f echo_log
+declare -x LOG_FILE=""
+declare -x LOG_WITHDATE="yes"
+declare -x LOG_DATE="%Y-%m-%d %H:%M:%S"
+declare -x LOG_SECTION="=============================================================================="
+declare -x LOG_SPACE=""
+declare -x LOG_START="`date -u +%s`"
+declare -x -f log   # init / done / section / log | echo
 
 declare -x -f pipe_log;         declare -x -f log_output
 declare -x -f pipe_echo;        declare -x -f echo_output
-declare -x -f pipe_prefix
 declare -x -f pipe_echo_prefix; declare -x -f show_output
 
 declare -x ECHO_QUOTE
@@ -2991,9 +3038,12 @@ declare -x -f echo_info
 declare -x -f echo_step
 declare -x -f echo_substep
 
-declare -x -f debug_init
 declare -x    DEBUG_INIT_NAMESPACES="no"
-declare -x -f debug_init_namespaces
+declare -x -A DEBUG_TYPES
+DEBUG_TYPES[debug]="D"
+DEBUG_TYPES[right]="R"
+DEBUG_TYPES[function]="F"
+DEBUG_TYPES[variable]="V"
 declare -x -i DEBUG_LEVEL
 declare -x    DEBUG_LEVEL_STR
 declare -x -i DEBUG_LEVEL_DEFAULT=80
@@ -3008,14 +3058,10 @@ DEBUG_LEVELS[ERROR]=20
 DEBUG_LEVELS[FATAL]=10
 DEBUG_LEVELS[FORCE]=1
 DEBUG_LEVELS[OFF]=0
-declare -x -f debug_set
-declare -x -f debug_unset
-declare -x -f debug_check
-declare -x -f debug_level_check
-declare -x -a DEBUG_LEVEL_PARSE
-declare -x -f debug_level_parse
-declare -x -f debug_level_set
-declare -x -f debug_level_set_default
+declare -x -f debug     # init / init_namespaces / reinit_namespaces / set / unset / check / set_level / set_level_default / check_level / parse_level
+declare -x    DEBUG_PARSE_LEVEL
+declare -x    DEBUG_PARSE_LEVEL_STR
+
 declare -x -f echo_debug_custom
 declare -x -f echo_debug
 declare -x -f echo_debug_variable
@@ -3029,19 +3075,18 @@ declare -x -f echo_error_function
 declare -x -f echo_error_exit
 declare -x -f echo_warning
 
-declare -x -f history_init
-declare -x -f history_restore
-declare -x -f history_store
+declare -x -f history   # init / restore / store
 
 declare -x OPTION_IGNORE_UNKNOWN="yes"
 declare -x -f arguments_check_tools
-declare -x -f tools_init
-declare -x -f colors_init
+declare -x -f init_debug
+declare -x -f init_colors
+declare -x -f init_tools
 
 ### tools init
-debug_init
-colors_init
-tools_init "$@"
+init_debug
+init_colors
+init_tools "$@"
 
 # set echo prefix or uname prefix
 test_yes OPTION_PREFIX && ECHO_PREFIX="### " || ECHO_PREFIX=""

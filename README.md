@@ -1,6 +1,6 @@
 # BashTools
 
-Bash Tools provide easy way to provide various enhancements even to simplest scripts. Here are some functionalities that can be used:
+Provides easy way to provide various enhancements even to simplest scripts. Here are some functionalities that can be used:
 
 * Colored output
   - automatic terminal detection, manual configuration, user arguments, custom color configuration

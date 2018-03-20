@@ -6,6 +6,10 @@ Provides easy way to provide various enhancements even to simplest scripts. Here
   - automatic terminal detection, manual configuration, user arguments, custom color configuration
 * Helpers to output messages
   - with title, information, step (and automatic stepping), debug, error, warning styled messages
+* Advanced debugging
+  - custom debug types (message, variable, function, command call) and debug levels with message enriching
+* Automatic logging
+  - simple one line enabled logging with output conversion
 * Commandline arguments processing
   - automatic recognize and fill variables, simply or extended processing arguments, knows any conbination and assignment of options and arguments with values (-s, -vvv, --long, --name=value, --name value, ...)
 * Various string functions

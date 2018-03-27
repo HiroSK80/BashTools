@@ -306,7 +306,9 @@ function array_variable
 {
     local LINE
     read LINE < <(declare -p "$1" 2> /dev/null) || return 1
-    test_str "$LINE" "^declare -[aA]"
+    #test_str "$LINE" "^declare -[aA]"
+    LINE="${LINE^^}"
+    test "${LINE:0:10}" = "DECLARE -A"
 }
 
 function array_assign
@@ -485,7 +487,7 @@ function str_array_convert
     return 0
 }
 
-function str_parse_url
+function str_parse_url_old
 # $1 URL
 #   [path/]filename
 #   host:[path/]filename
@@ -504,22 +506,25 @@ function str_parse_url
     PARSE_URL_PROTOCOL=""
     PARSE_URL_USER_HOST=""
     PARSE_URL_HOST=""
+    PARSE_URL_PORT=""
     PARSE_URL_USER=""
+    PARSE_URL_PASSWORD=""
     PARSE_URL_FILE=""
-    PARSE_URL_LOCAL="yes"
+    PARSE_URL_LOCAL=""
     if test_str --ignore-case "$PARSE_URL" "^([a-z]+):\/\/"
     then
         PARSE_URL_PROTOCOL="${BASH_REMATCH[1]}"
         PARSE_URL="${PARSE_URL#*://}"
-        test "$PARSE_URL_PROTOCOL" = "file" && PARSE_URL_LOCAL="yes" || PARSE_URL_LOCAL="no"
+        test "$PARSE_URL_PROTOCOL" = "file" && set_yes PARSE_URL_LOCAL
+        test_str "$PARSE_URL_PROTOCOL" "^(ssh|scp|ftp|https?)$" && set_no PARSE_URL_LOCAL
     else
         PARSE_URL_PROTOCOL=""
-        test -e "$PARSE_URL" && PARSE_URL_LOCAL="yes" || PARSE_URL_LOCAL=""
+        test -e "$PARSE_URL" && set_yes PARSE_URL_LOCAL
     fi
     if test_yes PARSE_URL_LOCAL
     then
         PARSE_URL_FILE="$PARSE_URL"
-    elif test_str "$PARSE_URL" "^(.+)@(.+):(.+)$" # user@host:/path/file    user@host:file
+    elif test_str "$PARSE_URL" "^([^/]+:?[^/]+)@([^:/]+):(.+)$" # user@host:/path/file    user@host:file
     then
         test -z "$PARSE_URL_PROTOCOL" && PARSE_URL_PROTOCOL="remote"
         PARSE_URL_USER_HOST="${BASH_REMATCH[1]}@${BASH_REMATCH[2]}"
@@ -527,7 +532,7 @@ function str_parse_url
         PARSE_URL_HOST="${BASH_REMATCH[2]}"
         PARSE_URL_FILE="${BASH_REMATCH[3]}"
         PARSE_URL_LOCAL="no"
-    elif test_str "$PARSE_URL" "^([^:/]+)@([^:/]+)$" # user@host
+    elif test_str "$PARSE_URL" "^([^/]+:?[^/]+)@([^:/]+)$" # user@host
     then
         test -z "$PARSE_URL_PROTOCOL" && PARSE_URL_PROTOCOL="remote"
         PARSE_URL_USER_HOST="${BASH_REMATCH[1]}@${BASH_REMATCH[2]}"
@@ -535,7 +540,7 @@ function str_parse_url
         PARSE_URL_HOST="${BASH_REMATCH[2]}"
         PARSE_URL_FILE="${BASH_REMATCH[3]}"
         PARSE_URL_LOCAL="no"
-    elif test_str "$PARSE_URL" "^(.+)@([^/]*)(/.+)$" # user@host/path/file
+    elif test_str "$PARSE_URL" "^([^/]+:?[^/]+)@([^/]*)(/.+)$" # user@host/path/file
     then
         test -z "$PARSE_URL_PROTOCOL" && PARSE_URL_PROTOCOL="remote"
         PARSE_URL_USER_HOST="${BASH_REMATCH[1]}@${BASH_REMATCH[2]}"
@@ -543,14 +548,14 @@ function str_parse_url
         PARSE_URL_HOST="${BASH_REMATCH[2]}"
         PARSE_URL_FILE="${BASH_REMATCH[3]}"
         PARSE_URL_LOCAL="no"
-    elif test_str "$PARSE_URL" "^(.+):(/.+)$" # host:/path/file
+    elif test_str "$PARSE_URL" "^([^:/]+):(/.+)$" # host:/path/file
     then
         test -z "$PARSE_URL_PROTOCOL" && PARSE_URL_PROTOCOL="remote"
         PARSE_URL_USER_HOST="${BASH_REMATCH[1]}"
         PARSE_URL_HOST="${BASH_REMATCH[1]}"
         PARSE_URL_FILE="${BASH_REMATCH[2]}"
         PARSE_URL_LOCAL="no"
-    elif test_str "$PARSE_URL" "^(.+):(.+)$" # host:/path/file    host:file
+    elif test_str "$PARSE_URL" "^([^:/]+):(.+)$" # host:/path/file    host:file
     then
         if test_yes PARSE_URL_PREFER_LOCAL
         then
@@ -561,16 +566,40 @@ function str_parse_url
             PARSE_URL_LOCAL="yes"
         else
             test -z "$PARSE_URL_PROTOCOL" && PARSE_URL_PROTOCOL="remote"
-            test_str "$PARSE_URL" "^(.+):(.+)$"
+            test_str "$PARSE_URL" "^([^:/]+):(.+)$"
             PARSE_URL_USER_HOST="${BASH_REMATCH[1]}"
             PARSE_URL_HOST="${BASH_REMATCH[1]}"
             PARSE_URL_FILE="${BASH_REMATCH[2]}"
             PARSE_URL_LOCAL="no"
         fi
-    else
+    elif test_str "$PARSE_URL" "^([^:/]+)/(.+)$" # host/path/file    host/file
+    then
+        if test_yes PARSE_URL_PREFER_LOCAL
+        then
+            test -z "$PARSE_URL_PROTOCOL" && PARSE_URL_PROTOCOL="file"
+            PARSE_URL_USER_HOST=""
+            PARSE_URL_HOST=""
+            PARSE_URL_FILE="$PARSE_URL"
+            PARSE_URL_LOCAL="yes"
+        else
+            test -z "$PARSE_URL_PROTOCOL" && PARSE_URL_PROTOCOL="remote"
+            test_str "$PARSE_URL" "^([^:/]+)/(.+)$"
+            PARSE_URL_USER_HOST="${BASH_REMATCH[1]}"
+            PARSE_URL_HOST="${BASH_REMATCH[1]}"
+            PARSE_URL_FILE="${BASH_REMATCH[2]}"
+            PARSE_URL_LOCAL="no"
+        fi
+    else    # /path/file
         PARSE_URL_FILE="$PARSE_URL"
         PARSE_URL_LOCAL="yes"
     fi
+
+    if test_str "$PARSE_URL_USER" "^([^:]+):(.+)$" # user:password
+    then
+        PARSE_URL_USER="${BASH_REMATCH[1]}"
+        PARSE_URL_PASSWORD="${BASH_REMATCH[2]}"
+    fi
+
     #echo "PARSE_URL=$PARSE_URL"
     #echo "PARSE_URL_PROTOCOL=$PARSE_URL_PROTOCOL"
     #echo "PARSE_URL_USER_HOST=$PARSE_URL_USER_HOST"
@@ -582,9 +611,104 @@ function str_parse_url
         assign "$2[URL]" "$PARSE_URL"
         assign "$2[PROTOCOL]" "$PARSE_URL_PROTOCOL"
         assign "$2[USER_HOST]" "$PARSE_URL_USER_HOST"
+        assign "$2[HOST]" "$PARSE_URL_HOST"
+        assign "$2[PORT]" "$PARSE_URL_PORT"
         assign "$2[USER]" "$PARSE_URL_USER"
         assign "$2[PASSWORD]" "$PARSE_URL_PASSWORD"
+        assign "$2[FILE]" "$PARSE_URL_FILE"
+        assign "$2[LOCAL]" "$PARSE_URL_LOCAL"
+    fi
+}
+
+function str_parse_url
+# $1 URL
+#   [path/]filename
+#   host[:port][:][path/]filename
+#   user@host[:port][:][path/]filename
+#   protocol://user@host[:port][:][path/]filename
+# $2 VAR_ARRAY       - associative array variable name to store values in
+#   ${2[PROTOCOL]}
+#   ${2[USER_HOST]}
+#   ${2[HOST]}
+#   ${2[HOST_PORT]}
+#   ${2[PORT]}
+#   ${2[USER]}
+#   ${2[PASSWORD]}
+#   ${2[FILE]}
+#   ${2[LOCAL]}
+{
+    local REGEX_PROTOCOL="[a-zA-Z]+"
+    local REGEX_USER="[a-zA-Z][-_.%a-zA-Z0-9]*"
+    local REGEX_PASSWORD="[^/]+"
+    local REGEX_HOST="[a-zA-Z0-9][-.a-zA-Z0-9]*"
+    local REGEX_PORT="[0-9]+"
+
+    PARSE_URL="$1"
+    PARSE_URL_PROTOCOL=""
+    PARSE_URL_USER_HOST=""
+    PARSE_URL_HOST=""
+    PARSE_URL_HOST_PORT=""
+    PARSE_URL_PORT=""
+    PARSE_URL_USER=""
+    PARSE_URL_PASSWORD=""
+    PARSE_URL_FILE=""
+    PARSE_URL_LOCAL=""
+
+    if test_str --ignore-case "$PARSE_URL" "^([a-z]+)://"
+    then
+        PARSE_URL_PROTOCOL="${BASH_REMATCH[1]}"
+        PARSE_URL="${PARSE_URL#*://}"
+        test "$PARSE_URL_PROTOCOL" = "file" && set_yes PARSE_URL_LOCAL
+        test_str "$PARSE_URL_PROTOCOL" "^(remote|ssh|scp|ftp|https?)$" && set_no PARSE_URL_LOCAL
+    else
+        PARSE_URL_PROTOCOL=""
+        test -e "$PARSE_URL" && set_yes PARSE_URL_LOCAL
+        test "${PARSE_URL:0:1}" = "/" && set_yes PARSE_URL_LOCAL
+    fi
+
+    #echo_debug_variable PARSE_URL_DETECT PARSE_URL_PROTOCOL
+    if test_yes PARSE_URL_LOCAL
+    then
+        PARSE_URL_FILE="$PARSE_URL"
+    elif test "$PARSE_URL_DETECT" = "local" -a -z "$PARSE_URL_PROTOCOL"
+    then
+        #echo "FORCE LOCAL"
+        set_yes PARSE_URL_LOCAL
+        PARSE_URL_FILE="$PARSE_URL"
+    else
+        #echo "PARSE REMOTE"
+        test_str "$1" "^(($REGEX_PROTOCOL)://)?(($REGEX_USER)(:($REGEX_PASSWORD))?@)?(($REGEX_HOST)(:($REGEX_PORT))?:?)?(.+)?$"
+        if test "$PARSE_URL_DETECT" = "smart" -a -z "$PARSE_URL_PROTOCOL" -a "${BASH_REMATCH[7]}" = "${BASH_REMATCH[8]}"
+        then
+            set_yes PARSE_URL_LOCAL
+            PARSE_URL_FILE="$PARSE_URL"
+        else
+            set_no PARSE_URL_LOCAL
+            PARSE_URL_PROTOCOL="${BASH_REMATCH[2]}"
+            PARSE_URL_USER="${BASH_REMATCH[4]}"
+            PARSE_URL_PASSWORD="${BASH_REMATCH[6]}"
+            PARSE_URL_HOST="${BASH_REMATCH[8]}"
+            PARSE_URL_PORT="${BASH_REMATCH[10]}"
+            PARSE_URL_FILE="${BASH_REMATCH[11]}"
+        fi
+        #echo_debug_variable BASH_REMATCH
+    fi
+    test -z "$PARSE_URL_HOST" && set_yes PARSE_URL_LOCAL
+
+    PARSE_URL_USER_HOST="$PARSE_URL_HOST"
+    test -n "$PARSE_URL_PASSWORD" && PARSE_URL_USER_HOST="$PARSE_URL_USER:$PARSE_URL_PASSWORD@$PARSE_URL_USER_HOST"
+    test -z "$PARSE_URL_PASSWORD" && test -n "$PARSE_URL_USER" && PARSE_URL_USER_HOST="$PARSE_URL_USER@$PARSE_URL_USER_HOST"
+    test -n "$PARSE_URL_PORT" && PARSE_URL_USER_HOST="$PARSE_URL_USER_HOST:$PARSE_URL_PORT"
+    if test -n "$2"
+    then
+        assign "$2[URL]" "$PARSE_URL"
+        assign "$2[PROTOCOL]" "$PARSE_URL_PROTOCOL"
+        assign "$2[USER_HOST]" "$PARSE_URL_USER_HOST"
         assign "$2[HOST]" "$PARSE_URL_HOST"
+        assign "$2[HOST_PORT]" "$PARSE_URL_HOST_PORT"
+        assign "$2[PORT]" "$PARSE_URL_PORT"
+        assign "$2[USER]" "$PARSE_URL_USER"
+        assign "$2[PASSWORD]" "$PARSE_URL_PASSWORD"
         assign "$2[FILE]" "$PARSE_URL_FILE"
         assign "$2[LOCAL]" "$PARSE_URL_LOCAL"
     fi
@@ -2971,6 +3095,7 @@ function echo_debug
 
 function echo_debug_variable
 {
+    array_copy BASH_REMATCH BASH_REMATCH_BACKUP
     if debug check variable
     then
         local LEVEL=""
@@ -2984,7 +3109,7 @@ function echo_debug_variable
             if array_variable "$VAR_NAME"
             then
                 local -A VAR_ARRAY
-                array_copy "$VAR_NAME" VAR_ARRAY
+                test "$VAR_NAME" = "BASH_REMATCH" && array_copy BASH_REMATCH_BACKUP VAR_ARRAY || array_copy "$VAR_NAME" VAR_ARRAY
                 #echo VAR_ARRAY_INDEXES=$VAR_ARRAY_INDEXES
                 #echo \$VAR_ARRAY_INDEXES[@]=${VAR_ARRAY_INDEXES[@]}
                 for VAR_ARRAY_INDEX in "${!VAR_ARRAY[@]}"
@@ -3106,9 +3231,9 @@ function echo_error
 
     if test_yes "$TOOLS_COLOR"
     then
-        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_ERROR$ECHO_PREFIX_ERROR$ECHO_ERROR!$COLOR_RESET" >&$REDIRECT_ERROR
+        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_ERROR$ECHO_PREFIX_ERROR$ECHO_ERROR!$COLOR_RESET" > $REDIRECT_ERROR
     else
-        command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_ERROR$ECHO_ERROR!" >&$REDIRECT_ERROR
+        command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_ERROR$ECHO_ERROR!" > $REDIRECT_ERROR
     fi
 
     log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_ERROR$ECHO_ERROR!"
@@ -3174,9 +3299,9 @@ function echo_warning
 
     if test_yes "$TOOLS_COLOR"
     then
-        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_WARNING$ECHO_PREFIX_WARNING$ECHO_WARNING.$COLOR_RESET" >&$REDIRECT_WARNING
+        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_WARNING$ECHO_PREFIX_WARNING$ECHO_WARNING.$COLOR_RESET" > $REDIRECT_WARNING
     else
-        command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_WARNING$ECHO_WARNING." >&$REDIRECT_WARNING
+        command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_WARNING$ECHO_WARNING." > $REDIRECT_WARNING
     fi
 
     log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_WARNING$ECHO_WARNING."
@@ -3612,7 +3737,10 @@ declare -x -f str_word                  # add / delete / check
 declare -x -a ARRAY_CONVERT=()
 declare -x -f str_array_convert
 
-declare -x PARSE_URL_PREFER_LOCAL="yes" # url without protocol like host:file and ifcfg-eth0:1 treat as local file like "/etc/sysconfig/.../ifcfg-eth0:1" or remote file: "scp file host:file"
+# local     # files without protocol are all local - default, all remote should begin at least with "remote://"
+# smart     # remote files can be identified with "host:" string - "host:file" "user@host:/path/file" | "host/path" are identified as local files
+# remote    # url is parsed as remote, local file should have "file://" - first word in path is identified as host - "host/path/file" "www.x/path/index.html" "user:password@host:port/path"
+declare -x PARSE_URL_DETECT="local"
 declare -x PARSE_URL
 declare -x PARSE_URL_PROTOCOL
 declare -x PARSE_URL_USER_HOST

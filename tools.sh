@@ -832,7 +832,6 @@ function arguments
         check)
             arguments_check "$@"
             ;;
-
         onestep)
             test "$1" = "run" && shift && arguments check/run "$@" || arguments check/add "$@"
             ;;
@@ -1815,11 +1814,11 @@ function ssh_scanid
     done
     SCAN_HOSTS="${SCAN_HOSTS:1}"
 
-    test -z "$SCAN_USER" && SCAN_USER_HOME=~ || SCAN_USER_HOME="`eval echo "~$SCAN_USER"`"
+    test -z "$SCAN_USER" && SCAN_USER_HOME=~ || SCAN_USER_HOME="`eval echo ~$SCAN_USER`"
     SCAN_USER_HOME_SSH="$SCAN_USER_HOME/.ssh"
     SCAN_USER_HOME_SSH_HOSTS="$SCAN_USER_HOME/.ssh/known_hosts"
 
-    test -d $SCAN_USER_HOME_SSH || mkdir $SCAN_USER_HOME_SSH
+    test -d $SCAN_USER_HOME_SSH || mkdir -p $SCAN_USER_HOME_SSH
     chown --reference=$SCAN_USER_HOME $SCAN_USER_HOME_SSH
     touch $SCAN_USER_HOME_SSH_HOSTS
     chown --reference=$SCAN_USER_HOME $SCAN_USER_HOME_SSH_HOSTS
@@ -1849,8 +1848,8 @@ function ssh_scanremoteid
     done
     DESTINATIONS="${DESTINATIONS:1}"
 
-    test -z "$USEID_USER" && USEID_HOME=~/".ssh" || USEID_HOME="`eval echo "~$USEID_USER/.ssh"`"
-    for TEST_FILE in "$USEID_HOME/id_rsa" "$USEID_HOME/id_dsa"
+    test -z "$USEID_USER" && USEID_HOME_SSH=~/.ssh || USEID_HOME_SSH="`eval echo ~$USEID_USER/.ssh`"
+    for TEST_FILE in "$USEID_HOME_SSH/id_rsa" "$USEID_HOME_SSH/id_dsa"
     do
         test -f "$TEST_FILE" && USEID_FILE="$TEST_FILE" && break
     done
@@ -1904,15 +1903,15 @@ function ssh_exportid
     done
     DESTINATIONS="${DESTINATIONS:1}"
 
-    test -z "$COPYID_USER" && COPYID_HOME=~/".ssh" || COPYID_HOME="`eval echo "~$COPYID_USER/.ssh"`"
+    test -z "$COPYID_USER" && COPYID_HOME=~/.ssh || COPYID_HOME="`eval echo ~$COPYID_USER/.ssh`"
     for TEST_FILE in "$COPYID_HOME/id_rsa" "$COPYID_HOME/id_dsa"
     do
         test -f "$TEST_FILE" && COPYID_FILE="$TEST_FILE" && break
     done
     test -z "$COPYID_FILE" && return 2
 
-    test -z "$USEID_USER" && USEID_HOME=~/".ssh" || USEID_HOME="`eval echo "~$USEID_USER/.ssh"`"
-    for TEST_FILE in "$USEID_HOME/id_rsa" "$USEID_HOME/id_dsa"
+    test -z "$USEID_USER" && USEID_HOME_SSH=~/.ssh || USEID_HOME_SSH="`eval echo ~$USEID_USER/.ssh`"
+    for TEST_FILE in "$USEID_HOME_SSH/id_rsa" "$USEID_HOME_SSH/id_dsa"
     do
         test -f "$TEST_FILE" && USEID_FILE="$TEST_FILE" && break
     done
@@ -1964,8 +1963,8 @@ function ssh_importid
     done
     DESTINATIONS="${DESTINATIONS:1}"
 
-    test -z "$USEID_USER" && USEID_HOME=~/".ssh" || USEID_HOME="`eval echo "~$USEID_USER/.ssh"`"
-    for TEST_FILE in "$USEID_HOME/id_rsa" "$USEID_HOME/id_dsa"
+    test -z "$USEID_USER" && USEID_HOME_SSH=~/.ssh || USEID_HOME_SSH="`eval echo ~$USEID_USER/.ssh`"
+    for TEST_FILE in "$USEID_HOME_SSH/id_rsa" "$USEID_HOME_SSH/id_dsa"
     do
         test -f "$TEST_FILE" && USEID_FILE="$TEST_FILE" && break
     done
@@ -1981,11 +1980,11 @@ function ssh_importid
         local DEST_LOCAL_USER="${DEST_LOCAL_USER#*@}"
         local DESTID_FILE=""
 
-        test -z "$COPYID_USER" && COPYID_USER="`whoami`" && COPYID_HOME=~ || COPYID_HOME="`eval echo "~$COPYID_USER"`"
+        test -z "$COPYID_USER" && COPYID_USER="`whoami`" && COPYID_HOME=~ || COPYID_HOME="`eval echo ~$COPYID_USER`"
         COPYID_HOME_SSH="$COPYID_HOME/.ssh"
         COPYID_HOME_SSH_KEYS="$COPYID_HOME_SSH/authorized_keys"
 
-        test -z "$DEST_LOCAL_USER" && DEST_HOME="~" || DEST_HOME="~$DEST_LOCAL_USER"
+        test -z "$DEST_LOCAL_USER" && DEST_HOME=~ || DEST_HOME="`eval echo ~$DEST_LOCAL_USER`"
         DEST_HOME_SSH="$DEST_HOME/.ssh"
 
         test -d $COPYID_HOME_SSH || mkdir $COPYID_HOME_SSH
@@ -2082,7 +2081,7 @@ function call_command
         EXIT_CODE=$?
     fi
 
-    CALL_COMMAND="`cat "$FILE"`"
+    CALL_COMMAND="$(<"$FILE")"
     file_delete_local "$FILE"
     return $EXIT_CODE
 }
@@ -2450,16 +2449,9 @@ function pipe_prefix
 # -p <prefix> | --prefix=<prefix>
 {
     local PREFIX="$PIPE_PREFIX"
-    test -n "$SHOW_OUTPUT_PREFIX" && PREFIX="$SHOW_OUTPUT_PREFIX"
-
     local HIDE="$PIPE_PREFIX_HIDE"
-    test -n "$SHOW_OUTPUT_HIDELINES" && HIDE="$SHOW_OUTPUT_HIDELINES"
-
     local COMMAND="$PIPE_PREFIX_COMMAND"
-    test -n "$SHOW_OUTPUT_COMMAND" && COMMAND="$SHOW_OUTPUT_COMMAND"
-
     local EMPTY="$PIPE_PREFIX_EMPTY"
-
     local DEDUPLICATE="$PIPE_PREFIX_DEDUPLICATE"
 
     arguments init
@@ -2723,11 +2715,6 @@ function log
     esac
 }
 
-function log_output
-{
-    pipe_log
-}
-
 function pipe_log
 # pipe with command log echo
 {
@@ -2738,11 +2725,6 @@ function pipe_log
         log echo "$LINE"
     done
     IFS="$BACKUP_IFS"
-}
-
-function echo_output
-{
-    pipe_echo
 }
 
 function pipe_echo
@@ -2757,11 +2739,6 @@ function pipe_echo
     IFS="$BACKUP_IFS"
 }
 
-
-function show_output
-{
-    pipe_prefix "$@" | pipe_echo
-}
 
 function pipe_echo_prefix
 # pipe with pipe_echo and nice output
@@ -2836,7 +2813,7 @@ function echo_line
 function echo_title
 {
     #TITLE_STYLE="01234567"
-    local TITLE_MSG=" $@ "
+    local TITLE_MSG="$TITLE_MSG_SPACES$@$TITLE_MSG_SPACES"
     local TITLE_LENGTH="${#TITLE_MSG}"
     local TITLE_MSG="${TITLE_STYLE:1:1}$TITLE_MSG${TITLE_STYLE:6:1}"
     local TITLE_SEQ="`eval echo "{1..$TITLE_LENGTH}"`"
@@ -2881,20 +2858,20 @@ function echo_step
     if test $# -ge 2
     then
         STEP_VARIABLE="$1"
-        STEP_NUMBER=${!STEP_VARIABLE}
-        STEP_NUMBER_STR="${!STEP_VARIABLE}. "
+        STEP_NUMBER="${!STEP_VARIABLE}"
+        STEP_NUMBER_STR="${!STEP_VARIABLE}$ECHO_STEP_NUMBER_POSTFIX"
         shift
     fi
 
     if test_yes "$TOOLS_COLOR"
     then
-        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_STEP$ECHO_PREFIX_STEP$STEP_NUMBER_STR$@$COLOR_RESET"
+        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_STEP$ECHO_STEP_PREFIX$STEP_NUMBER_STR$@$COLOR_RESET"
         command echo -e "$COLOR_RESET\c"
     else
-        command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_STEP$STEP_NUMBER_STR$@"
+        command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_STEP_PREFIX$STEP_NUMBER_STR$@"
     fi
 
-    log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_STEP$STEP_NUMBER_STR$@"
+    log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_STEP_PREFIX$STEP_NUMBER_STR$@"
 
     test_integer "$STEP_NUMBER" && let STEP_NUMBER++ && assign "$STEP_VARIABLE" $STEP_NUMBER
     test_str "$STEP_NUMBER" "^[a-z]$" && assign $STEP_VARIABLE "`command echo "$STEP_NUMBER" | tr "a-z" "b-z_"`"
@@ -2906,13 +2883,13 @@ function echo_substep
 {
     if test_yes "$TOOLS_COLOR"
     then
-        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_SUBSTEP$ECHO_PREFIX_SUBSTEP$@$COLOR_RESET"
+        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_SUBSTEP$ECHO_SUBSTEP_PREFIX$@$COLOR_RESET"
         command echo -e "$COLOR_RESET\c"
     else
-        command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_SUBSTEP$@"
+        command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_SUBSTEP_PREFIX$@"
     fi
 
-    log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_SUBSTEP$@"
+    log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_SUBSTEP_PREFIX$@"
     return 0
 }
 
@@ -3348,6 +3325,36 @@ function echo_warning_function
     echo_warning "[$ECHO_FUNCTION] $ECHO_WARNING" $EXIT_CODE
 }
 
+function print
+{
+    test $# = 1 && echo_line "$1" && return 0
+
+    local TASK="$1"
+    shift
+    case "$TASK" in
+        debug)
+            test "$1" = "--variable" -o "$1" = "-v" && TASK="debug_variable" && shift
+            test "$1" = "--function" -o "$1" = "-f" && TASK="debug_function" && shift
+            test "$1" = "--custom" -o "$1" = "-c" && TASK="debug_custom" && shift
+        ;;
+    esac
+    echo_$TASK "$@"
+}
+
+function p
+{
+    local TASK="$1"
+    shift
+    echo_$TASK "$@"
+}
+
+function e
+{
+    local TASK="$1"
+    shift
+    echo_$TASK "$@"
+}
+
 #NAMESPACE/history/start
 function history
 # init [history file]
@@ -3651,8 +3658,6 @@ declare -x    TOOLS_PREFIX="no"
 declare -x    TOOLS_UNAME=""
 
 declare -x ECHO_PREFIX=""
-declare -x ECHO_PREFIX_STEP="  "
-declare -x ECHO_PREFIX_SUBSTEP="    - "
 declare -x ECHO_PREFIX_DEBUG="@@@ "
 declare -x ECHO_PREFIX_ERROR="Error: "
 declare -x ECHO_PREFIX_WARNING="Warning: "
@@ -3681,9 +3686,6 @@ declare -x COLOR_WHITE COLOR_WHITE_E
 declare -x COLOR_ORANGE COLOR_ORANGE_E
 declare -x COLOR_CHARCOAL COLOR_CHARCOAL_E
 
-declare -x TITLE_STYLE="+|+--+|+"
-declare -x TITLE_STYLE="########"
-declare -x TITLE_STYLE="[ [==] ]"
 declare -x COLOR_TITLE; declare -x COLOR_TITLE_BORDER
 declare -x COLOR_INFO
 declare -x COLOR_STEP
@@ -3894,11 +3896,41 @@ declare -x LOG_SPACE=""
 declare -x LOG_START="`date -u +%s`"
 declare -x -f log                       # init / done / section / log | echo
 
-declare -x -f pipe_log;         declare -x -f log_output
-declare -x -f pipe_echo;        declare -x -f echo_output
-declare -x -f pipe_echo_prefix; declare -x -f show_output
+declare -x -f pipe_log
+declare -x -f pipe_echo
+declare -x -f pipe_echo_prefix
 
+declare -x -A TITLE_STYLES
+TITLE_STYLES[RECTANGLE]="+|+--+|+"
+# +-------+
+# | Title |
+# +-------+
+TITLE_STYLES[DEFAULT]="[ [==] ]"
+# [=======]
+#   Title  
+# [=======]
+TITLE_STYLES[POT]='/|\^_\|/'
+# /^^^^^^^\
+# | Title |
+# \_______/
+TITLE_STYLES[BOLD]="########"
+# #########
+# # Title #
+# #########
+TITLE_STYLES[DOUBLE]="= ==== ="
+# =========
+#   Title  
+# =========
+TITLE_STYLES[SINGLE]="- ---- -"
+# ---------
+#   Title  
+# ---------
+declare -x TITLE_STYLE="${TITLE_STYLES[DEFAULT]}"
+declare -x TITLE_MSG_SPACES=" "     # one space on both sides
 declare -x ECHO_QUOTE
+declare -x ECHO_STEP_PREFIX="  "
+declare -x ECHO_STEP_NUMBER_POSTFIX=". "
+declare -x ECHO_SUBSTEP_PREFIX="    - "
 declare -x -f echo_quote
 declare -x -f echo_line
 declare -x -f echo_title
@@ -3945,6 +3977,12 @@ declare -x -A FUNCTION_NAMESPACES=()
 declare -x -f echo_error_function
 declare -x -f echo_error_exit
 declare -x -f echo_warning
+declare -x -f echo_warning_function
+
+# aliasses for echo_$1 $@
+declare -x -f print
+declare -x -f p
+declare -x -f e
 
 declare -x -f history                   # init / restore / store
 

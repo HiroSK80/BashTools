@@ -497,6 +497,8 @@ function str_word
     esac
 
     test -n "${!2+exist}" && assign "$2" "$STR" || command echo -n "$STR"
+
+    return 0
 }
 
 function str_date
@@ -2852,7 +2854,7 @@ function pipe_from
 function pipe_cut
 {
     local CUT_TYPE="$1"
-    local -i LENGTH_MAX="$2"
+    test_integer "$CUT_TYPE" && local CUT_TYPE="right" && local -i LENGTH_MAX="$1" || local -i LENGTH_MAX="$2"
 
     local BACKUP_IFS="$IFS"
     IFS=''
@@ -3793,7 +3795,7 @@ function print
             shift
             arguments contains "f|function" "$@" && TASK="${TASK}_function"
         ;;
-        line|info|step|substep|title)
+        line|info|step|substep|title|quote|cut)
             shift
         ;;
         *)
@@ -3812,6 +3814,23 @@ function p
 function e
 {
     print "$@"
+}
+
+function pipe
+{
+    test $# = 0 && pipe_echo && return 0
+
+    local TASK="$1"
+    case "$TASK" in
+        echo|prefix|replace|replace_string|replace_section|remove_color|join_lines|from|cut)
+            shift
+        ;;
+        *)
+            TASK="echo"
+        ;;
+    esac
+    pipe_$TASK "$@"
+    return 0
 }
 
 #NAMESPACE/history/start
@@ -4463,6 +4482,8 @@ declare -x -f echo_warning_function
 declare -x -f print
 declare -x -f p
 declare -x -f e
+# aliasses for pipe_$1 $@
+declare -x -f pipe
 
 declare -x -f history                   # init / restore / store
 

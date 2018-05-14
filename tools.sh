@@ -1755,15 +1755,34 @@ function file_config
             echo "$FORMAT"
             return 0
             ;;
-        get|read|set)
+        get|read)
             arguments onestep switch "e|eval" "DO_EVAL|yes"
             arguments onestep switch "n|no-eval" "DO_EVAL|no"
             arguments onestep option "FILE|file_read"
             arguments onestep option "SECTION_OPTION"
+            arguments onestep run "$@"
+            if test_str "$SECTION_OPTION" ".*/.*"
+            then
+                SECTION="${SECTION_OPTION%/*}"
+                OPTION="${SECTION_OPTION#*/}"
+            else
+                SECTION=""
+                OPTION="$SECTION_OPTION"
+            fi
+            ;;
+        set)
+            arguments onestep option "FILE|file_read"
+            arguments onestep option "SECTION_OPTION"
             arguments onestep option "VALUE"
             arguments onestep run "$@"
-            SECTION="`dirname "$SECTION_OPTION"`"
-            OPTION="`basename "$SECTION_OPTION"`"
+            if test_str "$SECTION_OPTION" ".*/.*"
+            then
+                SECTION="${SECTION_OPTION%/*}"
+                OPTION="${SECTION_OPTION#*/}"
+            else
+                SECTION=""
+                OPTION="$SECTION_OPTION"
+            fi
             ;;
         load)
             local TO_VARIABLES="no"
@@ -1790,7 +1809,15 @@ function file_config
             test_yes DO_EVAL && eval "command echo \"$VALUE\"" || command echo "$VALUE"
             ;;
         read)
-            VALUE="`file_config get "$@"`"
+            VALUE="`$AWK 'BEGIN { if ("'"$SECTION"'" == ".") s=1; else s=0; }
+                /* { print "LINE=" $0; } */
+                "'"$SECTION"'" != "." && /^[\t ]*\[.*\][\t ]*$/ {
+                    s=0; }
+                "'"$SECTION"'" != "." && /^[\t ]*\['"$SECTION"'\][\t ]*$/ {
+                    s=1; next; }
+                s==1 && /^[\t ]*'"$OPTION"'[\t ]*=[\t ]*/ {
+                    sub(/^[\t ]*'"$OPTION"'[\t ]*=[\t ]*/, ""); sub(/^["]/, ""); sub(/["][\t ]*$/, ""); print; }' "$FILE"`"
+            test_yes DO_EVAL && VALUE="`command echo \"$VALUE\"`"
             test "$SECTION" != "." && assign "$FILE_CONFIG_PREFIX${SECTION}_${OPTION}" "$VALUE"
             assign "$FILE_CONFIG_PREFIX$OPTION" "$VALUE"
             ;;
@@ -2177,7 +2204,6 @@ function call_command
     local LOCAL_DEBUG="no"
     local COMMAND_STRING=""
     debug check command && set_yes LOCAL_DEBUG
-    debug check command && debug check right && LOCAL_DEBUG="right"
     while test $# -gt 0
     do
         test "$1" = "-1" && SHIFT1="-1" && shift && continue
@@ -2194,8 +2220,7 @@ function call_command
         test "$1" = "--quiet" && set_yes QUIET && shift && continue
         test "$1" = "--prefix" && set_yes PREFIX && shift && continue
         test "$1" = "--debug" && set_yes LOCAL_DEBUG && shift && continue
-        test "$1" = "--debug-right" && LOCAL_DEBUG="right" && shift && continue
-        test "$1" = "--nodebug" && set_no LOCAL_DEBUG && shift && continue
+        test "$1" = "--nodebug" -o "$1" = "--no-debug" && set_no LOCAL_DEBUG && shift && continue
         test "$1" = "--command-string" && shift && COMMAND_STRING="$1" && shift && continue
         break
     done
@@ -2207,8 +2232,7 @@ function call_command
     local EXIT_CODE
     if is_localhost "$HOST"
     then
-        test_yes "$LOCAL_DEBUG" && echo_debug_custom command "$COMMAND_STRING"
-        test "$LOCAL_DEBUG" = "right" && echo_debug_right $SHIFT1 "$COMMAND_STRING"
+        test_yes "$LOCAL_DEBUG" && echo_debug_custom command --right "$COMMAND_STRING"
         if test_no "$USER_SET" -o "`get_id`" = "$USER"
         then
             #bash -c "$@"
@@ -2221,8 +2245,7 @@ function call_command
     else
         USER_SSH=""
         test -n "$USER" && USER_SSH="$USER@"
-        test_yes "$LOCAL_DEBUG" && echo_debug_custom command "$SSH $TOPT $USER_SSH$HOST $COMMAND_STRING"
-        test "$LOCAL_DEBUG" = "right" && echo_debug_right $SHIFT1 "$SSH $TOPT $USER_SSH$HOST $COMMAND_STRING"
+        test_yes "$LOCAL_DEBUG" && echo_debug_custom command --right "$SSH $TOPT $USER_SSH$HOST $COMMAND_STRING"
         $SSH $TOPT $USER_SSH$HOST "$@" 2>&1 | grep --invert-match "Connection to .* closed" | tee "$FILE" | $PIPE > $REDIRECT
         EXIT_CODE=$?
     fi
@@ -2646,6 +2669,7 @@ function pipe_prefix
 # -c <command> | --command=<command>
 # -p <prefix> | --prefix=<prefix>
 {
+    local HEADER=""
     local HEADER_PREFIX="$PIPE_HEADER_PREFIX"
     local HEADER_POSTFIX="$PIPE_HEADER_POSTFIX"
     local PREFIX="$PIPE_PREFIX"
@@ -2654,6 +2678,7 @@ function pipe_prefix
     local COMMAND="$PIPE_COMMAND"
     local EMPTY="$PIPE_EMPTY"
     local DEDUPLICATE="$PIPE_DEDUPLICATE"
+    local FILE=""
 
     arguments init
     while test $# -gt 0
@@ -2669,6 +2694,7 @@ function pipe_prefix
         arguments check switch "n|empty" "EMPTY|yes" "$@"
         arguments check switch "|no-deduplicate" "DEDUPLICATE|no" "$@"
         arguments check switch "d|deduplicate" "DEDUPLICATE|yes" "$@"
+        arguments check value "f|file" "FILE|file_read" "$@"
         arguments check option "HIDE" "$@"
         arguments shift && shift $ARGUMENTS_SHIFT && continue
         echo_error_function "Unknown argument: $1" $ERROR_CODE_DEFAULT
@@ -2680,14 +2706,24 @@ function pipe_prefix
     #    echo "$PREFIX$LINE"
     #done
 
+    test -n "$FILE" -a -z "$HEADER" && HEADER="$FILE"
+    test -n "$HEADER" && HEADER="$COLOR_PIPE_HEADER$HEADER$COLOR_RESET"
     $AWK --assign=header_prefix="$COLOR_PIPE_PREFIX$HEADER_PREFIX$COLOR_RESET" --assign=header_postfix="$COLOR_PIPE_PREFIX$HEADER_POSTFIX$COLOR_RESET" \
-         --assign=header="$COLOR_PIPE_HEADER$HEADER$COLOR_RESET" --assign=prefix="$COLOR_PIPE_PREFIX$PREFIX$COLOR_RESET" \
+         --assign=header="$HEADER" --assign=prefix="$COLOR_PIPE_PREFIX$PREFIX$COLOR_RESET" \
          --assign=numbers="$NUMBERS" --assign=hide="$HIDE" --assign=command="$COMMAND" --assign=empty="$EMPTY" --assign=deduplicate="$DEDUPLICATE" '
         function print_line(line) {
-            if (numbers=="yes") { lineno_prefix="'"$COLOR_PIPE_PREFIX"'" lineno "'"$COLOR_RESET"'" "  ";
-                if (lineno < 10) lineno_prefix=" " lineno_prefix; if (lineno < 100) lineno_prefix=" " lineno_prefix; lineno++; }
+            if (numbers=="yes") {
+                lineno_prefix="";
+                if (length(lineno_print) <= 1) lineno_prefix=" " lineno_prefix;
+                if (length(lineno_print) <= 2) lineno_prefix=" " lineno_prefix;
+                #if (length(lineno_print) <= 3) lineno_prefix=" " lineno_prefix;
+                #TEST lineno_prefix="'"$COLOR_PIPE_PREFIX"'" lineno "/" lineno_printed "/" lineno_print "  " lineno_print "'"$COLOR_RESET"'" "  ";
+                lineno_prefix=lineno_prefix "'"$COLOR_PIPE_PREFIX"'" lineno_print "'"$COLOR_RESET"'" "  ";
+                lineno_printed=lineno;
+            }
             print prefix lineno_prefix line; }
-        BEGIN { line=""; lineno=1; count=0; lineno_prefix=""; if (header != "") print header_prefix header header_postfix; }
+        BEGIN { line=""; lineno=0; lineno_print="1"; lineno_printed="-1"; count=0; lineno_prefix=""; if (header != "") print header_prefix header header_postfix; }
+        { lineno++; }
         command=="" { current=$0; }
         command!="" {
             current="";
@@ -2699,16 +2735,16 @@ function pipe_prefix
             #print $0 " -> " current;
         }
 
-        empty=="no" && current=="" { next; }
+        empty=="no" && current=="" { lineno_printed=lineno; next; }
 
-        hide!="" && current~hide { next; }
+        hide!="" && current~hide { lineno_printed=lineno; next; }
 
         deduplicate=="yes" && current==line { count++; next; }
-        deduplicate=="yes" && count==0 { line=current; count++; next; }
-        deduplicate=="yes" && count==1 { print_line(line); line=current; count=1; next; }
-        deduplicate=="yes" && count>1 { print_line(line " ("count"x)"); line=current; count=1; next; }
-        deduplicate=="no" { print_line(current); }
-        END { if (deduplicate=="yes") { if (count>1) print_line(line " ("count"x)"); else print_line(line); } }'
+        deduplicate=="yes" && count==0 { line=current; lineno_print=lineno; count++; next; }
+        deduplicate=="yes" && count==1 { print_line(line); line=current; lineno_print=lineno; count=1; next; }
+        deduplicate=="yes" && count>1 { lineno_print=lineno_print "-" lineno-1; print_line(line " ("count"x)"); line=current; lineno_print=lineno; count=1; next; }
+        deduplicate=="no" { lineno_print=lineno; print_line(current); }
+        END { if (deduplicate=="yes") { if (count>1) print_line(line " ("count"x)"); else print_line(line); } }' $FILE
 }
 
 function pipe_replace

@@ -1,13 +1,13 @@
 #!/bin/bash
 
 export TOOLS_FILE="`dirname $0`/tools.sh"
-. "$TOOLS_FILE" --debug-right "$@" || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
+. "$TOOLS_FILE" "$@" --debug || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
 
-echo_info "Script arguments"
-echo_quote "$@"
-echo_step "command: $COMMAND"
-echo_step "option: $OPTION"
+print info "Script arguments"
+print quote "$@"
+print step "command: $COMMAND"
+print step "option: $OPTION"
 
-echo_info "Running tools processes"
-echo_debug_right "show formatted command output (with logging)"
-ps -ef | grep "$0" | pipe_echo_prefix
+print debug --right "show formatted command output (with logging)"
+print info "Running tools processes"
+ps -ef | grep "$0" | pipe prefix

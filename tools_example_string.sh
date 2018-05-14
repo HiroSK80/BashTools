@@ -1,40 +1,27 @@
 #!/bin/bash
 
 export TOOLS_FILE="`dirname $0`/tools.sh"
-. "$TOOLS_FILE" --debug --debug-variable --debug-function --debug-right "$@" || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
+. "$TOOLS_FILE" --debug --debug-variable "$@" || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
 
-echo_info "Example cut function"
-
+print info "Example cut function"
 TABS="`echo -e "${COLOR_DARK_GRAY}123456789|123456789|123456789|123456789|123456789|123456789${COLOR_RESET}"`"
 STRING="`echo -e "012345678901234567890123456789012345678901234567890123456789\nabcdefghijklmnopqrstuvwxyz"`"
+for TYPE in center left right
+do
+    print "$TABS"
+    print "$STRING" | pipe cut "$TYPE" 20
+    test "$TYPE" = "center" && print cut center 20 "$STRING"
+done
 
-echo_line "$TABS"
-echo "$STRING" | pipe_cut center 20
-
-echo_line "$TABS"
-echo "$STRING" | pipe_cut left 20
-echo_cut left 20 "$STRING"
-
-echo_line "$TABS"
-echo "$STRING" | pipe_cut right 20
-
-echo_info "Example string with words function"
-
-A="1 2 3"
-str_delete_word A 1
-echo_debug_variable A
-
-A="1 2 3"
-str_delete_word A 2
-echo_debug_variable A
-
-A="1 2 3"
-str_delete_word A 3
-echo_debug_variable A
-
-str_delete_word "1 2 3" 1
-echo
-str_delete_word "1 2 3" 2
-echo
-str_delete_word "1 2 3" 3
-echo
+print info "Example string with words function"
+for I in 1 2 3
+do
+    A="1 2 3"
+    str_word add A "1" # will not be added as already present
+    print debug --variable A
+    str_word delete A "$I"
+    print debug --variable A
+    str_word delete "1 2 3" "$I" && echo # it also works on string
+    str_word check A "1" && echo "1 is present"
+    echo
+done

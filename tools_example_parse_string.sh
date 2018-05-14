@@ -8,11 +8,16 @@ declare -A PARSED PARSED_LOCAL PARSED_SMART PARSED_REMOTE
 function show_parsed
 {
     array_copy "$1" PARSED
-    test -n "${PARSED[USER]}${PARSED[PASSWORD]}${PARSED[HOST]}" && echo_substep "${PARSED[USER]:-<empty>} : ${PARSED[PASSWORD]:-<empty>} @ ${PARSED[HOST]:-<empty>} : ${PARSED[PORT]:-<empty>} via ${PARSED[PROTOCOL]:-<empty>}          ${PARSED[USER_HOST]}"
-    test -n "${PARSED[FILE]}" && echo_substep "`test_yes "${PARSED[LOCAL]}" && echo "local" || echo "remote"`: ${PARSED[FILE]}"
+    test -n "${PARSED[USER]}${PARSED[PASSWORD]}${PARSED[HOST]}" && print substep "${PARSED[USER]:-<empty>} : ${PARSED[PASSWORD]:-<empty>} @ ${PARSED[HOST]:-<empty>} : ${PARSED[PORT]:-<empty>} via ${PARSED[PROTOCOL]:-<empty>}          ${PARSED[USER_HOST]}"
+    if test -n "${PARSED[FILE]}"
+    then
+        print substep "`test_yes "${PARSED[LOCAL]}" && echo "local file" || echo "remote file"`: ${PARSED[FILE]}"
+    else
+        print substep "`test_yes "${PARSED[LOCAL]}" && echo "local flag" || echo "remote flag"`"
+    fi
 }
 
-echo_info "URL parse test"
+print info "URL parse test"
 for URL in \
     "scp://host:file" \
     "scp://host:1234:file" \
@@ -71,39 +76,39 @@ do
     array_copy PARSED_REMOTE PARSED
     TEST_R="${PARSED[PROTOCOL]}|${PARSED[USER]}|${PARSED[PASSWORD]}|${PARSED[HOST]}|${PARSED[PORT]}|${PARSED[FILE]}"
 
-    echo_line "${COLOR_GREEN}== $URL${COLOR_RESET}"
+    print "${COLOR_GREEN}== $URL${COLOR_RESET}"
     if test "$TEST_L" = "$TEST_R" -a "$TEST_S" = "$TEST_R"
     then
-        echo_step "local/smart/remote"
+        print step "local+remote+smart"
         show_parsed PARSED_LOCAL
     elif test "$TEST_L" = "$TEST_S" -a "$TEST_S" != "$TEST_R"
     then
-        echo_step "local/smart"
+        print step "local+smart"
         show_parsed PARSED_LOCAL
-        echo_step "remote"
+        print step "remote"
         show_parsed PARSED_REMOTE
     elif test "$TEST_L" != "$TEST_S" -a "$TEST_S" = "$TEST_R"
     then
-        echo_step "local"
+        print step "local"
         show_parsed PARSED_LOCAL
-        echo_step "smart/remote"
+        print step "remote+smart"
         show_parsed PARSED_REMOTE
     else
-        echo_step "local"
+        print step "local"
         show_parsed PARSED_LOCAL
-        echo_step "smart"
+        print step "smart"
         show_parsed PARSED_SMART
-        echo_step "remote"
+        print step "remote"
         show_parsed PARSED_REMOTE
     fi
 done
 
-echo_info "URL parse test - conflicts"
+print info "URL parse test - conflicts"
 for URL in "host/path/file" "host:file" "ifcfg-eth1:1"
 do
     for PARSE_URL_DETECT in local smart remote
     do
-        echo_line "${COLOR_GREEN}== $URL${COLOR_RESET} parsed as ${COLOR_WHITE}$PARSE_URL_DETECT${COLOR_RESET}"
+        print "${COLOR_GREEN}== $URL${COLOR_RESET} parsed as ${COLOR_WHITE}$PARSE_URL_DETECT${COLOR_RESET}"
         str_parse_url "$URL" PARSED
         show_parsed PARSED
     done

@@ -1903,7 +1903,7 @@ function check_ssh
     then
         $SSHbq "$1" "exit" 2> /dev/null
     else
-        su - "$2" "$SSHbq \"$1\" \"exit\" 2> /dev/null"
+        su - "$2" --command "$SSHbq \"$1\" \"exit\" 2> /dev/null"
     fi
     return $?
 }
@@ -2241,7 +2241,7 @@ function call_command
             eval "stdbuf -i0 -o0 -e0 $@" 2>&1 | tee "$FILE" | $PIPE > $REDIRECT
             EXIT_CODE=$?
         else
-            su - "$USER" "$@" 2>&1 | tee "$FILE" | $PIPE > $REDIRECT
+            su - "$USER" --command "$@" 2>&1 | tee "$FILE" | $PIPE > $REDIRECT
             EXIT_CODE=$?
         fi
     else
@@ -2359,7 +2359,9 @@ function performance
     local VAR="${1:-default}"
     shift
     test $# -gt 0 && PERFORMANCE_MESSAGES[$VAR]="$@"
-    test "$VAR" != "default" && { test -n "${PERFORMANCE_MESSAGES[$VAR]}" && local MSG=" \"${PERFORMANCE_MESSAGES[$VAR]}\"" || local MSG=" id=$VAR"; }
+    #test "$VAR" != "default" && { test -n "${PERFORMANCE_MESSAGES[$VAR]}" && local MSG=" \"${PERFORMANCE_MESSAGES[$VAR]}\"" || local MSG=" id=$VAR"; }
+    local MSG=""
+    test -n "${PERFORMANCE_MESSAGES[$VAR]}" && MSG=" \"${PERFORMANCE_MESSAGES[$VAR]}\"" || { test "$VAR" != "default" && MSG=" id=$VAR"; }
     local DATE_NOW
     str_date DATE_NOW "%s.%N"
     DATE_NOW="`echo "$DATE_NOW" | $AWK '{ printf "%.3f", $1; }'`"
@@ -2499,7 +2501,7 @@ function test_str
     #test -n "$IGNORE_CASE" && local SHOPT="`shopt -p nocasematch`" && shopt -s nocasematch
     test -n "$IGNORE_CASE" && shopt -s nocasematch
     [[ "$1" =~ $2 ]]
-    RETURN=$?
+    local RETURN=$?
     #test -n "$IGNORE_CASE" && $SHOPT
     test -n "$IGNORE_CASE" && shopt -u nocasematch
     return $RETURN
@@ -3119,7 +3121,17 @@ function echo_line
 
     case "$ALIGN" in
         "left")
+            if test "$ECHO_DEBUG_LAST_RIGHT" = "yes" -a $ECHO_LINE_MESSAGE_LENGTH != 0
+            then
+                local MESSAGE_E_NO_COLOR="$MESSAGE_E"
+                str_remove_color MESSAGE_E_NO_COLOR
+                terminal check
+                local -i REMAIN
+                let REMAIN="$COLUMNS - ${#MESSAGE_E_NO_COLOR} - $ECHO_LINE_MESSAGE_LENGTH"
+                test $REMAIN -lt 0 && command echo
+            fi
             command echo $ESCAPE_OPTION $NEW_LINE_OPTION "$MESSAGE_E"
+            ECHO_LINE_MESSAGE_LENGTH=0
             ;;
         "right")
             terminal check
@@ -3128,6 +3140,7 @@ function echo_line
             local MESSAGE_E_NO_COLOR="$MESSAGE_E"
             test_yes TOOLS_COLOR && str_remove_color MESSAGE_E_NO_COLOR
             let SHIFT="$SHIFT - ${#MESSAGE_E_NO_COLOR}"
+            ECHO_LINE_MESSAGE_LENGTH=${#MESSAGE_E_NO_COLOR}
 
             if test $SHIFT -gt 0
             then
@@ -3147,6 +3160,7 @@ function echo_line
             local MESSAGE_E_NO_COLOR="$MESSAGE_E"
             test_yes TOOLS_COLOR && str_remove_color MESSAGE_E_NO_COLOR
             let SHIFT="($SHIFT - ${#MESSAGE_E_NO_COLOR}) / 2"
+            ECHO_LINE_MESSAGE_LENGTH=${#MESSAGE_E_NO_COLOR}
 
             if test $SHIFT -gt 0
             then
@@ -3467,7 +3481,7 @@ function echo_debug_custom
         done
 
         test "$ALIGN" = "left" && local ALIGN_OPTION="" || local ALIGN_OPTION="--align=$ALIGN"
-        test "$ALIGN" = "right" && local NEW_LINE_OPTION="-n" || local NEW_LINE_OPTION=""
+        test "$ALIGN" = "right" && local NEW_LINE_OPTION="-n" && set_yes ECHO_DEBUG_LAST_RIGHT || { local NEW_LINE_OPTION="" && set_no ECHO_DEBUG_LAST_RIGHT; }
 
         if test $LEVEL -le $DEBUG_LEVEL
         then
@@ -4333,6 +4347,7 @@ declare -x -A PERFORMANCE_MESSAGES      # only internal use
 declare -x -f performance               # start / now / stop|end
 
 declare -x -f set_yes
+declare -x -f set_no
 declare -x -f test_ne0
 declare -x -f test_boolean
 declare -x -f test_str_yes
@@ -4431,6 +4446,7 @@ declare -x ECHO_STEP_PREFIX="  "
 declare -x ECHO_STEP_NUMBER_POSTFIX=". "
 declare -x ECHO_SUBSTEP_PREFIX="    - "
 declare -x -f echo_quote
+declare -x -i ECHO_LINE_MESSAGE_LENGTH=0
 declare -x -f echo_line
 declare -x -f echo_title
 declare -x -f echo_info
@@ -4464,6 +4480,7 @@ declare -x -f debug                     # init / init_namespaces / reinit_namesp
 declare -x    DEBUG_PARSE_LEVEL
 declare -x    DEBUG_PARSE_LEVEL_STR
 
+declare -x    ECHO_DEBUG_LAST_RIGHT     # internal: last debug was right aligned
 declare -x -f echo_debug_custom
 declare -x -f echo_debug
 declare -x -f echo_debug_variable

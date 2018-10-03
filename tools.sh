@@ -2,15 +2,15 @@
 
 # execute as: ". <tools.sh> [options]"
 # shortest version:
-#       . "`dirname $0`/tools.sh"
+#       . "$(dirname $0)/tools.sh"
 # shortest version with process tools known arguments and others put via command_options to $COMMAND, $OPTION, ...:
-#       . "`dirname $0`/tools.sh" "$@"
+#       . "$(dirname $0)/tools.sh" "$@"
 # good version with some predefined arguments:
-#       export TOOLS_FILE="`dirname $0`/tools.sh"
+#       export TOOLS_FILE="$(dirname $0)/tools.sh"
 #       . "$TOOLS_FILE" --debug --debug-variable --debug-function --debug-right "$@" || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
 # long version:
 #       unset TOOLS_LOADED
-#       export TOOLS_FILE="`dirname $0`/tools.sh"
+#       export TOOLS_FILE="$(dirname $0)/tools.sh"
 #       . "$TOOLS_FILE" --debug --debug-right --debug-function --debug-variable "$@"
 #       test "$TOOLS_LOADED" != "yes" && echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1
 
@@ -35,18 +35,20 @@ shopt -s extglob
 #"Linux RedHat CentOS"
 #"Linux SuSE openSUSE"
 
+declare -x UNIX_TYPE
+declare -x UNIX_DISTRO_MAIN
+declare -x UNIX_DISTRO_SUB
 function fill_unix_type
 {
-    test $# -eq 3 && UNIX_TYPE="$1" && shift
-    UNIX_DISTRO_MAIN="$1"
-    UNIX_DISTRO_SUB="$2"
+    UNIX_TYPE="$(uname)"
+    test -n "$1" && UNIX_DISTRO_MAIN="$1"
+    test -n "$2" && UNIX_DISTRO_SUB="$2"
 }
 
-fill_unix_type "`uname`" "" ""
-
-test -f "/etc/SuSE-release" && fill_unix_type "SuSE" "`awk 'BEGIN { FS="="; } /^NAME=/ { print $2; }' "/etc/os-release"`"
-test -f "/etc/SuSE-release" && fill_unix_type "SuSE" "`awk '/SUSE Linux Enterprise Server/ { print "SLES"; } /openSUSE/ { print "openSUSE"; }' "/etc/SuSE-release"`"
-test -f "/etc/redhat-release" && fill_unix_type "RedHat" "`awk '/Red Hat Enterprise Linux Server/ { print "RHEL"; }' "/etc/redhat-release"`"
+test -f "/etc/os-release" && fill_unix_type "$(awk 'BEGIN { FS="="; } /^NAME=/ { print $2; }' "/etc/os-release")" "$(awk 'BEGIN { FS="="; } /^NAME=/ { print $2; }' "/etc/os-release")"
+test -f "/etc/os-release" && fill_unix_type "$(awk 'BEGIN { FS="="; } /^NAME=.*Debian.*/ { print "Debian"; }' "/etc/os-release")" "$(awk 'BEGIN { FS="="; } /^NAME=/ { print $2; }' "/etc/os-release")"
+test -f "/etc/SuSE-release" && fill_unix_type "SuSE" "$(awk '/SUSE Linux Enterprise Server/ { print "SLES"; } /openSUSE/ { print "openSUSE"; }' "/etc/SuSE-release")"
+test -f "/etc/redhat-release" && fill_unix_type "RedHat" "$(awk '/Red Hat Enterprise Linux Server/ { print "RHEL"; }' "/etc/redhat-release")"
 test -f "/etc/centos-release" && fill_unix_type "RedHat" "CentOS"
 test -f "/etc/OEL-release" && fill_unix_type "RedHat" "OEL"
 
@@ -64,9 +66,9 @@ if test "$UNIX_TYPE" = "Linux"
 then
     declare -x RM="/bin/rm -f"
     declare -x AWK="/bin/awk"
-    type awk > /dev/null 2>&1 && declare -x AWK="`type -P awk`"
+    type awk > /dev/null 2>&1 && declare -x AWK="$(readlink --canonicalize $(type -P awk))"
     declare -x GREP="/bin/grep"
-    type grep > /dev/null 2>&1 && declare -x GREP="`type -P grep`"
+    type grep > /dev/null 2>&1 && declare -x GREP="$(readlink --canonicalize $(type -P grep))"
     #declare -x SSH="ssh -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
     declare -x SSH="ssh -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
     declare -x SSHb="ssh -o BatchMode=yes -o ConnectTimeout=5 -o GSSAPIAuthentication=no"
@@ -78,6 +80,10 @@ then
     declare -x SCPq="$SCP -q"
     declare -x SCPbq="$SCPb -q"
 fi
+declare -x AWK_TYPE="$(basename "$AWK")"
+declare -x AWK_VAR="--assign"
+test "$AWK_TYPE" = "mawk" && AWK_VAR="-v"
+declare -x GREP_TYPE="$(basename "$AWK")"
 
 function query
 {
@@ -110,9 +116,9 @@ function query
         do
             if test -z "$DEFAULT"
             then
-                REPLY=`ckstr -Q -r "$TEST_REGEXP" -p "$QUERY" -e "$ERROR"`
+                REPLY="$(ckstr -Q -r "$TEST_REGEXP" -p "$QUERY" -e "$ERROR")"
             else
-                REPLY=`ckstr -Q -r "$TEST_REGEXP" -p "$QUERY" -e "$ERROR" -d "$DEFAULT"`
+                REPLY="$(ckstr -Q -r "$TEST_REGEXP" -p "$QUERY" -e "$ERROR" -d "$DEFAULT")"
             fi
 
             if test "$TEST_FUNCTION" = "PING"
@@ -142,7 +148,7 @@ function query
                 ping -c 2 "$REPLY" > /dev/null 2>&1
                 test $? -eq 0 && OK="ok"
             else
-                OK="`echo "$REPLY" | $AWK '/'$TEST_REGEXP'/ { print "ok"; exit } { print "no" }'`"
+                OK="$(echo "$REPLY" | $AWK '/'$TEST_REGEXP'/ { print "ok"; exit } { print "no" }')"
             fi
             test_no "$OK" && echo "        Error: $ERROR"
         done
@@ -231,21 +237,21 @@ function command_options
             OPTIONS_A=("$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}")
             ;;
         parse)
-            COMMAND="`str_get_arg "$INPUT" 1`"
-            OPTIONS="`str_get_arg_from "$INPUT" 2`"
-            OPTIONS2="`str_get_arg_from "$INPUT" 3`"
-            OPTIONS3="`str_get_arg_from "$INPUT" 4`"
-            OPTIONS4="`str_get_arg_from "$INPUT" 5`"
-            OPTION="`str_get_arg "$INPUT" 2`"
-            OPTION1="`str_get_arg "$INPUT" 2`"
-            OPTION2="`str_get_arg "$INPUT" 3`"
-            OPTION3="`str_get_arg "$INPUT" 4`"
-            OPTION4="`str_get_arg "$INPUT" 5`"
-            OPTION5="`str_get_arg "$INPUT" 6`"
-            OPTION6="`str_get_arg "$INPUT" 7`"
-            OPTION7="`str_get_arg "$INPUT" 8`"
-            OPTION8="`str_get_arg "$INPUT" 9`"
-            OPTION9="`str_get_arg "$INPUT" 10`"
+            COMMAND="$(str_get_arg "$INPUT" 1)"
+            OPTIONS="$(str_get_arg_from "$INPUT" 2)"
+            OPTIONS2="$(str_get_arg_from "$INPUT" 3)"
+            OPTIONS3="$(str_get_arg_from "$INPUT" 4)"
+            OPTIONS4="$(str_get_arg_from "$INPUT" 5)"
+            OPTION="$(str_get_arg "$INPUT" 2)"
+            OPTION1="$(str_get_arg "$INPUT" 2)"
+            OPTION2="$(str_get_arg "$INPUT" 3)"
+            OPTION3="$(str_get_arg "$INPUT" 4)"
+            OPTION4="$(str_get_arg "$INPUT" 5)"
+            OPTION5="$(str_get_arg "$INPUT" 6)"
+            OPTION6="$(str_get_arg "$INPUT" 7)"
+            OPTION7="$(str_get_arg "$INPUT" 8)"
+            OPTION8="$(str_get_arg "$INPUT" 9)"
+            OPTION9="$(str_get_arg "$INPUT" 10)"
             OPTIONS_A=("$OPTION" "$OPTION2" "$OPTION3" "$OPTION4" "$OPTION5" "$OPTION6" "$OPTION7" "$OPTION8" "$OPTION9")
             ;;
         insert|insert_command)
@@ -289,7 +295,7 @@ function assign
     #unset -v "$1" || echo_error_function "Invalid variable name: $1" $ERROR_CODE_DEFAULT
     test $# = 2 -a -n "$1" && printf -v "$1" '%s' "$2" && return 0
     test $# = 1 -a -n "${1%%=*}" && printf -v "${1%%=*}" '%s' "${1#*=}" && return 0
-    test $# != 1 -a $# != 2 && echo_error_function "Wrong arguments count: $#, arguments: `echo_quote "$@"`" $ERROR_CODE_DEFAULT
+    test $# != 1 -a $# != 2 && echo_error_function "Wrong arguments count: $#, arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
     echo_error_function "Empty variable name argument" $ERROR_CODE_DEFAULT
 }
 
@@ -330,7 +336,7 @@ function array_assign
     #unset -v "$1" || echo_error_function "Invalid variable name: $1" $ERROR_CODE_DEFAULT
     test $# = 2 && eval "$1"="$2" && return 0
     test $# = 1 && eval "${1%%=*}"="${1#*=}" && return 0
-    test $# != 1 -a $# != 2 && echo_error_function "Wrong arguments count: $#, arguments: `echo_quote "$@"`" $ERROR_CODE_DEFAULT
+    test $# != 1 -a $# != 2 && echo_error_function "Wrong arguments count: $#, arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
     echo_error_function "Empty variable name argument" $ERROR_CODE_DEFAULT
 }
 
@@ -409,7 +415,7 @@ function str_count_chars
         local STR="$1"
         local CHR="$2"
     else
-        echo_error_function "Wrong arguments count: $#, arguments: `echo_quote "$@"`" $ERROR_CODE_DEFAULT
+        echo_error_function "Wrong arguments count: $#, arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
     fi
 
     STR="${STR//[^$CHR]}"
@@ -515,7 +521,7 @@ function str_date
     else
         FORMAT="$1"
     fi
-    test ${BASH_VERSINFO[0]} -ge 4 -a ${BASH_VERSINFO[1]} -ge 2 && printf STR '%('"$FORMAT"')T\n' -1 || STR="`date +"$FORMAT"`"
+    test ${BASH_VERSINFO[0]} -ge 4 -a ${BASH_VERSINFO[1]} -ge 2 && printf STR '%('"$FORMAT"')T\n' -1 || STR="$(date +"$FORMAT")"
     test -n "$VAR" && assign "$VAR" "$STR" || command echo -n "$STR"
 }
 
@@ -530,7 +536,7 @@ function str_array_convert
         local VAR=""
         local TMP="$1"
     else
-        echo_error_function "Wrong arguments count: $#, Arguments: `echo_quote "$@"`" $ERROR_CODE_DEFAULT
+        echo_error_function "Wrong arguments count: $#, Arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
     fi
 
     if test_str "$TMP" "^[(].*[)]$"
@@ -786,10 +792,10 @@ function str_parse_args
     PARSE_ARGS=()
 
     #local ARRAY="${2}"
-    #local EVAL="`printf '%q\n' "$1"`"
+    #local EVAL="$(printf '%q\n' "$1")"
     #EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\\":":g' --expression='s:\\(:(:g' --expression='s:\\):):g' --expression='s:\\'"'"':'"'"':g' --expression='s:\`:_:g')"
     #EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\\":":g' --expression='s:\`:_:g')"
-    #local EVAL="`echo "$1" | sed --expression='s:[(]:\\\\(:g' --expression='s:[)]:\\\\):g' --expression='s:[;]:\\\\;:g'`"
+    #local EVAL="$(echo "$1" | sed --expression='s:[(]:\\\\(:g' --expression='s:[)]:\\\\):g' --expression='s:[;]:\\\\;:g')"
     local EVAL="$1"
     #echo_debug "$EVAL"
 
@@ -811,7 +817,7 @@ function str_get_arg
 # $2 index
 {
     local FROM="${2-1}"
-    #local EVAL="`printf '%q\n' "$1"`"
+    #local EVAL="$(printf '%q\n' "$1")"
     #EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\\":":g' --expression='s:`:_:g')"
     local EVAL="$1"
     #echo_debug_variable EVAL
@@ -826,7 +832,7 @@ function str_get_arg_from
 # $2 index
 {
     local FROM="${2-1}"
-    #local EVAL="`printf '%q\n' "$1"`"
+    #local EVAL="$(printf '%q\n' "$1")"
     #EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\\":":g' --expression='s:`:_:g')"
     #EVAL="$(echo "$EVAL" | sed --expression='s:\\ : :g' --expression='s:\`:_:g')"
     local EVAL="$1"
@@ -858,7 +864,7 @@ function arguments
             # debug for ARGUMENTS_CHECK_ALL
             #declare -a ARGUMENTS_CHECK_ALL_STORE
             #array_copy ARGUMENTS_CHECK_ALL ARGUMENTS_CHECK_ALL_STORE
-            #ARGUMENTS_STORE_CHECK_ALL[$ARGUMENTS_STORE_I]="`declare -p ARGUMENTS_CHECK_ALL_STORE`"
+            #ARGUMENTS_STORE_CHECK_ALL[$ARGUMENTS_STORE_I]="$(declare -p ARGUMENTS_CHECK_ALL_STORE)"
             let ARGUMENTS_STORE_I++
             ;;
         done)
@@ -905,7 +911,7 @@ function arguments
             test "$1" = "run" && shift && arguments check/run "$@" || arguments check/add "$@"
             ;;
         check/add)
-            ARGUMENTS_CHECK_ADD+=("`echo_quote "$@"`")
+            ARGUMENTS_CHECK_ADD+=("$(echo_quote "$@")")
             ;;
         check/run)
             arguments init
@@ -1136,7 +1142,7 @@ function arguments_check
                     str_array_convert ARG_TEST "$ARG_TEST"
                     ARG_TEST="${ARG_TEST:1:${#ARG_TEST}-2}"
                     #echo_debug "Possible values for test $ARG_TEST vs $ARG_OPTION"
-                    str_word check ARG_TEST "$ARG_OPTION" || echo_error "Argument `echo_quote "$ARG_OPTION"` is not supported. Available: $ARG_TEST" $ERROR_CODE_DEFAULT
+                    str_word check ARG_TEST "$ARG_OPTION" || echo_error "Argument $(echo_quote "$ARG_OPTION") is not supported. Available: $ARG_TEST" $ERROR_CODE_DEFAULT
                 else
                     shift
                     #echo_debug "Initial variable value for testers $ARG_TEST: original=\"$ARGUMENTS_VALUE_ORIGINAL\" input=\"$ARGUMENTS_VALUE\""
@@ -1250,38 +1256,38 @@ function arguments_tester_info
 
 function arguments_tester_file
 {
-    test -f "$1" || echo_error "Specified file: `echo_quote "$1"` doesn't exist" $ERROR_CODE_DEFAULT
+    test -f "$1" || echo_error "Specified file: $(echo_quote "$1") doesn't exist" $ERROR_CODE_DEFAULT
 }
 
 function arguments_tester_file_exist
 {
-    test -f "$1" || echo_error "Specified file: `echo_quote "$1"` doesn't exist" $ERROR_CODE_DEFAULT
+    test -f "$1" || echo_error "Specified file: $(echo_quote "$1") doesn't exist" $ERROR_CODE_DEFAULT
 }
 
 function arguments_tester_file_read
 {
-    test -r "$1" || echo_error "Specified file: `echo_quote "$1"` can't be readed" $ERROR_CODE_DEFAULT
+    test -r "$1" || echo_error "Specified file: $(echo_quote "$1") can't be readed" $ERROR_CODE_DEFAULT
 }
 
 function arguments_tester_file_write
 {
-    test -w "$1" || echo_error "Specified file: `echo_quote "$1"` can't be written" $ERROR_CODE_DEFAULT
+    test -w "$1" || echo_error "Specified file: $(echo_quote "$1") can't be written" $ERROR_CODE_DEFAULT
 }
 
 function arguments_tester_file_canonicalize
 {
-    ARGUMENTS_VALUE="`readlink --canonicalize "$ARGUMENTS_VALUE"`"
+    ARGUMENTS_VALUE="$(readlink --canonicalize "$ARGUMENTS_VALUE")"
 }
 
 function arguments_tester_ping
 {
-    check_ping "$1" || echo_error "Specified host: `echo_quote "$1"` is not reachable, ping problem" $ERROR_CODE_DEFAULT
+    check_ping "$1" || echo_error "Specified host: $(echo_quote "$1") is not reachable, ping problem" $ERROR_CODE_DEFAULT
 }
 
 function arguments_tester_increase
 {
     test -n "$ARGUMENTS_VALUE_ORIGINAL" && ARGUMENTS_VALUE="$ARGUMENTS_VALUE_ORIGINAL" # reuse already assigned value - do not use switch value
-    test_integer "$ARGUMENTS_VALUE" || echo_error "Argument value: `echo_quote "$ARGUMENTS_VALUE_NEW"` is not integer" $ERROR_CODE_DEFAULT
+    test_integer "$ARGUMENTS_VALUE" || echo_error "Argument value: $(echo_quote "$ARGUMENTS_VALUE_NEW") is not integer" $ERROR_CODE_DEFAULT
 
     local -i ARGUMENTS_VALUE_INTEGER=$ARGUMENTS_VALUE
     let ARGUMENTS_VALUE_INTEGER++ # increase value in local integer variable
@@ -1292,7 +1298,7 @@ function arguments_tester_yes_no
 {
     test_yes ARGUMENTS_VALUE && return 0
     test_no ARGUMENTS_VALUE && return 0
-    echo_error "Argument value: `echo_quote "$ARGUMENTS_VALUE"` in \"$ARGUMENTS_NAME\" need to be \"yes\" or \"no\"" $ERROR_CODE_DEFAULT
+    echo_error "Argument value: $(echo_quote "$ARGUMENTS_VALUE") in \"$ARGUMENTS_NAME\" need to be \"yes\" or \"no\"" $ERROR_CODE_DEFAULT
 }
 
 function arguments_tester_empty_yes
@@ -1317,8 +1323,8 @@ function file_find
         local FIND_PATH="$1"
         local FIND_MASK="*"
     else
-        local FIND_PATH="`dirname "$1"`"
-        local FIND_MASK="`basename "$1"`"
+        local FIND_PATH="$(dirname "$1")"
+        local FIND_MASK="$(basename "$1")"
     fi
 
     #echo_debug_variable FIND_PATH FIND_MASK
@@ -1344,7 +1350,7 @@ function file_loop
     shift
 
     local FILE_LOOP_CMD
-    test $# -eq 0 && FILE_LOOP_CMD="`cat`"
+    test $# -eq 0 && FILE_LOOP_CMD="$(cat)"
 
     # count: echo ${!FILE_LOOP[*]}
     local FILE
@@ -1358,7 +1364,7 @@ function file_temporary_name
 # $1 temporary file postfix
 # $2 source filename to be use as part of temporary filename
 {
-    test -n "$2" && echo "/tmp/`basename "$2"`.$1.$$.tmp" || echo "/tmp/tools.$1.$$.tmp"
+    test -n "$2" && echo "/tmp/$(basename "$2").$1.$$.tmp" || echo "/tmp/tools.$1.$$.tmp"
 }
 
 function file_delete_local
@@ -1366,7 +1372,7 @@ function file_delete_local
     if test -f "$1"
     then
         $RM "$1"
-        test ! -f "$1" || echo_error_function "Can't delete `echo_quote "$1"` file" $ERROR_CODE_DEFAULT
+        test ! -f "$1" || echo_error_function "Can't delete $(echo_quote "$1") file" $ERROR_CODE_DEFAULT
     else
         return 0
     fi
@@ -1435,7 +1441,7 @@ function file_prepare
 
     if test "$SIZE" -ne 0 -a -f "$FILE"
     then
-        local CURRENT_SIZE="`stat -c %s analyse.sh`"
+        local CURRENT_SIZE="$(stat -c %s "$FILE")"
         test $CURRENT_SIZE -gt $SIZE && set_yes ROLL
     fi
 
@@ -1449,11 +1455,11 @@ function file_prepare
 
     if test ! -w "$FILE"
     then
-        mkdir -p "`dirname $FILE`"
+        mkdir -p "$(dirname "$FILE")"
         touch "$FILE"
         chmod ug+w "$FILE" 2> /dev/null
     fi
-    test -w "$FILE" || echo_error_function "Can't create and prepare file for writting: `echo_quote "$FILE"`" $ERROR_CODE_DEFAULT
+    test -w "$FILE" || echo_error_function "Can't create and prepare file for writting: $(echo_quote "$FILE")" $ERROR_CODE_DEFAULT
 
     test_yes "$EMPTY" && cat /dev/null > "$FILE"
 
@@ -1531,7 +1537,7 @@ function file_remote
 
     local -A URL
     str_parse_url "$1" URL
-    test -n "$2" && FILE_REMOTE="$2" || FILE_REMOTE="`file_temporary_name file_remote "${URL[FILE]}"`"
+    test -n "$2" && FILE_REMOTE="$2" || FILE_REMOTE="$(file_temporary_name file_remote "${URL[FILE]}")"
 
     case "$TASK" in
         cat)
@@ -1544,7 +1550,7 @@ function file_remote
             then
                 cat "${URL[FILE]}" || return 1
             else
-                echo_error_function "Unknown transfer protocol for `echo_quote "$URL"`" $ERROR_CODE_DEFAULT
+                echo_error_function "Unknown transfer protocol for $(echo_quote "$URL")" $ERROR_CODE_DEFAULT
             fi
             ;;
         delete)
@@ -1555,7 +1561,7 @@ function file_remote
             then
                 file_delete_local "${URL[FILE]}" || return 1
             else
-                echo_error_function "Unknown remote protocol for `echo_quote "$URL"`" $ERROR_CODE_DEFAULT
+                echo_error_function "Unknown remote protocol for $(echo_quote "$URL")" $ERROR_CODE_DEFAULT
             fi
             ;;
         get)
@@ -1570,7 +1576,7 @@ function file_remote
             then
                 cp -p "${URL[FILE]}" "$FILE_REMOTE" || return 1
             else
-                echo_error_function "Unknown transfer protocol for `echo_quote "$URL"`" $ERROR_CODE_DEFAULT
+                echo_error_function "Unknown transfer protocol for $(echo_quote "$URL")" $ERROR_CODE_DEFAULT
             fi
             ;;
         put)
@@ -1583,7 +1589,7 @@ function file_remote
             then
                 cp -p "$FILE_REMOTE" "${URL[FILE]}" || return 1
             else
-                echo_error_function "Unknown transfer protocol for `echo_quote "$URL"`" $ERROR_CODE_DEFAULT
+                echo_error_function "Unknown transfer protocol for $(echo_quote "$URL")" $ERROR_CODE_DEFAULT
             fi
             file_delete_local "$FILE_REMOTE"
             ;;
@@ -1596,9 +1602,9 @@ function file_line_delete_local
 # $2 delete regexp
 {
     local FILE="$1"
-    local TEMP_FILE="`file_temporary_name file_line_delete_local "$FILE"`"
+    local TEMP_FILE="$(file_temporary_name file_line_delete_local "$FILE")"
     local REGEXP="$2"
-    local ERROR_MSG="Delete line \"$REGEXP\" from file `echo_quote "$FILE"` fail"
+    local ERROR_MSG="Delete line \"$REGEXP\" from file $(echo_quote "$FILE") fail"
     if test -r "$FILE"
     then
         cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
@@ -1620,11 +1626,11 @@ function file_line_add_local
 # $4 replace this line (or if not found add after $3)
 {
     local FILE="$1"
-    local TEMP_FILE="`file_temporary_name file_line_add_local "$FILE"`"
+    local TEMP_FILE="$(file_temporary_name file_line_add_local "$FILE")"
     local LINE="$2"
     local REGEXP_AFTER="$3"
     local REGEXP_REPLACE="$4"
-    local ERROR_MSG="Add line \"$LINE\" to file `echo_quote "$FILE"` fail"
+    local ERROR_MSG="Add line \"$LINE\" to file $(echo_quote "$FILE") fail"
 
     test -e "$FILE" || touch "$FILE"
 
@@ -1633,14 +1639,14 @@ function file_line_add_local
         command echo "$LINE" >> "$FILE" || echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
     else
         cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
-        if test -n "$REGEXP_REPLACE" && `cat "$TEMP_FILE" | $AWK 'BEGIN { f=1; } /'"$REGEXP_REPLACE"'/ { f=0; } END { exit f; }'`
+        if test -n "$REGEXP_REPLACE" && $(cat "$TEMP_FILE" | $AWK 'BEGIN { f=1; } /'"$REGEXP_REPLACE"'/ { f=0; } END { exit f; }')
         then
-            $AWK --assign=line="$LINE" 'BEGIN { p=0; gsub(/\n/, "\\n", line); } p==0&&/'"$REGEXP_REPLACE"'/ { p=1; print line; next } { print; } END { if (p==0) print line; }' "$TEMP_FILE" > "$FILE"
-        elif test -n "$REGEXP_AFTER" && `cat "$TEMP_FILE" | $AWK 'BEGIN { f=1; } /'"$REGEXP_AFTER"'/ { f=0; } END { exit f; }'`
+            $AWK $AWK_VAR line="$LINE" 'BEGIN { p=0; gsub(/\n/, "\\n", line); } p==0&&/'"$REGEXP_REPLACE"'/ { p=1; print line; next } { print; } END { if (p==0) print line; }' "$TEMP_FILE" > "$FILE"
+        elif test -n "$REGEXP_AFTER" && $(cat "$TEMP_FILE" | $AWK 'BEGIN { f=1; } /'"$REGEXP_AFTER"'/ { f=0; } END { exit f; }')
         then
-            $AWK --assign=line="$LINE" 'BEGIN { p=0; gsub(/\n/, "\\n", line); } p==0&&/'"$REGEXP_AFTER"'/ { print $0; p=1; print line; next } { print; } END { if (p==0) print line; }' "$TEMP_FILE" > "$FILE"
+            $AWK $AWK_VAR line="$LINE" 'BEGIN { p=0; gsub(/\n/, "\\n", line); } p==0&&/'"$REGEXP_AFTER"'/ { print $0; p=1; print line; next } { print; } END { if (p==0) print line; }' "$TEMP_FILE" > "$FILE"
         else
-            $AWK --assign=line="$LINE" 'BEGIN { gsub(/\n/, "\\n", line); } { print; } END { print line; }' "$TEMP_FILE" > "$FILE"
+            $AWK $AWK_VAR line="$LINE" 'BEGIN { gsub(/\n/, "\\n", line); } { print; } END { print line; }' "$TEMP_FILE" > "$FILE"
         fi
         if test -s "$FILE"
         then
@@ -1687,11 +1693,11 @@ function file_line
     then
         file_line_${TASK}_local "${URL[FILE]}" "$@"
     else
-        file_remote get "${URL[URL]}" || echo_error_function "Can't retrieve `echo_quote "${URL[FILE]}"` file from ${URL[USER_HOST]}" $ERROR_CODE_DEFAULT
+        file_remote get "${URL[URL]}" || echo_error_function "Can't retrieve $(echo_quote "${URL[FILE]}") file from ${URL[USER_HOST]}" $ERROR_CODE_DEFAULT
         #ls -la "$FILE_REMOTE"
         file_line_${TASK}_local "$FILE_REMOTE" "$@"
         #ls -la "$FILE_REMOTE"
-        file_remote put "${URL[URL]}" || echo_error_function "Can't upload `echo_quote "$FILE_REMOTE"` file to ${URL[USER_HOST]}" $ERROR_CODE_DEFAULT
+        file_remote put "${URL[URL]}" || echo_error_function "Can't upload $(echo_quote "$FILE_REMOTE") file to ${URL[USER_HOST]}" $ERROR_CODE_DEFAULT
     fi
 }
 
@@ -1700,12 +1706,12 @@ function file_replace
 # $* pipe_replace arguments
 {
     local FILE="$1"
-    local TEMP_FILE="`file_temporary_name file_replace "$FILE"`"
-    local ERROR_MSG="File `echo_quote "$FILE"` string replace fail"
+    local TEMP_FILE="$(file_temporary_name file_replace "$FILE")"
+    local ERROR_MSG="File $(echo_quote "$FILE") string replace fail"
     shift
     if test -w "$FILE"
     then
-        cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG, temporary file create `echo_quote "$TEMP_FILE"` problem" $ERROR_CODE_DEFAULT
+        cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG, temporary file create $(echo_quote "$TEMP_FILE") problem" $ERROR_CODE_DEFAULT
         cat "$TEMP_FILE" | pipe_replace "$@" > "$FILE" || echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
         file_delete_local "$TEMP_FILE"
     else
@@ -1799,27 +1805,27 @@ function file_config
     esac
     case "$TASK" in
         get)
-            #A="  A = \"\$USER \" "; echo "-$A-"; B="`echo "$A" | awk '/^[\t ]*A[\t ]*=[\t ]*/ { sub(/^[\t ]*A[\t ]*=[\t ]*/, ""); sub(/^["]/, ""); sub(/["]*[\t ]*$/, ""); print; }'`"; eval "set O=\"$B\""; echo "-$B-$O-"
-            VALUE="`$AWK 'BEGIN { if ("'"$SECTION"'" == ".") s=1; else s=0; }
+            #A="  A = \"\$USER \" "; echo "-$A-"; B="$(echo "$A" | awk '/^[\t ]*A[\t ]*=[\t ]*/ { sub(/^[\t ]*A[\t ]*=[\t ]*/, ""); sub(/^["]/, ""); sub(/["]*[\t ]*$/, ""); print; }')"; eval "set O=\"$B\""; echo "-$B-$O-"
+            VALUE="$($AWK 'BEGIN { if ("'"$SECTION"'" == ".") s=1; else s=0; }
                 /* { print "LINE=" $0; } */
                 "'"$SECTION"'" != "." && /^[\t ]*\[.*\][\t ]*$/ {
                     s=0; }
                 "'"$SECTION"'" != "." && /^[\t ]*\['"$SECTION"'\][\t ]*$/ {
                     s=1; next; }
                 s==1 && /^[\t ]*'"$OPTION"'[\t ]*=[\t ]*/ {
-                    sub(/^[\t ]*'"$OPTION"'[\t ]*=[\t ]*/, ""); sub(/^["]/, ""); sub(/["][\t ]*$/, ""); print; }' "$FILE"`"
+                    sub(/^[\t ]*'"$OPTION"'[\t ]*=[\t ]*/, ""); sub(/^["]/, ""); sub(/["][\t ]*$/, ""); print; }' "$FILE")"
             test_yes DO_EVAL && eval "command echo \"$VALUE\"" || command echo "$VALUE"
             ;;
         read)
-            VALUE="`$AWK 'BEGIN { if ("'"$SECTION"'" == ".") s=1; else s=0; }
+            VALUE="$($AWK 'BEGIN { if ("'"$SECTION"'" == ".") s=1; else s=0; }
                 /* { print "LINE=" $0; } */
                 "'"$SECTION"'" != "." && /^[\t ]*\[.*\][\t ]*$/ {
                     s=0; }
                 "'"$SECTION"'" != "." && /^[\t ]*\['"$SECTION"'\][\t ]*$/ {
                     s=1; next; }
                 s==1 && /^[\t ]*'"$OPTION"'[\t ]*=[\t ]*/ {
-                    sub(/^[\t ]*'"$OPTION"'[\t ]*=[\t ]*/, ""); sub(/^["]/, ""); sub(/["][\t ]*$/, ""); print; }' "$FILE"`"
-            test_yes DO_EVAL && VALUE="`command echo \"$VALUE\"`"
+                    sub(/^[\t ]*'"$OPTION"'[\t ]*=[\t ]*/, ""); sub(/^["]/, ""); sub(/["][\t ]*$/, ""); print; }' "$FILE")"
+            test_yes DO_EVAL && VALUE="$(command echo \"$VALUE\")"
             test "$SECTION" != "." && assign "$FILE_CONFIG_PREFIX${SECTION}_${OPTION}" "$VALUE"
             assign "$FILE_CONFIG_PREFIX$OPTION" "$VALUE"
             ;;
@@ -1857,11 +1863,11 @@ function file_config
                     END { for (i in a) print i "=" a[i]; }' "$FILE")
             ;;
         set)
-            local TEMP_FILE="`file_temporary_name file_config_set "$FILE"`"
-            local ERROR_MSG="Configuration \"$OPTION=\"$VALUE\"\" change to file `echo_quote "$FILE"` fail"
+            local TEMP_FILE="$(file_temporary_name file_config_set "$FILE")"
+            local ERROR_MSG="Configuration \"$OPTION=\"$VALUE\"\" change to file $(echo_quote "$FILE") fail"
             if test -e "$FILE"
             then
-                cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG, temporary file create `echo_quote "$TEMP_FILE"` problem" $ERROR_CODE_DEFAULT
+                cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG, temporary file create $(echo_quote "$TEMP_FILE") problem" $ERROR_CODE_DEFAULT
                 test -w "$FILE" || echo_error_function "$ERROR_MSG, file not writable" $ERROR_CODE_DEFAULT
                 $AWK 'BEGIN { opt_val="'"$OPTION"'=\"'"$VALUE"'\""; found=0; s=0; }
                     "'"$SECTION"'" != "." && /^[\t ]*\[.*\][\t ]*$/ {
@@ -1922,10 +1928,10 @@ function check_ping
 
 function get_ip_arp
 {
-    local GET_IP_ARP="`arp "$1" 2> /dev/null | $AWK 'BEGIN { FS="[()]"; } { print $2; }'`"
+    local GET_IP_ARP="$(arp "$1" 2> /dev/null | $AWK 'BEGIN { FS="[()]"; } { print $2; }')"
     if test "$UNIX_TYPE" = "Linux" -a -z "$GET_IP_ARP"
     then
-        GET_IP_ARP="`arp -n "$1" 2> /dev/null | $AWK '/ether/ { print $1; }'`"
+        GET_IP_ARP="$(arp -n "$1" 2> /dev/null | $AWK '/ether/ { print $1; }')"
     fi
     command echo "$GET_IP_ARP"
 }
@@ -1939,10 +1945,10 @@ function get_ip_ping
 function get_ip
 {
     local HOST="$1"
-    test -z "$HOST" && HOST="`hostname`"
+    test -z "$HOST" && HOST="$(hostname)"
 
-    local GET_IP="`get_ip_arp "$HOST"`"
-    test -z "$GET_IP" && GET_IP="`get_ip_ping "$HOST"`"
+    local GET_IP="$(get_ip_arp "$HOST")"
+    test -z "$GET_IP" && GET_IP="$(get_ip_ping "$HOST")"
     command echo "$GET_IP"
 }
 
@@ -1952,13 +1958,13 @@ function is_localhost
     test -z "$1" -o "$1" = "localhost" -o "$1" = "127.0.0.1" && return 0
 
     # name test
-    local UNAME_N="`uname -n`"
+    local UNAME_N="$(uname -n)"
     #echo_debug_variable UNAME_N
     test "$1" = "$UNAME_N" && return 0
 
     # IP test
-    local UNAME_IP="`get_ip "$UNAME_N"`"
-    local REMOTE_IP="`get_ip "$1"`"
+    local UNAME_IP="$(get_ip "$UNAME_N")"
+    local REMOTE_IP="$(get_ip "$1")"
     #echo_debug_variable UNAME_IP REMOTE_IP
     test "$REMOTE_IP" = "$UNAME_IP" && return 0
 
@@ -1973,7 +1979,7 @@ function get_id
 function ssh_scanid
 # $1 @user scan to user
 # $2 scan hosts
-# ssh_scanid @root host `get_ip host`
+# ssh_scanid @root host $(get_ip host)
 {
     local SCAN_HOSTS=""
     local SCAN_HOST=""
@@ -1989,7 +1995,7 @@ function ssh_scanid
     done
     SCAN_HOSTS="${SCAN_HOSTS:1}"
 
-    test -z "$SCAN_USER" && SCAN_USER_HOME=~ || SCAN_USER_HOME="`eval echo ~$SCAN_USER`"
+    test -z "$SCAN_USER" && SCAN_USER_HOME=~ || SCAN_USER_HOME="$(eval echo ~$SCAN_USER)"
     SCAN_USER_HOME_SSH="$SCAN_USER_HOME/.ssh"
     SCAN_USER_HOME_SSH_HOSTS="$SCAN_USER_HOME/.ssh/known_hosts"
 
@@ -2023,7 +2029,7 @@ function ssh_scanremoteid
     done
     DESTINATIONS="${DESTINATIONS:1}"
 
-    test -z "$USEID_USER" && USEID_HOME_SSH=~/.ssh || USEID_HOME_SSH="`eval echo ~$USEID_USER/.ssh`"
+    test -z "$USEID_USER" && USEID_HOME_SSH=~/.ssh || USEID_HOME_SSH="$(eval echo ~$USEID_USER/.ssh)"
     for TEST_FILE in "$USEID_HOME_SSH/id_rsa" "$USEID_HOME_SSH/id_dsa"
     do
         test -f "$TEST_FILE" && USEID_FILE="$TEST_FILE" && break
@@ -2048,10 +2054,10 @@ function ssh_scanremoteid
             chown --reference=\$DEST_HOME \$DEST_HOME_SSH
             touch \$DEST_HOME_SSH_HOSTS
             chown --reference=\$DEST_HOME \$DEST_HOME_SSH_HOSTS
-            ssh-keyscan `hostname` >> \$DEST_HOME_SSH_HOSTS 2> /dev/null
-            ssh-keyscan `hostname --fqdn` >> \$DEST_HOME_SSH_HOSTS 2> /dev/null
-            ssh-keyscan `hostname --short` >> \$DEST_HOME_SSH_HOSTS 2> /dev/null
-            ssh-keyscan `get_ip` >> \$DEST_HOME_SSH_HOSTS 2> /dev/null
+            ssh-keyscan $(hostname) >> \$DEST_HOME_SSH_HOSTS 2> /dev/null
+            ssh-keyscan $(hostname --fqdn) >> \$DEST_HOME_SSH_HOSTS 2> /dev/null
+            ssh-keyscan $(hostname --short) >> \$DEST_HOME_SSH_HOSTS 2> /dev/null
+            ssh-keyscan $(get_ip) >> \$DEST_HOME_SSH_HOSTS 2> /dev/null
             test -x /sbin/restorecon && /sbin/restorecon \$DEST_HOME_SSH \$DEST_HOME_SSH_HOSTS >/dev/null 2>&1 || true
             cp \$DEST_HOME_SSH_HOSTS \${DEST_HOME_SSH_HOSTS}_orig
             cat \${DEST_HOME_SSH_HOSTS}_orig | sort -u > \$DEST_HOME_SSH_HOSTS
@@ -2078,14 +2084,14 @@ function ssh_exportid
     done
     DESTINATIONS="${DESTINATIONS:1}"
 
-    test -z "$COPYID_USER" && COPYID_HOME=~/.ssh || COPYID_HOME="`eval echo ~$COPYID_USER/.ssh`"
+    test -z "$COPYID_USER" && COPYID_HOME=~/.ssh || COPYID_HOME="$(eval echo ~$COPYID_USER/.ssh)"
     for TEST_FILE in "$COPYID_HOME/id_rsa" "$COPYID_HOME/id_dsa"
     do
         test -f "$TEST_FILE" && COPYID_FILE="$TEST_FILE" && break
     done
     test -z "$COPYID_FILE" && return 2
 
-    test -z "$USEID_USER" && USEID_HOME_SSH=~/.ssh || USEID_HOME_SSH="`eval echo ~$USEID_USER/.ssh`"
+    test -z "$USEID_USER" && USEID_HOME_SSH=~/.ssh || USEID_HOME_SSH="$(eval echo ~$USEID_USER/.ssh)"
     for TEST_FILE in "$USEID_HOME_SSH/id_rsa" "$USEID_HOME_SSH/id_dsa"
     do
         test -f "$TEST_FILE" && USEID_FILE="$TEST_FILE" && break
@@ -2138,7 +2144,7 @@ function ssh_importid
     done
     DESTINATIONS="${DESTINATIONS:1}"
 
-    test -z "$USEID_USER" && USEID_HOME_SSH=~/.ssh || USEID_HOME_SSH="`eval echo ~$USEID_USER/.ssh`"
+    test -z "$USEID_USER" && USEID_HOME_SSH=~/.ssh || USEID_HOME_SSH="$(eval echo ~$USEID_USER/.ssh)"
     for TEST_FILE in "$USEID_HOME_SSH/id_rsa" "$USEID_HOME_SSH/id_dsa"
     do
         test -f "$TEST_FILE" && USEID_FILE="$TEST_FILE" && break
@@ -2155,11 +2161,11 @@ function ssh_importid
         local DEST_LOCAL_USER="${DEST_LOCAL_USER#*@}"
         local DESTID_FILE=""
 
-        test -z "$COPYID_USER" && COPYID_USER="`whoami`" && COPYID_HOME=~ || COPYID_HOME="`eval echo ~$COPYID_USER`"
+        test -z "$COPYID_USER" && COPYID_USER="$(whoami)" && COPYID_HOME=~ || COPYID_HOME="$(eval echo ~$COPYID_USER)"
         COPYID_HOME_SSH="$COPYID_HOME/.ssh"
         COPYID_HOME_SSH_KEYS="$COPYID_HOME_SSH/authorized_keys"
 
-        test -z "$DEST_LOCAL_USER" && DEST_HOME=~ || DEST_HOME="`eval echo ~$DEST_LOCAL_USER`"
+        test -z "$DEST_LOCAL_USER" && DEST_HOME=~ || DEST_HOME="$(eval echo ~$DEST_LOCAL_USER)"
         DEST_HOME_SSH="$DEST_HOME/.ssh"
 
         test -d $COPYID_HOME_SSH || mkdir $COPYID_HOME_SSH
@@ -2227,15 +2233,15 @@ function call_command
         break
     done
 
-    local FILE="`file_temporary_name call_command`"
+    local FILE="$(file_temporary_name call_command)"
     test_no QUIET && REDIRECT="/dev/stdout" || REDIRECT="/dev/null"
     test_no PREFIX && PIPE="cat" || PIPE="pipe_echo_prefix"
-    test -z "$COMMAND_STRING" && { test $# -eq 1 && COMMAND_STRING="`echo "$1"`" || COMMAND_STRING="`echo_quote "$@"`"; }
+    test -z "$COMMAND_STRING" && { test $# -eq 1 && COMMAND_STRING="$(echo "$1")" || COMMAND_STRING="$(echo_quote "$@")"; }
     local EXIT_CODE
     if is_localhost "$HOST"
     then
         test_yes "$LOCAL_DEBUG" && echo_debug_custom command --right "$COMMAND_STRING"
-        if test_no "$USER_SET" -o "`get_id`" = "$USER"
+        if test_no "$USER_SET" -o "$(get_id)" = "$USER"
         then
             #bash -c "$@"
             eval "stdbuf -i0 -o0 -e0 $@" 2>&1 | tee "$FILE" | $PIPE > $REDIRECT
@@ -2260,7 +2266,7 @@ function call_command
 function get_pids
 # return PIDs found by command regex
 {
-    ps -e -o pid,ppid,cmd | $AWK --assign=p="$1" --assign=s="$$" '$1==s||$2==s||/tools_get_pids_tag/ { next; } $0~p { print $1; }';
+    ps -e -o pid,ppid,cmd | $AWK $AWK_VAR p="$1" $AWK_VAR s="$$" '$1==s||$2==s||/tools_get_pids_tag/ { next; } $0~p { print $1; }';
 }
 
 function get_pids_tree_loop
@@ -2269,7 +2275,7 @@ function get_pids_tree_loop
     local CHECK_PID
     for CHECK_PID in $*
     do
-        local CHILD_PIDS="`ps -o pid --no-headers --ppid ${CHECK_PID}`"
+        local CHILD_PIDS="$(ps -o pid --no-headers --ppid ${CHECK_PID})"
         test -n "$CHILD_PIDS" && get_pids_tree_loop $CHILD_PIDS && str_word add PIDS_TREE $CHILD_PIDS
         test $CHECK_PID != "$$" && str_word add PIDS_TREE $CHECK_PID
     done
@@ -2284,7 +2290,7 @@ function get_pids_tree
     then # search tree for PIDs
         get_pids_tree_loop $*
     else # search tree for PIDs from name
-        local PID_LIST="`get_pids "$1"`"
+        local PID_LIST="$(get_pids "$1")"
         get_pids_tree_loop $PID_LIST
     fi
     echo "$PIDS_TREE"
@@ -2299,7 +2305,7 @@ function kill_tree_verbose
     local CHECK_PID
     for CHECK_PID in $*
     do
-        CHILD_PIDS="`ps -o pid --no-headers --ppid ${CHECK_PID}`"
+        CHILD_PIDS="$(ps -o pid --no-headers --ppid ${CHECK_PID})"
         if test -n "$CHILD_PIDS"
         then
             echo_line "${SPACE}Found child PIDs from $CHECK_PID: "$CHILD_PIDS
@@ -2310,7 +2316,7 @@ function kill_tree_verbose
         echo_line "${SPACE}Killing PID: $CHECK_PID"
         if test "$CHECK_PID" != "$$"
         then
-            local PID_INFO="`ps -f --no-heading $CHECK_PID`"
+            local PID_INFO="$(ps -f --no-heading $CHECK_PID)"
             test -n "$PID_INFO" && echo_debug INFO "${SPACE}  PID $CHECK_PID killed:     <$PID_INFO>" || echo_debug INFO "  PID $CHECK_PID already killed"
             kill -9 "$CHECK_PID" 2>/dev/null
         else
@@ -2323,11 +2329,11 @@ function kill_tree
 # $1 regexp for process name or pid
 # $2 exclude PIDs
 {
-    local PID_LIST="`get_pids_tree "$1"`"
-    test -n "$2" && PID_LIST="`command echo "$PID_LIST" | $GREP --invert-match "$2"`"
+    local PID_LIST="$(get_pids_tree "$1")"
+    test -n "$2" && PID_LIST="$(command echo "$PID_LIST" | $GREP --invert-match "$2")"
     for KILL_PID in $PID_LIST
     do
-        local PID_INFO="`ps -f --no-heading $KILL_PID`"
+        local PID_INFO="$(ps -f --no-heading $KILL_PID)"
         test -n "$PID_INFO" && echo_debug INFO "PID $KILL_PID killed:     <$PID_INFO>" || echo_debug INFO "PID $KILL_PID already killed"
         kill -9 $KILL_PID 2>/dev/null
     done
@@ -2364,7 +2370,7 @@ function performance
     test -n "${PERFORMANCE_MESSAGES[$VAR]}" && MSG=" \"${PERFORMANCE_MESSAGES[$VAR]}\"" || { test "$VAR" != "default" && MSG=" id=$VAR"; }
     local DATE_NOW
     str_date DATE_NOW "%s.%N"
-    DATE_NOW="`echo "$DATE_NOW" | $AWK '{ printf "%.3f", $1; }'`"
+    DATE_NOW="$(echo "$DATE_NOW" | $AWK '{ printf "%.3f", $1; }')"
     local DATE_NOW_STR
     str_date DATE_NOW_STR "%Y-%m-%d %H:%M:%S"
     case "$TASK" in
@@ -2373,11 +2379,11 @@ function performance
             test_yes PERFORMANCE_DETAILS && echo_line "Performance$MSG started on date $DATE_NOW_STR timestamp: $DATE_NOW"
             ;;
         now)
-            local ELAPSED="`command echo | $AWK '{ printf "%.3f", ('$DATE_NOW' - '${PERFORMANCE_DATA[$VAR]}'); }'`"
+            local ELAPSED="$(command echo | $AWK '{ printf "%.3f", ('$DATE_NOW' - '${PERFORMANCE_DATA[$VAR]}'); }')"
             test_yes PERFORMANCE_DETAILS && echo_line "Performance$MSG on date $DATE_NOW_STR timestamp: $DATE_NOW elapsed: ${ELAPSED}s" || echo_line "Performance$MSG: ${ELAPSED}s"
             ;;
         stop|end)
-            local ELAPSED="`command echo | $AWK '{ printf "%.3f", ('$DATE_NOW' - '${PERFORMANCE_DATA[$VAR]}'); }'`"
+            local ELAPSED="$(command echo | $AWK '{ printf "%.3f", ('$DATE_NOW' - '${PERFORMANCE_DATA[$VAR]}'); }')"
             test_yes PERFORMANCE_DETAILS && echo_line "Performance$MSG ended on date $DATE_NOW_STR timestamp: $DATE_NOW elapsed: ${ELAPSED}s" || echo_line "Performance$MSG: ${ELAPSED}s"
             PERFORMANCE_DATA[$VAR]=0
             ;;
@@ -2484,7 +2490,7 @@ function test_str_grep
 {
     local IGNORE_CASE=""
     test "$1" = "-i" -o "$1" = "--ignore-case" && IGNORE_CASE="--ignore-case" && shift
-    test $# != 2 && echo_error_function "Wrong arguments count: $#, Arguments: `echo_quote "$@"`" $ERROR_CODE_DEFAULT
+    test $# != 2 && echo_error_function "Wrong arguments count: $#, Arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
 
     command echo "$1" | $GREP --quiet --extended-regexp $IGNORE_CASE "$2"
     return $?
@@ -2496,9 +2502,9 @@ function test_str
 {
     local IGNORE_CASE=""
     test "$1" = "-i" -o "$1" = "--ignore-case" && IGNORE_CASE="yes" && shift
-    test $# != 2 && echo_error_function "Wrong arguments count: $#, Arguments: `echo_quote "$@"`" $ERROR_CODE_DEFAULT
+    test $# != 2 && echo_error_function "Wrong arguments count: $#, Arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
 
-    #test -n "$IGNORE_CASE" && local SHOPT="`shopt -p nocasematch`" && shopt -s nocasematch
+    #test -n "$IGNORE_CASE" && local SHOPT="$(shopt -p nocasematch)" && shopt -s nocasematch
     test -n "$IGNORE_CASE" && shopt -s nocasematch
     [[ "$1" =~ $2 ]]
     local RETURN=$?
@@ -2511,7 +2517,7 @@ function test_file
 # $1 regexp string to test
 # $2 filename
 {
-    test $# != 2 && echo_error_function "Wrong arguments count: $#, Arguments: `echo_quote "$@"`" $ERROR_CODE_DEFAULT
+    test $# != 2 && echo_error_function "Wrong arguments count: $#, Arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
 
     test -f "$2" || return 1
 
@@ -2606,10 +2612,10 @@ function terminal
 
     case "$TASK" in
         check|info)
-            test -z "$COLUMNS" -o "$COLUMNS" = 0 && COLUMNS="`tput cols`"
+            test -z "$COLUMNS" -o "$COLUMNS" = 0 && COLUMNS="$(tput cols)"
             ;;
         get)
-            COLUMNS="`tput cols`"
+            COLUMNS="$(tput cols)"
             ;;
         *)
             echo_error_function "Unknown argument: $TASK" $ERROR_CODE_DEFAULT
@@ -2712,9 +2718,9 @@ function pipe_prefix
 
     test -n "$FILE" -a -z "$HEADER" && HEADER="$FILE"
     test -n "$HEADER" && HEADER="$COLOR_PIPE_HEADER$HEADER$COLOR_RESET"
-    $AWK --assign=header_prefix="$COLOR_PIPE_PREFIX$HEADER_PREFIX$COLOR_RESET" --assign=header_postfix="$COLOR_PIPE_PREFIX$HEADER_POSTFIX$COLOR_RESET" \
-         --assign=header="$HEADER" --assign=prefix="$COLOR_PIPE_PREFIX$PREFIX$COLOR_RESET" \
-         --assign=numbers="$NUMBERS" --assign=hide="$HIDE" --assign=command="$COMMAND" --assign=empty="$EMPTY" --assign=deduplicate="$DEDUPLICATE" '
+    $AWK $AWK_VAR header_prefix="$COLOR_PIPE_PREFIX$HEADER_PREFIX$COLOR_RESET" $AWK_VAR header_postfix="$COLOR_PIPE_PREFIX$HEADER_POSTFIX$COLOR_RESET" \
+         $AWK_VAR header="$HEADER" $AWK_VAR prefix="$COLOR_PIPE_PREFIX$PREFIX$COLOR_RESET" \
+         $AWK_VAR numbers="$NUMBERS" $AWK_VAR hide="$HIDE" $AWK_VAR command="$COMMAND" $AWK_VAR empty="$EMPTY" $AWK_VAR deduplicate="$DEDUPLICATE" '
         function print_line(line) {
             if (numbers=="yes") {
                 lineno_prefix="";
@@ -2760,7 +2766,7 @@ function pipe_replace
     then
         pipe_replace_section "$1" "$2" "$3" "$4"
     else
-        echo_error_function "Wrong arguments count: $#, Arguments: `echo_quote "$@"`" $ERROR_CODE_DEFAULT
+        echo_error_function "Wrong arguments count: $#, Arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
     fi
 }
 
@@ -2768,7 +2774,7 @@ function pipe_replace_string
 # $1 regex search
 # $2 replace
 {
-    sed --expression="s|$1|$2|g" || echo_error_function "String `echo_quote "$1"` replace `echo_quote "$2"` error" $ERROR_CODE_DEFAULT
+    sed --expression="s|$1|$2|g" || echo_error_function "String $(echo_quote "$1") replace $(echo_quote "$2") error" $ERROR_CODE_DEFAULT
 }
 
 function pipe_replace_section
@@ -2821,7 +2827,7 @@ function pipe_replace_section
             if (copybuf == "") copybuf = $0;
             else copybuf = copybuf "\n" $0;
             next;
-        }' || echo_error_function "Section `echo_quote "$1"`-`echo_quote "$2"` replace error" $ERROR_CODE_DEFAULT
+        }' || echo_error_function "Section $(echo_quote "$1")-$(echo_quote "$2") replace error" $ERROR_CODE_DEFAULT
 }
 
 function pipe_remove_color
@@ -2846,7 +2852,7 @@ function pipe_join_lines
 function pipe_from
 # command | pipe_from "from this line"
 {
-    $AWK --assign=from="$1" '
+    $AWK $AWK_VAR from="$1" '
         BEGIN { show=0; }
         show==1 { print; next; }
         $0~from { show=1; print; }
@@ -2921,16 +2927,16 @@ function log
             test -z "$LOG_FILE" && LOG_FILE="${SCRIPT_FILE_NOEXT}.log"
             shift
             local LOG_TITLE_OPTIONS=""
-            test -n "$1" && LOG_TITLE_OPTIONS=" `echo_quote "$@"`"
+            test -n "$1" && LOG_TITLE_OPTIONS=" $(echo_quote "$@")"
 
             log section
-            log log "${LOG_SECTION_SHORT}Log $TASK started on `hostname --fqdn`, command: $0$LOG_TITLE_OPTIONS" >> "$LOG_FILE"
+            log log "${LOG_SECTION_SHORT}Log $TASK started on $(hostname --fqdn), command: $0$LOG_TITLE_OPTIONS" >> "$LOG_FILE"
             ;;
         done)
             test -z "$LOG_FILE" && echo_warning_function "Log file is not specified" && return 1
 
             local LOG_DURATION
-            let LOG_DURATION="`date -u +%s` - $LOG_START"
+            let LOG_DURATION="$(date -u +%s) - $LOG_START"
 
             log log "${LOG_SECTION_SHORT}Log $TASK, script runtime $LOG_DURATION seconds" >> "$LOG_FILE"
             log section
@@ -3011,7 +3017,7 @@ function echo_quote
     ECHO_QUOTE=""
     for ARG in "$@"
     do
-        #ARG="`echo "$ARG" | sed --expression='s:\([\`]\):\\1:g'`"
+        #ARG="$(echo "$ARG" | sed --expression='s:\([\`]\):\\1:g')"
         if [[ $ARG =~ $CHECK_NEEDQUOTE ]]
         then
             local QUOTE="D"
@@ -3136,7 +3142,7 @@ function echo_line
         "right")
             terminal check
             local -i SHIFT="$COLUMNS"
-            #local MESSAGE_E_NO_COLOR="`command echo -en "$MESSAGE_E"`"
+            #local MESSAGE_E_NO_COLOR="$(command echo -en "$MESSAGE_E")"
             local MESSAGE_E_NO_COLOR="$MESSAGE_E"
             test_yes TOOLS_COLOR && str_remove_color MESSAGE_E_NO_COLOR
             let SHIFT="$SHIFT - ${#MESSAGE_E_NO_COLOR}"
@@ -3156,7 +3162,7 @@ function echo_line
         "center")
             terminal check
             local -i SHIFT="$COLUMNS"
-            #local MESSAGE_E_NO_COLOR="`command echo -en "$MESSAGE_E"`"
+            #local MESSAGE_E_NO_COLOR="$(command echo -en "$MESSAGE_E")"
             local MESSAGE_E_NO_COLOR="$MESSAGE_E"
             test_yes TOOLS_COLOR && str_remove_color MESSAGE_E_NO_COLOR
             let SHIFT="($SHIFT - ${#MESSAGE_E_NO_COLOR}) / 2"
@@ -3217,11 +3223,11 @@ function echo_title
     local TITLE_MSG_NO_COLOR="$TITLE_MSG_SPACES$@$TITLE_MSG_SPACES"
     str_remove_color TITLE_MSG_NO_COLOR
     local TITLE_LENGTH="${#TITLE_MSG_NO_COLOR}"
-    #local TITLE_SEQ="`eval echo "{1..$TITLE_LENGTH}"`"
+    #local TITLE_SEQ="$(eval echo "{1..$TITLE_LENGTH}")"
     local TITLE_STYLE0="${TITLE_STYLE:0:1}"
     test "$TITLE_STYLE0" = "$S_CHR255" && TITLE_STYLE0=""
     local TITLE_STYLE1="${TITLE_STYLE:1:1}"
-    #local TITLE_STYLE1SEQ="`printf -- "${TITLE_STYLE1}%.0s" $TITLE_SEQ`"
+    #local TITLE_STYLE1SEQ="$(printf -- "${TITLE_STYLE1}%.0s" $TITLE_SEQ)"
     assign_multiple TITLE_STYLE1SEQ $TITLE_LENGTH "$TITLE_STYLE1"
     test "$TITLE_STYLE1" = "$S_CHR255" && TITLE_STYLE1="" && TITLE_STYLE1SEQ=""
     local TITLE_STYLE2="${TITLE_STYLE:2:1}"
@@ -3233,7 +3239,7 @@ function echo_title
     local TITLE_STYLE5="${TITLE_STYLE:5:1}"
     test "$TITLE_STYLE5" = "$S_CHR255" && TITLE_STYLE5=""
     local TITLE_STYLE6="${TITLE_STYLE:6:1}"
-    #local TITLE_STYLE6SEQ="`printf -- "${TITLE_STYLE6}%.0s" $TITLE_SEQ`"
+    #local TITLE_STYLE6SEQ="$(printf -- "${TITLE_STYLE6}%.0s" $TITLE_SEQ)"
     assign_multiple TITLE_STYLE6SEQ $TITLE_LENGTH "$TITLE_STYLE6"
     test "$TITLE_STYLE6" = "$S_CHR255" && TITLE_STYLE6="" && TITLE_STYLE6SEQ=""
     local TITLE_STYLE7="${TITLE_STYLE:7:1}"
@@ -3288,8 +3294,8 @@ function echo_step
     log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_STEP_PREFIX$STEP_NUMBER_STR$@"
 
     test_integer "$STEP_NUMBER" && let STEP_NUMBER++ && assign "$STEP_VARIABLE" $STEP_NUMBER
-    test_str "$STEP_NUMBER" "^[a-z]$" && assign $STEP_VARIABLE "`command echo "$STEP_NUMBER" | tr "a-z" "b-z_"`"
-    test_str "$STEP_NUMBER" "^[A-Z]$" && assign $STEP_VARIABLE "`command echo "$STEP_NUMBER" | tr "A-Z" "B-Z_"`"
+    test_str "$STEP_NUMBER" "^[a-z]$" && assign $STEP_VARIABLE "$(command echo "$STEP_NUMBER" | tr "a-z" "b-z_")"
+    test_str "$STEP_NUMBER" "^[A-Z]$" && assign $STEP_VARIABLE "$(command echo "$STEP_NUMBER" | tr "A-Z" "B-Z_")"
     return 0
 }
 
@@ -3625,7 +3631,7 @@ function echo_debug_right
             local DEBUG_MESSAGE="$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$@"
             local DEBUG_MESSAGE_STR="$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$@"
         fi
-        local -i SHIFT_MESSAGE="`tput cols`"
+        local -i SHIFT_MESSAGE="$(tput cols)"
         let SHIFT_MESSAGE="$SHIFT_MESSAGE - ${#DEBUG_MESSAGE_STR}"
 
 ##############OLD
@@ -3880,7 +3886,7 @@ function history
             while read LINE
             do
                 test -n "$LINE" && HISTORY+=("$LINE")
-            done <<< "`tac "$HISTFILE"`"
+            done <<< "$(tac "$HISTFILE")"
             ;;
         store)
             test -z "$1" -o "$1" = "${HISTORY[0]}" && return 0
@@ -4110,20 +4116,20 @@ function init_tools
     done
     arguments done
 
-    SCRIPT_FILE="`readlink --canonicalize "$0"`"
+    SCRIPT_FILE="$(readlink --canonicalize "$0")"
     SCRIPT_FILE_NOEXT="${SCRIPT_FILE%.sh}"
     SCRIPT_FILE_NOEXT="${SCRIPT_FILE_NOEXT%.}"
-    SCRIPT_NAME="`basename "$SCRIPT_FILE"`"
+    SCRIPT_NAME="$(basename "$SCRIPT_FILE")"
     SCRIPT_NAME_NOEXT="${SCRIPT_NAME%.sh}"
     SCRIPT_NAME_NOEXT="${SCRIPT_NAME_NOEXT%.}"
-    SCRIPT_PATH="`dirname "$SCRIPT_FILE"`"
+    SCRIPT_PATH="$(dirname "$SCRIPT_FILE")"
 
     test -z "$TOOLS_FILE" -a -f "$SCRIPT_PATH/tools.sh" && TOOLS_FILE="$SCRIPT_PATH/tools.sh"
     if test -f "$TOOLS_FILE"
     then
-        TOOLS_FILE="`readlink --canonicalize "$TOOLS_FILE"`"
-        TOOLS_NAME="`basename "$TOOLS_FILE"`"
-        TOOLS_PATH="`dirname "$TOOLS_FILE"`"
+        TOOLS_FILE="$(readlink --canonicalize "$TOOLS_FILE")"
+        TOOLS_NAME="$(basename "$TOOLS_FILE")"
+        TOOLS_PATH="$(dirname "$TOOLS_FILE")"
     else
         TOOLS_FILE=""
         TOOLS_NAME=""
@@ -4224,12 +4230,12 @@ declare -x -f array_assign
 declare -x -f array_assign_arguments
 declare -x -f array_copy
 
-declare -x -r S_CHR0="`command echo -e "\000"`"
-declare -x -r S_CHR1="`command echo -e "\001"`"
-declare -x -r S_CHR255="`command echo -e "\xFF"`"
-declare -x -r S_ESC="`command echo -e "\e"`"
-declare -x -r S_TAB="`command echo -e "\t"`"
-#declare -x -r S_NEWLINE="`command echo -e "\n"`"
+declare -x -r S_CHR0="$(command echo -e "\000")"
+declare -x -r S_CHR1="$(command echo -e "\001")"
+declare -x -r S_CHR255="$(command echo -e "\xFF")"
+declare -x -r S_ESC="$(command echo -e "\e")"
+declare -x -r S_TAB="$(command echo -e "\t")"
+#declare -x -r S_NEWLINE="$(command echo -e "\n")"
 declare -x -r S_NEWLINE=$'\n'
 
 declare -x -f str_trim
@@ -4404,7 +4410,7 @@ declare -x LOG_DATE="%Y-%m-%d %H:%M:%S"
 declare -x LOG_SECTION_LONG="=============================================================================="
 declare -x LOG_SECTION_SHORT="=== "
 declare -x LOG_SPACE=""
-declare -x LOG_START="`date -u +%s`"
+declare -x LOG_START="$(date -u +%s)"
 declare -x -f log                       # init / done / section / log | echo
 
 declare -x -f pipe_log
@@ -4518,7 +4524,7 @@ init_tools "$@"
 # set echo prefix or uname prefix
 test_yes TOOLS_PREFIX && ECHO_PREFIX="### " || ECHO_PREFIX=""
 test -n "$ECHO_PREFIX" && ECHO_PREFIX_C="$COLOR_PREFIX$ECHO_PREFIX$COLOR_RESET"
-test_yes TOOLS_UNAME && ECHO_UNAME="`uname -n`: " || ECHO_UNAME=""
+test_yes TOOLS_UNAME && ECHO_UNAME="$(uname -n): " || ECHO_UNAME=""
 test -n "$ECHO_UNAME" && ECHO_UNAME_C="$COLOR_UNAME$ECHO_UNAME$COLOR_RESET"
 
 return 0

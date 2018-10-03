@@ -30,7 +30,8 @@
 
     $.get("BashTools" + doc + ".adoc?rnd=" + Math.random(), function(data) {
         $("#target").html(asciidoctor.convert(data));
-        $("code").each(function(i, block) { hljs.highlightBlock(block); }); });
+        $("pre code").each(function(i, block) { hljs.highlightBlock(block); });
+        $("code code").each(function(i, block) { hljs.highlightBlock(block); }); });
     </script>
   </body>
 </html>

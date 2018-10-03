@@ -9,22 +9,22 @@
 
 Simple insert this code into begining of your code: `source <tools.sh> [options]`
 
-=== shortest version
+=== Shortest version
 [source,bash]
 source "$(dirname $0)/tools.sh"
 
-=== shortest version extended
+=== Shortest version extended
 with process tools known arguments and others put via command_options to $COMMAND, $OPTION, ...
 [source,bash]
 source "$(dirname $0)/tools.sh" "$@"
 
-=== good version
+=== Good version
 with process tool known arguments, some predefined arguments and tools included check
 [source,bash]
 export TOOLS_FILE="$(dirname $0)/tools.sh"
 source "$TOOLS_FILE" --debug --debug-variable --debug-function --debug-right "$@" || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
 
-=== long version
+=== Long version
 [source,bash]
 ----
 unset TOOLS_LOADED
@@ -84,25 +84,25 @@ Advanced print and log:
 
 Printed strings are prefixed and colored by:
 
-* Colors enabled: `$COLOR_PREFIX$ECHO_PREFIX$COLOR_RESET$ECHO_UNAME`
-* Colors disabled: `$ECHO_PREFIX$ECHO_UNAME`
+* Colors enabled: ```$COLOR_PREFIX$ECHO_PREFIX$COLOR_RESET$ECHO_UNAME```
+* Colors disabled: ```$ECHO_PREFIX$ECHO_UNAME```
 
 Default prefixes are if enabled:
 
-* if `$TOOLS_PREFIX` then `ECHO_PREFIX="### "`
-* if `$TOOLS_UNAME` then `ECHO_UNAME="$(uname -n): "`
+* if ```$TOOLS_PREFIX = yes``` then ```ECHO_PREFIX="&num;&num;&num; "```
+* if ```$TOOLS_UNAME = yes``` then ```ECHO_UNAME="$(uname -n): "```
 
-TIP: To reinicialize default prefixes call set_yes or set_no: `set_yes TOOLS_PREFIX; init_tools` and/or `set_yes TOOLS_UNAME; init_tools`
+TIP: To reinicialize default prefixes call set_yes or set_no: ```set_yes TOOLS_PREFIX; init_tools``` and/or ```set_yes TOOLS_UNAME; init_tools```
 
-TIP: These prefixes can be anytime directly customized with `ECHO_PREFIX="<custom>"; ECHO_UNAME="<custom>"` and colored version `ECHO_PREFIX_C="<custom>"; ECHO_UNAME_C="<custom>"`
+TIP: These prefixes can be anytime directly customized with ```ECHO_PREFIX="<custom>"; ECHO_UNAME="<custom>"``` and colored version ```ECHO_PREFIX_C="<custom>"; ECHO_UNAME_C="<custom>"```
 
 If colors are enabled:
 
-* `COLOR_UNAME="$COLOR_GREEN"`
-* `COLOR_PREFIX="$COLOR_DARK_GRAY"`
+* ```COLOR_UNAME="$COLOR_GREEN"```
+* ```COLOR_PREFIX="$COLOR_DARK_GRAY"```
 
-TIP: When `TOOLS_PREFIX` and `TOOLS_UNAME` are enabled output of `print "Test message"` is +
-`### machine1: Test message`
+TIP: When `TOOLS_PREFIX` and `TOOLS_UNAME` are enabled output of ```print "Test message"``` is +
+`&num;&num;&num; machine1: Test message`
 
 
 === Examples
@@ -110,19 +110,18 @@ TIP: When `TOOLS_PREFIX` and `TOOLS_UNAME` are enabled output of `print "Test me
 [options="header"]
 |===
 |classic|tools|result
-|`echo "Example line"`|`print "Example line"`|`Example line`
-|`echo "[=======]" +
+|```echo "Example line"```|```print "Example line"```|`Example line`|```echo "[=======]" +
 echo "&nbsp;&nbsp;Title&nbsp;&nbsp;" +
-echo "[=======]"`
-|`print title "Title"`
+echo "[=======]"```
+|```print title "Title"```
 |`[=======] +
 &nbsp;&nbsp;Title&nbsp;&nbsp; +
 [=======]`
-|`echo "Error: Message!" +
-exit 1`
-|`print error "Message" 1`
+|```echo "Error: Message!" +
+exit 1```
+|```print error "Message" 1```
 |`Error: Message!`
-|`NUMBER=1 +
+|```NUMBER=1 +
 echo "  ${NUMBER}. initial" +
 let NUMBER++ +
 echo "  ${NUMBER}. second" +
@@ -130,14 +129,14 @@ echo "  ${NUMBER}. second" +
 CHAR=a +
 echo "  ${CHAR}. char" +
 CHAR="$(echo "$CHAR" \| tr "a-z" "b-z_")" +
-echo "  ${CHAR}. second char"`
-|`NUMBER=1 +
+echo "  ${CHAR}. second char"```
+|```NUMBER=1 +
 print step NUMBER "initial" +
 print step NUMBER "second" +
  +
 CHAR="a" +
 print step CHAR "char" +
-print step CHAR "second char"`
+print step CHAR "second char"```
 |`&nbsp;&nbsp;1. initial +
 &nbsp;&nbsp;2. second +
  +
@@ -145,4 +144,3 @@ print step CHAR "second char"`
 &nbsp;&nbsp;b. second char`
 |===
 
-fsd

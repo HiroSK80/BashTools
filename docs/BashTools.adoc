@@ -7,29 +7,29 @@
 
 == Usage
 
-Simple insert this code into begining of your code: `souce <tools.sh> [options]`
+Simple insert this code into begining of your code: `source <tools.sh> [options]`
 
 === shortest version
 [source,bash]
-souce "$(dirname $0)/tools.sh"
+source "$(dirname $0)/tools.sh"
 
 === shortest version extended
 with process tools known arguments and others put via command_options to $COMMAND, $OPTION, ...
 [source,bash]
-souce "$(dirname $0)/tools.sh" "$@"
+source "$(dirname $0)/tools.sh" "$@"
 
 === good version
 with process tool known arguments, some predefined arguments and tools included check
 [source,bash]
 export TOOLS_FILE="$(dirname $0)/tools.sh"
-souce "$TOOLS_FILE" --debug --debug-variable --debug-function --debug-right "$@" || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
+source "$TOOLS_FILE" --debug --debug-variable --debug-function --debug-right "$@" || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
 
 === long version
 [source,bash]
 ----
 unset TOOLS_LOADED
 export TOOLS_FILE="$(dirname $0)/tools.sh"
-souce "$TOOLS_FILE" --debug --debug-right --debug-function --debug-variable "$@"
+source "$TOOLS_FILE" --debug --debug-right --debug-function --debug-variable "$@"
 test "$TOOLS_LOADED" != "yes" && echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1
 ----
 

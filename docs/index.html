@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta http-equiv="pragma" content="no-cache" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open+Sans:300,300italic,400,400italic,600,600italic%7CNoto+Serif:400,400italic,700,700italic%7CDroid+Sans+Mono:400,700">
+    <link rel="stylesheet" href="asciidoctor.css">
+    <link rel="stylesheet" href="highlight.css?123">
+    <script src="jquery-3.3.1.min.js"></script>
+    <script src="asciidoctor.js"></script>
+    <script src="highlight.js"></script>
+    <style>
+.center {
+    margin: auto;
+    width: 90%;
+    padding: 10px;
+}
+</style>
+  </head>
+        
+  <body>
+    <div id="target" class="center"></div>
+
+    <script>
+    var asciidoctor = Asciidoctor();
+
+    var doc = "";
+    let params = new URLSearchParams(window.location.search);
+    if (params.has('doc')) doc = "." + params.get('doc')
+
+    $.get("BashTools" + doc + ".adoc?rnd=" + Math.random(), function(data) {
+        $("#target").html(asciidoctor.convert(data));
+        $("code").each(function(i, block) { hljs.highlightBlock(block); }); });
+    </script>
+  </body>
+</html>

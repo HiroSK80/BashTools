@@ -1,0 +1,153 @@
+= BashTools
+#:toc: left
+#:toc-title: Table of Adventures
+
+:source-highlighter: highlightjs
+:highlightjsdir: highlight
+:source-language: bash
+
+== Content
+
+link:index.html?doc=Output[Output] | link:index.html?doc=Pipe[Pipe]
+
+== Usage
+
+Simple insert this code into begining of your code: `souce <tools.sh> [options]`
+
+=== shortest version
+[source,bash]
+souce "$(dirname $0)/tools.sh"
+
+=== shortest version extended
+with process tools known arguments and others put via command_options to $COMMAND, $OPTION, ...
+[source,bash]
+souce "$(dirname $0)/tools.sh" "$@"
+
+=== good version
+with process tool known arguments, some predefined arguments and tools included check
+[source,bash]
+export TOOLS_FILE="$(dirname $0)/tools.sh"
+souce "$TOOLS_FILE" --debug --debug-variable --debug-function --debug-right "$@" || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
+
+=== long version
+[source,bash]
+----
+unset TOOLS_LOADED
+export TOOLS_FILE="$(dirname $0)/tools.sh"
+souce "$TOOLS_FILE" --debug --debug-right --debug-function --debug-variable "$@"
+test "$TOOLS_LOADED" != "yes" && echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1
+----
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+== Console output
+
+Function `print` is for console output and ouptional log. Arguments are: `print [line|info|step|substep|title|quote|cut|warning|error|debug] [options] <string>`
+
+Simple print and log line: `print [line] [options] <string>`
+
+Advanced print and log:
+
+* informational string: `print info [options] <string>`
+* step string: `print step [step_variable] <string>`
+* substep string: `print substep [step_variable] <string>`
+* title string: `print substep [options] <string>`
+* quoted string: `print quote [options] <string>`
+* cutted string: `print cut [options] <string>`
+* warning string: `print warning <string> [exit_code]`
+* error string: `print error <string> [exit_code]`
+** Example usage: `print error "Message" 1` will output `Error: Message!` and exit with code 1
+** String is combined when color is enabled as `$COLOR_ERROR$ECHO_PREFIX_ERROR<string>!$COLOR_RESET` where `ECHO_PREFIX_ERROR="Error: "` and `COLOR_ERROR="$COLOR_LIGHT_RED"`
+** And when color is disabled as `$ECHO_PREFIX_ERROR<string>!` where `ECHO_PREFIX_ERROR="Error: "`
+** Output is redirected by default to `REDIRECT_ERROR=/dev/stdout`
+* debug string: `print debug [-v|--variable|-f|--function|-c|--custom] [level] <string>`
+** debug variable(s): `print debug --variable [level] <variable1> [variable2...]`
+** debug function: `print debug --function "$@"` "$@" are all function arguments
+** debug custom string: `print debug --custom <custom_tag> [level] <string>`
+
+=== Prefixes and colors
+
+Printed strings are prefixed and colored by:
+
+* Colors enabled: `$COLOR_PREFIX$ECHO_PREFIX$COLOR_RESET$ECHO_UNAME`
+* Colors disabled: `$ECHO_PREFIX$ECHO_UNAME`
+
+Default prefixes are if enabled:
+
+* if `$TOOLS_PREFIX` then `ECHO_PREFIX="### "`
+* if `$TOOLS_UNAME` then `ECHO_UNAME="$(uname -n): "`
+
+TIP: To reinicialize default prefixes call set_yes or set_no: `set_yes TOOLS_PREFIX; init_tools` and/or `set_yes TOOLS_UNAME; init_tools`
+
+TIP: These prefixes can be anytime directly customized with `ECHO_PREFIX="<custom>"; ECHO_UNAME="<custom>"` and colored version `ECHO_PREFIX_C="<custom>"; ECHO_UNAME_C="<custom>"`
+
+If colors are enabled:
+
+* `COLOR_UNAME="$COLOR_GREEN"`
+* `COLOR_PREFIX="$COLOR_DARK_GRAY"`
+
+TIP: When `TOOLS_PREFIX` and `TOOLS_UNAME` are enabled output of `print "Test message"` is +
+`### machine1: Test message`
+
+
+=== Examples
+
+[options="header"]
+|===
+|classic|tools|result
+|`echo "Example line"`|`print "Example line"`|`Example line`
+|`echo "[=======]" +
+echo "&nbsp;&nbsp;Title&nbsp;&nbsp;" +
+echo "[=======]"`
+|`print title "Title"`
+|`[=======] +
+&nbsp;&nbsp;Title&nbsp;&nbsp; +
+[=======]`
+|`echo "Error: Message!" +
+exit 1`
+|`print error "Message" 1`
+|`Error: Message!`
+|`NUMBER=1 +
+echo "  ${NUMBER}. initial" +
+let NUMBER++ +
+echo "  ${NUMBER}. second" +
+ +
+CHAR=a +
+echo "  ${CHAR}. char" +
+CHAR="$(echo "$CHAR" \| tr "a-z" "b-z_")" +
+echo "  ${CHAR}. second char"`
+|`NUMBER=1 +
+print step NUMBER "initial" +
+print step NUMBER "second" +
+ +
+CHAR="a" +
+print step CHAR "char" +
+print step CHAR "second char"`
+|`&nbsp;&nbsp;1. initial +
+&nbsp;&nbsp;2. second +
+ +
+&nbsp;&nbsp;a. char +
+&nbsp;&nbsp;b. second char`
+|===
+
+fsd

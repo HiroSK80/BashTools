@@ -1,14 +1,9 @@
 = BashTools
-#:toc: left
-#:toc-title: Table of Adventures
+:toc: left
 
 :source-highlighter: highlightjs
 :highlightjsdir: highlight
 :source-language: bash
-
-== Content
-
-link:index.html?doc=Output[Output] | link:index.html?doc=Pipe[Pipe]
 
 == Usage
 

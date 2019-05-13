@@ -863,7 +863,8 @@ function arguments
     shift
     case "$TASK" in
         init)
-            ARGUMENTS_STORE[$ARGUMENTS_STORE_I]="$ARGUMENTS_SHIFT|$ARGUMENTS_OPTION_FOUND|$ARGUMENTS_SWITCHES_FOUND"
+            ARGUMENTS_STORE[$ARGUMENTS_STORE_I]="$ARGUMENTS_SHIFT|$ARGUMENTS_OPTION_FOUND|$ARGUMENTS_OPTIONS_FOUND|$ARGUMENTS_SWITCHES_FOUND"
+            ARGUMENTS_OPTIONS_FOUND=""
             # debug for ARGUMENTS_CHECK_ALL
             #declare -a ARGUMENTS_CHECK_ALL_STORE
             #array_copy ARGUMENTS_CHECK_ALL ARGUMENTS_CHECK_ALL_STORE
@@ -872,10 +873,17 @@ function arguments
             ;;
         done)
             let ARGUMENTS_STORE_I--
-            ARGUMENTS_SHIFT=${ARGUMENTS_STORE[$ARGUMENTS_STORE_I]%%|*}
-            ARGUMENTS_OPTION_FOUND="${ARGUMENTS_STORE[$ARGUMENTS_STORE_I]#*|}"
-            ARGUMENTS_OPTION_FOUND="${ARGUMENTS_OPTION_FOUND%|*}"
-            ARGUMENTS_SWITCHES_FOUND="${ARGUMENTS_STORE[$ARGUMENTS_STORE_I]##*|}"
+            local ARGUMENTS_STORE_TEMP="${ARGUMENTS_STORE[$ARGUMENTS_STORE_I]}"
+            ARGUMENTS_SHIFT=${ARGUMENTS_STORE_TEMP%%|*}
+            ARGUMENTS_STORE_TEMP="${ARGUMENTS_STORE_TEMP#*|}"
+            ARGUMENTS_OPTION_FOUND="${ARGUMENTS_STORE_TEMP%%|*}"
+            ARGUMENTS_STORE_TEMP="${ARGUMENTS_STORE_TEMP#*|}"
+            ARGUMENTS_OPTIONS_FOUND="${ARGUMENTS_STORE_TEMP%%|*}"
+            ARGUMENTS_STORE_TEMP="${ARGUMENTS_STORE_TEMP#*|}"
+            #ARGUMENTS_OPTION_FOUND="${ARGUMENTS_STORE[$ARGUMENTS_STORE_I]#*|}"
+            #ARGUMENTS_OPTION_FOUND="${ARGUMENTS_OPTION_FOUND%|*}"
+            ARGUMENTS_SWITCHES_FOUND="${ARGUMENTS_STORE_TEMP%%|*}"
+
             # commented: unset is too slow
             #unset ARGUMENTS_STORE[$ARGUMENTS_STORE_I]
 
@@ -1226,9 +1234,10 @@ function arguments_check
         option)
             test_yes ARGUMENTS_OPTION_FOUND && return 1
             test "${1:0:1}" = "-" && return 1
-            test -n "$ARGUMENTS_VALUE_ORIGINAL" && return 1
+            #test -n "$ARGUMENTS_VALUE_ORIGINAL" && return 1 #BAD check if already assigned - no default value
+            str_word check ARGUMENTS_OPTIONS_FOUND "$ARG_VAR" && return 1
             ARGUMENTS_VALUE="$1"
-            arguments_check tester "$ARG_TEST" "$@" && set_yes ARG_ASSIGN ARGUMENTS_OPTION_FOUND && let ARGUMENTS_SHIFT++
+            arguments_check tester "$ARG_TEST" "$@" && set_yes ARG_ASSIGN ARGUMENTS_OPTION_FOUND && str_word add ARGUMENTS_OPTIONS_FOUND "$ARG_VAR" && let ARGUMENTS_SHIFT++
             ;;
     esac
 
@@ -2280,7 +2289,11 @@ function call_command
 function get_pids
 # return PIDs found by command regex
 {
-    ps -e -o pid,ppid,cmd | $AWK $AWK_VAR p="$1" $AWK_VAR s="$$" '$1==s||$2==s||/tools_get_pids_tag/ { next; } $0~p { print $1; }';
+    ps -e -o pid,ppid,cmd | $AWK $AWK_VAR p="$1" $AWK_VAR s="$$" '
+        BEGIN { f=0; }
+        $1==s||$2==s||/tools_get_pids_tag/ { next; }
+        $0~p { print $1; f++; }
+        END { if (f==0) exit(1); }';
 }
 
 function get_pids_tree_loop
@@ -2622,7 +2635,9 @@ function terminal
 {
     local TASK="$1"
     shift
-    local VALUE="$1"
+    local OPTION="$1"
+    shift
+    local OPTION2="$1"
 
     case "$TASK" in
         check|info)
@@ -2639,6 +2654,23 @@ function terminal
                 TERMINAL_COLUMNS=0
             else
                 TERMINAL_COLUMNS="$(tput cols)"
+            fi
+            ;;
+        clear)
+            if test "$OPTION" = "line"
+            then
+                if test -z "$OPTION2" -o "$OPTION2" = "all"
+                then
+                    command echo -n "$S_ESC[2K"
+                elif test "$OPTION2" = "right"
+                then
+                    command echo -n "$S_ESC[K"
+                elif test "$OPTION2" = "left"
+                then
+                    command echo -n "$S_ESC[1K"
+                else
+                    echo_error_function "Unknown argument: $OPTION2" $ERROR_CODE_DEFAULT
+                fi
             fi
             ;;
         *)
@@ -2659,6 +2691,14 @@ function cursor
             ;;
         restore|load)
             command echo -n "$S_ESC[u"
+            ;;
+        hide)
+            #tput civis
+            command echo -n "$S_ESC[?25l"
+            ;;
+        show)
+            #tput cnorm
+            command echo -n "$S_ESC[?25h"
             ;;
         column)
             command echo -n "$S_ESC[${VALUE}G"
@@ -3971,7 +4011,7 @@ function echo_warning_function
 
 function print
 {
-    test $# = 1 && echo_line "$1" && return 0
+    test $# = 1 -a "$1" != "waiter" && echo_line "$1" && return 0
 
     local TASK="$1"
     case "$TASK" in
@@ -4453,7 +4493,8 @@ declare -x -a ARGUMENTS_STORE=()        # only internal use = "$ARGUMENTS_SHIFT|
 declare -x -a ARGUMENTS_STORE_CHECK_ALL=() # only internal use
 declare -x -i ARGUMENTS_STORE_I=0       # only internal use
 declare -x -i ARGUMENTS_SHIFT=0
-declare -x    ARGUMENTS_OPTION_FOUND    # only internal use
+declare -x    ARGUMENTS_OPTION_FOUND    # only internal use     # option already found and assigned in this loop
+declare -x    ARGUMENTS_OPTIONS_FOUND   # only internal use     # options already found and assigned
 declare -x    ARGUMENTS_SWITCHES_FOUND  # only internal use
 declare -x -a ARGUMENTS_CHECK_ADD       # cache for check/add
 declare -x -a ARGUMENTS_CHECK_ALL       # cache for check/all, lasting values are unknown arguments

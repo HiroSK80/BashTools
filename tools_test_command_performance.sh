@@ -1,11 +1,11 @@
 #!/bin/bash
 
-export TOOLS_FILE="`dirname $0`/tools.sh"
-. "$TOOLS_FILE" --debug --debug-variable --debug-function --debug-right "$@" || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
+export TOOLS_FILE="$(dirname $0)/tools.sh"
+source "$TOOLS_FILE" --debug --debug-variable --debug-function --debug-right "$@" || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
 
 set_no PERFORMANCE_DETAILS
 
-echo_info "Example simple echo command"
+print info "Example simple echo command"
 performance start "" "echo"
 for I in {1..1000}
 do
@@ -15,7 +15,7 @@ performance end
 
 for COMMAND in "date" "declare -p I" "echo"
 do
-    echo_info "Testing command: $COMMAND"
+    print info "Testing command: $COMMAND"
 
     performance start "" "$COMMAND"
     for I in {1..1000}

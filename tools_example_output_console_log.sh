@@ -6,8 +6,8 @@ export TOOLS_FILE="`dirname $0`/tools.sh"
 function test_function
 {
     print debug --function "$@"
-    print warning --function "FUNCTION WARNING"
-    print error --function "ERROR"
+    print warning --function "$@" "FUNCTION WARNING"
+    print error --function "$@" "ERROR"
 }
 
 #set_no LOG_WITHDATE

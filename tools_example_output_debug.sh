@@ -3,6 +3,10 @@
 export TOOLS_FILE="`dirname $0`/tools.sh"
 . "$TOOLS_FILE" --debug --debug-variable --debug-function "$@" || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
 
+set_yes TOOLS_PREFIX
+set_yes TOOLS_UNAME
+init_tools
+
 debug init_namespaces
 # shorten "tools_example_output_debug[.sh]" labels into "this[.sh]"
 FUNCTION_NAMESPACES[main]="this.sh"
@@ -22,6 +26,7 @@ function function_1
     function_2 arg_c arg_d
 }
 
+print "Testing simple output"
 print debug --right "here is sample right aligned debug"
 print info "Testing simple debug information"
 print debug "Debug message"
@@ -61,7 +66,7 @@ print debug --custom command "Debug \"command\" messages are enabled"
 
 print info "Testing custom debugging with possible combinations of debug level, debug type, debug message"
 print debug --custom customX "Debug \"customX\" messages are yet enabled"
-DEBUG_TYPES[customX]="X"
+debug add customX X
 debug set customX
 print debug --custom customX "Debug \"customX\" messages are enabled [default level]"
 print debug --custom customX INFO "Debug \"customX\" messages are enabled [INFO level]"

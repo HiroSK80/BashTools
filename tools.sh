@@ -3118,7 +3118,7 @@ function echo_line
     local MESSAGE="yes"
     while test $# -ge 2
     do
-        case "$1" in
+        case "${1,,}" in
             "--")
                 shift
                 break
@@ -3212,12 +3212,12 @@ function echo_line
     test_yes ESCAPE && local ESCAPE_OPTION="-e" || local ESCAPE_OPTION=""
     test_yes NEWLINE && local NEWLINE_OPTION="" || local NEWLINE_OPTION="-n"
 
-    test_yes MESSAGE && MESSAGE="$PREFIX$@$POSTFIX" || MESSAGE="$PREFIX$POSTFIX"
+    test_yes MESSAGE && MESSAGE="$@" || MESSAGE=""
     if test_yes TOOLS_COLOR
     then
-        local MESSAGE_E="$ECHO_PREFIX_C$ECHO_UNAME_C$MESSAGE"
+        local MESSAGE_E="$ECHO_PREFIX_C$ECHO_UNAME_C$PREFIX$MESSAGE$POSTFIX"
     else
-        local MESSAGE_E="$ECHO_PREFIX$ECHO_UNAME$MESSAGE"
+        local MESSAGE_E="$ECHO_PREFIX$ECHO_UNAME$PREFIX$MESSAGE$POSTFIX"
         str_remove_color MESSAGE_E
     fi
 
@@ -3383,13 +3383,26 @@ function echo_title
 
 function echo_info
 {
+    test -z "${ECHO_INFO[PREFIX_LOG]+exist}" && ECHO_INFO[PREFIX_LOG]="${ECHO_INFO[PREFIX_BW]}"
+    test -z "${ECHO_INFO[POSTFIX_LOG]+exist}" && ECHO_INFO[POSTFIX_LOG]="${ECHO_INFO[POSTFIX_BW]}"
+
     if test_yes "$TOOLS_COLOR"
     then
         #command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_INFO$@$COLOR_RESET"
-        echo_line --prefix "$COLOR_INFO$ECHO_INFO_PREFIX_C" --postfix "$ECHO_INFO_POSTFIX_C$COLOR_RESET" --log-prefix "$ECHO_INFO_PREFIX_BW" --log-postfix "$ECHO_INFO_POSTFIX_BW" "$@"
+        if test "${ECHO_INFO[CASE]^^}" = "UPPER"
+        then
+            echo_line --prefix "$COLOR_INFO${ECHO_INFO[PREFIX_C]}" --postfix "${ECHO_INFO[POSTFIX_C]}$COLOR_RESET" --log-prefix "${ECHO_INFO[PREFIX_LOG]}" --log-postfix "${ECHO_INFO[POSTFIX_LOG]}" "${@^^}"
+        else
+            echo_line --prefix "$COLOR_INFO${ECHO_INFO[PREFIX_C]}" --postfix "${ECHO_INFO[POSTFIX_C]}$COLOR_RESET" --log-prefix "${ECHO_INFO[PREFIX_LOG]}" --log-postfix "${ECHO_INFO[POSTFIX_LOG]}" "$@"
+        fi
     else
         #command echo "$ECHO_PREFIX$ECHO_UNAME$@"
-        echo_line --prefix "$ECHO_INFO_PREFIX_BW" --postfix "$ECHO_INFO_POSTFIX_BW" "$@"
+        if test "${ECHO_INFO[CASE]^^}" = "UPPER"
+        then
+            echo_line --prefix "${ECHO_INFO[PREFIX_BW]}" --postfix "${ECHO_INFO[POSTFIX_BW]}" --log-prefix "${ECHO_INFO[PREFIX_LOG]}" --log-postfix "${ECHO_INFO[POSTFIX_LOG]}" "${@^^}"
+        else
+            echo_line --prefix "${ECHO_INFO[PREFIX_BW]}" --postfix "${ECHO_INFO[POSTFIX_BW]}" --log-prefix "${ECHO_INFO[PREFIX_LOG]}" --log-postfix "${ECHO_INFO[POSTFIX_LOG]}" "$@"
+        fi
     fi
 
     return 0
@@ -4626,10 +4639,12 @@ declare -x -i ECHO_LINE_MESSAGE_LENGTH=0    # last line message length
 declare -x    ECHO_LINE_DEBUG_RIGHT_FLAG    # internal: last debug was right aligned
 declare -x -f echo_line
 declare -x -f echo_title
-declare -x ECHO_INFO_PREFIX_C=""
-declare -x ECHO_INFO_POSTFIX_C=""
-declare -x ECHO_INFO_PREFIX_BW="| "
-declare -x ECHO_INFO_POSTFIX_BW=" |"
+declare -x -A ECHO_INFO
+ECHO_INFO[CASE]="upper"
+ECHO_INFO[PREFIX_C]=""
+ECHO_INFO[POSTFIX_C]=""
+ECHO_INFO[PREFIX_BW]="| "
+ECHO_INFO[POSTFIX_BW]=" |"
 declare -x -f echo_info
 declare -x ECHO_STEP_PREFIX="  "
 declare -x ECHO_STEP_NUMBER_POSTFIX=". "

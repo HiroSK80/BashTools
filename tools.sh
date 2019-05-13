@@ -2420,6 +2420,158 @@ function fd_find_free
     done
     command echo $FILE_FD
 }
+
+function daemon
+{
+    local TASK="$1"
+    shift
+
+    test -n "$1" && DAEMON_NAME="$1"
+    test -z "$DAEMON_NAME" && DAEMON_NAME="$SCRIPT_NAME_NOEXT"
+
+    local TEST_PATH
+    local -a TEST_PATHS=("/var/run" "$SCRIPT_PATH" "/tmp")
+    local TEST_FILE
+
+    case "$TASK" in
+        init)
+            for TEST_PATH in "${TEST_PATHS[@]}"
+            do
+                test -z "$DAEMON_PATH" -a -d "$TEST_PATH" -a -w "$TEST_PATH" && DAEMON_PATH="$TEST_PATH"
+            done
+            test -z "$DAEMON_PATH" && echo_error_function "$TASK" "$@" "Can't find suitable directory from ${TEST_PATHS[@]} for PID file with write access" $ERROR_CODE_DEFAULT
+            TEST_FILE="$DAEMON_PATH/$DAEMON_NAME.pid"
+            echo -n "$$" > "$TEST_FILE"
+            print debug "Daemon $DAEMON_NAME on $$ started, pidfile: $(print quote "$TEST_FILE")"
+            event add EXIT "daemon done \"$DAEMON_NAME\""
+            ;;
+        done)
+            for TEST_PATH in "${TEST_PATHS[@]}"
+            do
+                TEST_FILE="$TEST_PATH/$DAEMON_NAME.pid"
+                test -f "$TEST_FILE" && rm -f "$TEST_FILE" && print debug "Daemon $DAEMON_NAME on $$ finished, pidfile: $(print quote "$TEST_FILE") removed"
+            done
+            ;;
+        status)
+            for TEST_PATH in "${TEST_PATHS[@]}"
+            do
+                test ! -f "$TEST_PATH/$DAEMON_NAME.pid" && continue
+                DAEMON_PID="$(<"$TEST_PATH/$DAEMON_NAME.pid")"
+                if test -d "/proc/$DAEMON_PID"
+                then
+                    #cat "/proc/$DAEMON_PID/cmdline" | xargs -0 | grep --quiet "bash.*$DAEMON_NAME" && DAEMON_PATH="$TEST_PATH" && return 0
+                    cat "/proc/$DAEMON_PID/cmdline" | xargs -0 | grep --quiet "bash" && DAEMON_PATH="$TEST_PATH" && return 0
+                else
+                    rm -f "$TEST_PATH/$DAEMON_NAME.pid"
+                    DAEMON_PID=""
+                fi
+            done
+            return 1
+            ;;
+        kill)
+            for TEST_PATH in "${TEST_PATHS[@]}"
+            do
+                test ! -f "$TEST_PATH/$DAEMON_NAME.pid" && continue
+                DAEMON_PID="$(<"$TEST_PATH/$DAEMON_NAME.pid")"
+                if test -d "/proc/$DAEMON_PID"
+                then
+                    kill $DAEMON_PID
+                else
+                    DAEMON_PID=""
+                fi
+            done
+            ;;
+        *)
+            echo_error_function "$TASK" "$@" "Unknown task argument: $TASK" $ERROR_CODE_DEFAULT
+            ;;
+    esac
+
+    return 0
+}
+
+function event
+{
+    local TASK="$1"
+    shift
+
+    case "$TASK" in
+        add)
+            local TRAP="$1"
+            shift
+            EVENT_LISTENERS+=("$TRAP|$@")
+            ;;
+        *)
+            echo_error_function "$TASK" "$@" "Unknown task argument: $TASK" $ERROR_CODE_DEFAULT
+            ;;
+    esac
+
+    return 0
+}
+
+function event_exit
+{
+    local -i ERROR=$?
+    test $# -eq 0 && print debug --custom event "Terminating via SIG EXIT" || print debug --custom event "Terminating EXIT (after SIG $@)"
+
+    local INDEX
+    for INDEX in ${!EVENT_LISTENERS[@]}
+    do
+        test "${EVENT_LISTENERS[$INDEX]%%|*}" != "EXIT" && continue
+        print debug "Calling event on EXIT: ${EVENT_LISTENERS[$INDEX]#*|}"
+        eval "${EVENT_LISTENERS[$INDEX]#*|}"
+    done
+
+    trap '' EXIT INT QUIT TERM
+    exit $ERROR
+}
+
+function event_int
+{
+    print debug --custom event "Terminating via SIG INT"
+
+    local INDEX
+    for INDEX in ${!EVENT_LISTENERS[@]}
+    do
+        test "${EVENT_LISTENERS[$INDEX]%%|*}" != "INT" && continue
+        print debug "Calling event on INT: ${EVENT_LISTENERS[$INDEX]#*|}"
+        eval "${EVENT_LISTENERS[$INDEX]#*|}"
+    done
+    
+    trap '' EXIT
+    event_exit INT
+}
+
+function event_quit
+{
+    print debug --custom event "Terminating via SIG QUIT"
+
+    local INDEX
+    for INDEX in ${!EVENT_LISTENERS[@]}
+    do
+        test "${EVENT_LISTENERS[$INDEX]%%|*}" != "QUIT" && continue
+        print debug "Calling event on QUIT: ${EVENT_LISTENERS[$INDEX]#*|}"
+        eval "${EVENT_LISTENERS[$INDEX]#*|}"
+    done
+    
+    trap '' EXIT
+    event_exit QUIT
+}
+
+function event_term
+{
+    print debug --custom event "Terminating via SIG TERM"
+
+    local INDEX
+    for INDEX in ${!EVENT_LISTENERS[@]}
+    do
+        test "${EVENT_LISTENERS[$INDEX]%%|*}" != "TERM" && continue
+        print debug "Calling event on TERM: ${EVENT_LISTENERS[$INDEX]#*|}"
+        eval "${EVENT_LISTENERS[$INDEX]#*|}"
+    done
+    
+    trap '' EXIT
+    event_exit TERM
+}
 #NAMESPACE/shell/end
 
 #NAMESPACE/misc/start
@@ -4690,6 +4842,18 @@ declare -x -f kill_tree
 declare -x -f fd_check
 declare -x -f fd_find_free
 
+declare -x    DAEMON_PATH
+declare -x    DAEMON_NAME
+declare -x    DAEMON_PID
+declare -x -f daemon                    # init / done / status
+
+declare -x -a EVENT_LISTENERS
+declare -x -f event                     # add
+trap event_exit EXIT
+trap event_int INT
+trap event_quit QUIT
+trap event_term TERM
+
 declare -x    PERFORMANCE_DETAILS="yes" # show detailed output / show only elapsed time
 declare -x -A PERFORMANCE_DATA          # only internal use
 declare -x -A PERFORMANCE_MESSAGES      # only internal use
@@ -4825,7 +4989,7 @@ declare -x -A WAITER_DATA_INDEXES # only internal use
 declare -x -f echo_waiter
 
 declare -x    DEBUG_INIT_NAMESPACES="no"
-declare -x    DEBUG_TYPE=""
+declare -x    DEBUG_TYPE=""             # debug function variable | command event
 declare -x -A DEBUG_TYPES
 DEBUG_TYPES[debug]="D"
 DEBUG_TYPES[right]="R"

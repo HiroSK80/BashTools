@@ -1457,7 +1457,8 @@ function file_prepare
     if test_yes "$ROLL" && test -f "$FILE"
     then
         test -f "$FILE-1" && file_prepare_move "$FILE" 1 "$COUNT"
-        mv "$FILE" "$FILE-1"
+        cp -p "$FILE" "$FILE-1" 2> /dev/null || echo_error_function "Can't backup file $(echo_quote "$FILE") to $(echo_quote "$FILE-1")" $ERROR_CODE_DEFAULT
+        cat /dev/null > "$FILE" 2> /dev/null || echo_error_function "Can't truncate file $(echo_quote "$FILE")" $ERROR_CODE_DEFAULT
     fi
 
     #test_yes "$EMPTY" && file_delete_local "$FILE"

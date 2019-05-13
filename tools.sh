@@ -470,6 +470,9 @@ function str_word
     local W
 
     case "$TASK" in
+        set)
+            STR="$@"
+            ;;
         add)
             for W in "${@:3}"
             do
@@ -998,7 +1001,7 @@ function arguments
             done
             return $FOUND
             ;;
-        check/assign|auto|automatic|assign)
+        check/assign|auto|automatic|assign)     #TODO: TEST!!!
             ARGUMENTS=()
             local -i OPTION_INDEX=0
             while test $# -gt 0
@@ -2624,17 +2627,17 @@ function terminal
         check|info)
             if test "$TERM" = "dumb"
             then
-                COLUMNS=0
+                TERMINAL_COLUMNS=0
             else
-                test -z "$COLUMNS" -o "$COLUMNS" = 0 && COLUMNS="$(tput cols)"
+                test -z "$TERMINAL_COLUMNS" -o "$TERMINAL_COLUMNS" = 0 && TERMINAL_COLUMNS="$(tput cols)"
             fi
             ;;
         get)
             if test "$TERM" = "dumb"
             then
-                COLUMNS=0
+                TERMINAL_COLUMNS=0
             else
-                COLUMNS="$(tput cols)"
+                TERMINAL_COLUMNS="$(tput cols)"
             fi
             ;;
         *)
@@ -3101,7 +3104,8 @@ function echo_line
 # echoes arguments to standard output and log to the file
 {
     local ESCAPE="no"
-    local NEW_LINE="yes"
+    local NEWLINE="yes"
+    local PRESERVE=""
     local LOG="yes"
     local LOG_PREFIX=""
     local ALIGN="left"
@@ -3116,8 +3120,28 @@ function echo_line
                 ESCAPE="yes"
                 shift
                 ;;
-            "-n"|"--no-new-line")
-                NEW_LINE="no"
+            "-n"|"--no-newline")
+                NEWLINE="no"
+                shift
+                ;;
+            "-t"|"--newline"|"--trailing-newline")
+                NEWLINE="yes"
+                shift
+                ;;
+            "--newline="*)
+                NEWLINE="${1#*=}"
+                shift
+                ;;
+            "--no-preserve")
+                PRESERVE="no"
+                shift
+                ;;
+            "-p"|"--preserve")
+                PRESERVE="yes"
+                shift
+                ;;
+            "--preserve="*)
+                PRESERVE="${1#*=}"
                 shift
                 ;;
             "--nolog"|"--no-log"|"--log=no")
@@ -3151,7 +3175,7 @@ function echo_line
     done
 
     test_yes ESCAPE && local ESCAPE_OPTION="-e" || local ESCAPE_OPTION=""
-    test_yes NEW_LINE && local NEW_LINE_OPTION="" || local NEW_LINE_OPTION="-n"
+    test_yes NEWLINE && local NEWLINE_OPTION="" || local NEWLINE_OPTION="-n"
 
     if test_yes TOOLS_COLOR
     then
@@ -3161,45 +3185,85 @@ function echo_line
         str_remove_color MESSAGE_E
     fi
 
+    test -z "$PRESERVE" && str_word check ECHO_LINE_PRESERVE "debug" && test_yes ECHO_LINE_DEBUG_RIGHT_FLAG && set_yes PRESERVE && set_no ECHO_LINE_DEBUG_RIGHT_FLAG
+
     case "$ALIGN" in
         "left")
-            if test "$ECHO_DEBUG_LAST_RIGHT" = "yes" -a $ECHO_LINE_MESSAGE_LENGTH != 0
+            if test -z "$PRESERVE"
             then
+                str_word check ECHO_LINE_PRESERVE "left" && set_yes PRESERVE || set_no PRESERVE
+            fi
+
+            if test $ECHO_LINE_MESSAGE_LENGTH = 0 -o "$PRESERVE" = "no"
+            then
+                command echo $ESCAPE_OPTION $NEWLINE_OPTION "$MESSAGE_E"
+            else
                 local MESSAGE_E_NO_COLOR="$MESSAGE_E"
                 str_remove_color MESSAGE_E_NO_COLOR
                 terminal check
-                local -i REMAIN
-                let REMAIN="$COLUMNS - ${#MESSAGE_E_NO_COLOR} - $ECHO_LINE_MESSAGE_LENGTH"
-                test $REMAIN -lt 0 && command echo
+                local -i LINE_CHARACTERS
+                let LINE_CHARACTERS="${#MESSAGE_E_NO_COLOR} + $ECHO_LINE_MESSAGE_LENGTH"
+                test $LINE_CHARACTERS -gt $TERMINAL_COLUMNS && command echo -e -n "\n" && ECHO_LINE_MESSAGE_LENGTH=0
+                command echo $ESCAPE_OPTION $NEWLINE_OPTION "$MESSAGE_E"
             fi
-            command echo $ESCAPE_OPTION $NEW_LINE_OPTION "$MESSAGE_E"
-            ECHO_LINE_MESSAGE_LENGTH=0
+
+            if test_yes NEWLINE
+            then
+                ECHO_LINE_MESSAGE_LENGTH=0
+            else
+                local MESSAGE_E_NO_COLOR="$MESSAGE_E"
+                str_remove_color MESSAGE_E_NO_COLOR
+                let ECHO_LINE_MESSAGE_LENGTH="$ECHO_LINE_MESSAGE_LENGTH + ${#MESSAGE_E_NO_COLOR}"
+            fi
             ;;
         "right")
+            if test -z "$PRESERVE"
+            then
+                str_word check ECHO_LINE_PRESERVE "right" && set_yes PRESERVE || set_no PRESERVE
+            fi
+
             terminal check
-            local -i SHIFT="$COLUMNS"
+            local -i SHIFT="$TERMINAL_COLUMNS"
             #local MESSAGE_E_NO_COLOR="$(command echo -en "$MESSAGE_E")"
             local MESSAGE_E_NO_COLOR="$MESSAGE_E"
-            test_yes TOOLS_COLOR && str_remove_color MESSAGE_E_NO_COLOR
+            str_remove_color MESSAGE_E_NO_COLOR
             let SHIFT="$SHIFT - ${#MESSAGE_E_NO_COLOR}"
-            ECHO_LINE_MESSAGE_LENGTH=${#MESSAGE_E_NO_COLOR}
+
+            if test_yes PRESERVE
+            then
+                local -i TOTAL_CHARS=$ECHO_LINE_MESSAGE_LENGTH
+                let TOTAL_CHARS="$TOTAL_CHARS + ${#MESSAGE_E_NO_COLOR}"
+                test $TOTAL_CHARS -gt $TERMINAL_COLUMNS && command echo -e -n "\n" && ECHO_LINE_MESSAGE_LENGTH=0
+            fi
 
             if test $SHIFT -gt 0
             then
                 let SHIFT++
                 cursor save
                 cursor column $SHIFT
-                command echo $ESCAPE_OPTION $NEW_LINE_OPTION "$MESSAGE_E"
+                command echo $ESCAPE_OPTION -n "$MESSAGE_E"
                 cursor load
             else
                 command echo -e -n "\r"
-                command echo $ESCAPE_OPTION $NEW_LINE_OPTION "$MESSAGE_E"
-                command echo
+                command echo $ESCAPE_OPTION $NEWLINE_OPTION "$MESSAGE_E"
+            fi
+
+            if test_yes NEWLINE
+            then
+                command echo -e -n "\n"
+                ECHO_LINE_MESSAGE_LENGTH=0
+            else
+                let ECHO_LINE_MESSAGE_LENGTH="$ECHO_LINE_MESSAGE_LENGTH + ${#MESSAGE_E_NO_COLOR}"
             fi
             ;;
         "center")
+            if test -z "$PRESERVE"
+            then
+                str_word check ECHO_LINE_PRESERVE "center" && set_yes PRESERVE || set_no PRESERVE
+            fi
+
             terminal check
-            local -i SHIFT="$COLUMNS"
+            local -i SHIFT="$TERMINAL_COLUMNS"
             #local MESSAGE_E_NO_COLOR="$(command echo -en "$MESSAGE_E")"
             local MESSAGE_E_NO_COLOR="$MESSAGE_E"
             test_yes TOOLS_COLOR && str_remove_color MESSAGE_E_NO_COLOR
@@ -3211,12 +3275,21 @@ function echo_line
                 let SHIFT++
                 cursor save
                 cursor column $SHIFT
-                command echo $ESCAPE_OPTION $NEW_LINE_OPTION "$MESSAGE_E"
+                command echo $ESCAPE_OPTION -n "$MESSAGE_E"
                 cursor load
+                let SHIFT-=2
             else
                 command echo -e -n "\r"
-                command echo $ESCAPE_OPTION $NEW_LINE_OPTION "$MESSAGE_E"
-                command echo
+                command echo $ESCAPE_OPTION $NEWLINE_OPTION "$MESSAGE_E"
+                SHIFT=0
+            fi
+
+            if test_yes NEWLINE
+            then
+                command echo -e -n "\n"
+                ECHO_LINE_MESSAGE_LENGTH=0
+            else
+                let ECHO_LINE_MESSAGE_LENGTH="$ECHO_LINE_MESSAGE_LENGTH + $SHIFT + ${#MESSAGE_E_NO_COLOR}"
             fi
             ;;
     esac
@@ -3299,12 +3372,89 @@ function echo_title
 
 function echo_info
 {
+    local ESCAPE="no"
+    local NEWLINE="yes"
+    local PRESERVE=""
+    local LOG="yes"
+    local LOG_PREFIX=""
+    local ALIGN="left"
+    while test $# -ge 2
+    do
+        case "$1" in
+            "--")
+                shift
+                break
+                ;;
+            "-e"|"--escape")
+                ESCAPE="yes"
+                shift
+                ;;
+            "-n"|"--no-newline")
+                NEWLINE="no"
+                shift
+                ;;
+            "-t"|"--newline"|"--trailing-newline")
+                NEWLINE="yes"
+                shift
+                ;;
+            "--newline="*)
+                NEWLINE="${1#*=}"
+                shift
+                ;;
+            "--no-preserve")
+                PRESERVE="no"
+                shift
+                ;;
+            "-p"|"--preserve")
+                PRESERVE="yes"
+                shift
+                ;;
+            "--preserve="*)
+                PRESERVE="${1#*=}"
+                shift
+                ;;
+            "--nolog"|"--no-log"|"--log=no")
+                LOG="no"
+                shift
+                ;;
+            "--log-prefix")
+                LOG_PREFIX="$2"
+                shift 2
+                ;;
+            "--log-prefix="*)
+                LOG_PREFIX="${1#*=}"
+                shift
+                ;;
+            "-l"|"--left"|"--align-left"|"--align=left")
+                ALIGN="left"
+                shift
+                ;;
+            "-r"|"--right"|"--align-right"|"--align=right")
+                ALIGN="right"
+                shift
+                ;;
+            "-c"|"--center"|"--align-center"|"--align=center")
+                ALIGN="center"
+                shift
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+    test_yes ESCAPE && local ESCAPE_OPTION="-e" || local ESCAPE_OPTION=""
+    test_yes NEWLINE && local NEWLINE_OPTION="" || local NEWLINE_OPTION="-n"
+    test_yes PRESERVE && local PRESERVE_OPTION="--preserve" || local PRESERVE_OPTION=""
+    test ALIGN = "left" && local ALIGN_OPTION="" || local ALIGN_OPTION="--align=$ALIGN"
+
     if test_yes "$TOOLS_COLOR"
     then
-        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_INFO$@$COLOR_RESET"
+        #command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_INFO$@$COLOR_RESET"
+        echo_line $ALIGN_OPTION $ESCAPE_OPTION $NEWLINE_OPTION $PRESERVE_OPTION "$COLOR_INFO$@$COLOR_RESET"
         command echo -e "$COLOR_RESET\c"
     else
-        command echo "$ECHO_PREFIX$ECHO_UNAME$@"
+        #command echo "$ECHO_PREFIX$ECHO_UNAME$@"
+        echo_line $ALIGN_OPTION $ESCAPE_OPTION $NEWLINE_OPTION $PRESERVE_OPTION "$@"
     fi
 
     log echo "$ECHO_PREFIX$ECHO_UNAME$@"
@@ -3554,21 +3704,25 @@ function echo_debug_custom
         done
 
         test "$ALIGN" = "left" && local ALIGN_OPTION="" || local ALIGN_OPTION="--align=$ALIGN"
-        test "$ALIGN" = "right" && local NEW_LINE_OPTION="-n" && set_yes ECHO_DEBUG_LAST_RIGHT || { local NEW_LINE_OPTION="" && set_no ECHO_DEBUG_LAST_RIGHT; }
+        test "$ALIGN" = "right" && local NEWLINE_OPTION="-n"
+
+        str_word check ECHO_LINE_PRESERVE "debug" && local PRESERVE_OPTION="--preserve" || local PRESERVE_OPTION=""
 
         if test $LEVEL -le $DEBUG_LEVEL
         then
             if test_yes TOOLS_COLOR
             then
                 #command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@$COLOR_RESET" > $REDIRECT_DEBUG
-                echo_line $ALIGN_OPTION $NEW_LINE_OPTION --log-prefix="$ECHO_PREFIX_DEBUG" "$COLOR_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@$COLOR_RESET" > $REDIRECT_DEBUG
+                echo_line $ALIGN_OPTION $NEWLINE_OPTION $PRESERVE_OPTION --log-prefix="$ECHO_PREFIX_DEBUG" "$COLOR_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@$COLOR_RESET" > $REDIRECT_DEBUG
             else
                 #command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@" > $REDIRECT_DEBUG
-                echo_line $ALIGN_OPTION $NEW_LINE_OPTION "$ECHO_PREFIX_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@" > $REDIRECT_DEBUG
+                echo_line $ALIGN_OPTION $NEWLINE_OPTION $PRESERVE_OPTION "$ECHO_PREFIX_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@" > $REDIRECT_DEBUG
             fi
             #log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@"
+            test "$ALIGN" = "right" && set_yes ECHO_LINE_DEBUG_RIGHT_FLAG
         fi
     fi
+
     return 0
 }
 
@@ -4163,6 +4317,8 @@ function init_tools
 {
     debug set_level ALL
 
+    terminal get
+
     arguments init
     while test $# -gt 0
     do
@@ -4321,7 +4477,7 @@ declare -x -r S_NEWLINE=$'\n'
 declare -x -f str_trim
 declare -x -f str_count_chars
 declare -x -f str_remove_color
-declare -x -f str_word                  # add / delete / check
+declare -x -f str_word                  # set / add / delete / check
 declare -x -f str_date
 
 declare -x -a ARRAY_CONVERT=()
@@ -4455,6 +4611,8 @@ declare -x -f test_opt2_z
 declare -x -f test_opt_i
 declare -x -f test_opt2_i
 
+declare -x -i TERMINAL_COLUMNS=0
+declare -x -f terminal # check|info / get
 declare -x    CURSOR_POSITION="0;0"
 declare -x -i CURSOR_COLUMN=0
 declare -x -i CURSOR_ROW=0
@@ -4532,7 +4690,10 @@ declare -x ECHO_STEP_PREFIX="  "
 declare -x ECHO_STEP_NUMBER_POSTFIX=". "
 declare -x ECHO_SUBSTEP_PREFIX="    - "
 declare -x -f echo_quote
-declare -x -i ECHO_LINE_MESSAGE_LENGTH=0
+declare -x    ECHO_LINE_PRESERVE="debug"    # default preserve for previous output - aligned left right center or debug messages
+# full settings: ECHO_LINE_PRESERVE="left right center debug"
+declare -x -i ECHO_LINE_MESSAGE_LENGTH=0    # last line message length
+declare -x    ECHO_LINE_DEBUG_RIGHT_FLAG    # internal: last debug was right aligned
 declare -x -f echo_line
 declare -x -f echo_title
 declare -x -f echo_info
@@ -4575,12 +4736,11 @@ declare -x -f debug                     # init / init_namespaces / reinit_namesp
 declare -x    DEBUG_PARSE_LEVEL
 declare -x    DEBUG_PARSE_LEVEL_STR
 
-declare -x    ECHO_DEBUG_LAST_RIGHT     # internal: last debug was right aligned
 declare -x -f echo_debug_custom
 declare -x -f echo_debug
 declare -x -f echo_debug_variable
 declare -x -f echo_debug_function
-declare -x -f echo_debug_right
+declare -x -f echo_debug_right          # !!!OBSOLETED!!!
 declare -x -i ERROR_CODE_DEFAULT=99
 declare -x -f echo_error
 declare -x -f echo_error_ne0

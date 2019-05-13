@@ -2877,6 +2877,14 @@ function terminal
                 test -z "$TERMINAL_COLUMNS" -o "$TERMINAL_COLUMNS" = 0 && TERMINAL_COLUMNS="$(tput cols)"
             fi
             ;;
+        get)
+            if test "$TERM" = "dumb"
+            then
+                TERMINAL_COLUMNS=0
+            else
+                TERMINAL_COLUMNS="$(tput cols)"
+            fi
+            ;;
         restore)
             command echo -n "${S_CSI}1t"
             ;;
@@ -2898,14 +2906,6 @@ function terminal
         normalize|nor)
             command echo -n "${S_CSI}9;0t"
             ;;
-        get)
-            if test "$TERM" = "dumb"
-            then
-                TERMINAL_COLUMNS=0
-            else
-                TERMINAL_COLUMNS="$(tput cols)"
-            fi
-            ;;
         clear)
             if test "$OPTION" = "line"
             then
@@ -2922,6 +2922,59 @@ function terminal
                     echo_error_function "$@" "Unknown argument: $OPTION2" $ERROR_CODE_DEFAULT
                 fi
             fi
+            ;;
+        coloring)
+            if test "$OPTION" = "color_on_black" -o "$OPTION" = "default" -o -z "$OPTION"
+            then
+                # colors for echo_*
+                COLOR_TITLE="$COLOR_LIGHT_YELLOW"
+                COLOR_TITLE_BORDER="$COLOR_YELLOW"
+                COLOR_INFO="$COLOR_LIGHT_YELLOW"
+                COLOR_STEP="$COLOR_WHITE"
+                COLOR_SUBSTEP="$COLOR_LIGHT_GREY"
+                COLOR_WAITER="$COLOR_DARK_GRAY"
+                test $TOOLS_COLORS -gt 8 && COLOR_DEBUG="$COLOR_CHARCOAL" || COLOR_DEBUG="$COLOR_BLUE"
+                COLOR_ERROR="$COLOR_LIGHT_RED"
+                COLOR_WARNING="$COLOR_CYAN"
+                COLOR_UNAME="$COLOR_GREEN"
+                COLOR_PREFIX="$COLOR_DARK_GRAY"
+                COLOR_PIPE_HEADER="$COLOR_WHITE"
+                COLOR_PIPE_PREFIX="$COLOR_DARK_GRAY"
+            fi
+            if test "$OPTION" = "color_on_white" -o -z "$OPTION"
+            then
+                COLOR_TITLE="$COLOR_BLUE"
+                COLOR_TITLE_BORDER="$COLOR_LIGHT_BLUE"
+                COLOR_INFO="$COLOR_BLUE"
+                COLOR_STEP="$COLOR_LIGHT_BLUE"
+                COLOR_SUBSTEP="$COLOR_LIGHT_BLUE"
+                COLOR_WAITER="$COLOR_LIGHT_GRAY"
+                COLOR_DEBUG="$COLOR_LIGHT_GRAY"
+                COLOR_ERROR="$COLOR_RED"
+                COLOR_WARNING="$COLOR_CYAN"
+                COLOR_UNAME="$COLOR_GREEN"
+                COLOR_PREFIX="$COLOR_DARK_GRAY"
+                COLOR_PIPE_HEADER="$COLOR_GREEN"
+                COLOR_PIPE_PREFIX="$COLOR_DARK_GRAY"
+            fi
+            if test "$OPTION" = "black_on_white" -o -z "$OPTION"
+            then
+                COLOR_TITLE="$COLOR_BLACK"
+                COLOR_TITLE_BORDER="$COLOR_DARK_GRAY"
+                COLOR_INFO="$COLOR_BLACK"
+                COLOR_STEP="$COLOR_BLACK"
+                COLOR_SUBSTEP="$COLOR_BLACK"
+                COLOR_WAITER="$COLOR_LIGHT_GRAY"
+                COLOR_DEBUG="$COLOR_LIGHT_GRAY"
+                COLOR_ERROR="$COLOR_BLACK"
+                COLOR_WARNING="$COLOR_BLACK"
+                COLOR_UNAME="$COLOR_LIGHT_GRAY"
+                COLOR_PREFIX="$COLOR_DARK_GRAY"
+                COLOR_PIPE_HEADER="$COLOR_BLACK"
+                COLOR_PIPE_PREFIX="$COLOR_DARK_GRAY"
+            fi
+            test -n "$ECHO_PREFIX" && ECHO_PREFIX_C="$COLOR_PREFIX$ECHO_PREFIX$COLOR_RESET"
+            test -n "$ECHO_UNAME" && ECHO_UNAME_C="$COLOR_UNAME$ECHO_UNAME$COLOR_RESET"
             ;;
         *)
             echo_error_function "$@" "Unknown task argument: $TASK" $ERROR_CODE_DEFAULT
@@ -3830,7 +3883,13 @@ function debug
             ;;
         check)
             local OPTION="${1:-debug}"
+            str_word check DEBUG_TYPE "all" && return 0
+            str_word check DEBUG_TYPE "ALL" && return 0
             str_word check DEBUG_TYPE $OPTION
+            return $?
+            ;;
+        add)
+            DEBUG_TYPES[$1]="$2"
             ;;
         parse_type)
             #DEBUG_TYPES[debug]="D"
@@ -4567,19 +4626,7 @@ function init_colors
     fi
 
     # colors for echo_*
-    COLOR_TITLE="$COLOR_LIGHT_YELLOW"
-    COLOR_TITLE_BORDER="$COLOR_YELLOW"
-    COLOR_INFO="$COLOR_LIGHT_YELLOW"
-    COLOR_STEP="$COLOR_WHITE"
-    COLOR_SUBSTEP="$COLOR_LIGHT_GREY"
-    COLOR_WAITER="$COLOR_DARK_GRAY"
-    test $TOOLS_COLORS -gt 8 && COLOR_DEBUG="$COLOR_CHARCOAL" || COLOR_DEBUG="$COLOR_BLUE"
-    COLOR_ERROR="$COLOR_LIGHT_RED"
-    COLOR_WARNING="$COLOR_CYAN"
-    COLOR_UNAME="$COLOR_GREEN"
-    COLOR_PREFIX="$COLOR_DARK_GRAY"
-    COLOR_PIPE_HEADER="$COLOR_WHITE"
-    COLOR_PIPE_PREFIX="$COLOR_DARK_GRAY"
+    terminal coloring default
 
     #echo "Color usage is now set to $TOOLS_COLOR and using $TOOLS_COLORS colors for $TERM"
 }
@@ -4911,7 +4958,7 @@ declare -x -f test_opt_i
 declare -x -f test_opt2_i
 
 declare -x -i TERMINAL_COLUMNS=0
-declare -x -f terminal # check|info / get
+declare -x -f terminal # check|info / get / coloring
 declare -x    CURSOR_POSITION="0;0"
 declare -x -i CURSOR_COLUMN=0
 declare -x -i CURSOR_ROW=0
@@ -5023,6 +5070,7 @@ DEBUG_TYPES[right]="R"
 DEBUG_TYPES[function]="F"
 DEBUG_TYPES[variable]="V"
 DEBUG_TYPES[command]="C"
+DEBUG_TYPES[event]="E"
 declare -x -i DEBUG_LEVEL
 declare -x    DEBUG_LEVEL_STR
 declare -x -i DEBUG_LEVEL_DEFAULT=80
@@ -5038,7 +5086,7 @@ DEBUG_LEVELS[FATAL]=10
 DEBUG_LEVELS[FORCE]=1
 DEBUG_LEVELS[OFF]=0
 declare -x -f debug                     # init / init_namespaces / reinit_namespaces
-                                        # set / unset / check / set_level / set_level_default / check_level / parse_level
+                                        # set / unset / check / add / set_level / set_level_default / check_level / parse_level
 declare -x    DEBUG_PARSE_LEVEL
 declare -x    DEBUG_PARSE_LEVEL_STR
 

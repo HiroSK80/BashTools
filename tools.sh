@@ -4426,6 +4426,7 @@ function init_tools
     SCRIPT_NAME_NOEXT="${SCRIPT_NAME%.sh}"
     SCRIPT_NAME_NOEXT="${SCRIPT_NAME_NOEXT%.}"
     SCRIPT_PATH="$(dirname "$SCRIPT_FILE")"
+    TEMP_PATH="/tmp"
 
     test -z "$TOOLS_FILE" -a -f "$SCRIPT_PATH/tools.sh" && TOOLS_FILE="$SCRIPT_PATH/tools.sh"
     if test -f "$TOOLS_FILE"
@@ -4449,13 +4450,14 @@ function init_tools
 
 ### tools exports
 test -z "${TOOLS_FILE+exist}" && declare -x TOOLS_FILE
-declare -x TOOLS_NAME=""
-declare -x TOOLS_PATH=""
 declare -x SCRIPT_FILE=""
 declare -x SCRIPT_FILE_NOEXT=""
 declare -x SCRIPT_NAME=""
 declare -x SCRIPT_NAME_NOEXT=""
 declare -x SCRIPT_PATH=""
+declare -x TOOLS_NAME=""
+declare -x TOOLS_PATH=""
+declare -x TEMP_PATH="/tmp"
 
 declare -x REDIRECT_DEBUG=/dev/stderr
 declare -x REDIRECT_ERROR=/dev/stdout

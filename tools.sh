@@ -275,7 +275,7 @@ function command_options
             echo_debug_variable COMMAND OPTION OPTION2 OPTION3 OPTION4 OPTION5 OPTION6 OPTION7 OPTION8 OPTION9
             ;;
         *)
-            echo_error_function "Unknown argument: $TASK" $ERROR_CODE_DEFAULT
+            echo_error_function "$TASK" "$@" "Unknown task argument: $TASK" $ERROR_CODE_DEFAULT
             ;;
     esac
 }
@@ -292,11 +292,11 @@ function insert_cmd
 
 function assign
 {
-    #unset -v "$1" || echo_error_function "Invalid variable name: $1" $ERROR_CODE_DEFAULT
+    #unset -v "$1" || echo_error_function "$@" "Invalid variable name: $1" $ERROR_CODE_DEFAULT
     test $# = 2 -a -n "$1" && printf -v "$1" '%s' "$2" && return 0
     test $# = 1 -a -n "${1%%=*}" && printf -v "${1%%=*}" '%s' "${1#*=}" && return 0
-    test $# != 1 -a $# != 2 && echo_error_function "Wrong arguments count: $#, arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
-    echo_error_function "Empty variable name argument" $ERROR_CODE_DEFAULT
+    test $# != 1 -a $# != 2 && echo_error_function "$@" "Wrong arguments count: $#, arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
+    echo_error_function "$@" "Empty variable name argument" $ERROR_CODE_DEFAULT
 }
 
 function assign_multiple
@@ -333,17 +333,17 @@ function array_variable
 
 function array_assign
 {
-    #unset -v "$1" || echo_error_function "Invalid variable name: $1" $ERROR_CODE_DEFAULT
+    #unset -v "$1" || echo_error_function "$@" "Invalid variable name: $1" $ERROR_CODE_DEFAULT
     test $# = 2 && eval "$1"="$2" && return 0
     test $# = 1 && eval "${1%%=*}"="${1#*=}" && return 0
-    test $# != 1 -a $# != 2 && echo_error_function "Wrong arguments count: $#, arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
-    echo_error_function "Empty variable name argument" $ERROR_CODE_DEFAULT
+    test $# != 1 -a $# != 2 && echo_error_function "$@" "Wrong arguments count: $#, arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
+    echo_error_function "$@" "Empty variable name argument" $ERROR_CODE_DEFAULT
 }
 
 function array_assign_arguments
 {
-    #unset -v "$1" || echo_error_function "Invalid variable name: $1" $ERROR_CODE_DEFAULT
-    test $# = 0 && echo_error_function "Empty variable name argument" $ERROR_CODE_DEFAULT
+    #unset -v "$1" || echo_error_function "$@" "Invalid variable name: $1" $ERROR_CODE_DEFAULT
+    test $# = 0 && echo_error_function "$@" "Empty variable name argument" $ERROR_CODE_DEFAULT
     local VAR="$1"
     shift
     local ARRAY
@@ -415,7 +415,7 @@ function str_count_chars
         local STR="$1"
         local CHR="$2"
     else
-        echo_error_function "Wrong arguments count: $#, arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
+        echo_error_function "$@" "Wrong arguments count: $#, arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
     fi
 
     STR="${STR//[^$CHR]}"
@@ -501,7 +501,7 @@ function str_word
             return $RESULT
             ;;
         *)
-            echo_error_function "Unknown argument: $TASK" $ERROR_CODE_DEFAULT
+            echo_error_function "$TASK" "$@" "Unknown task argument: $TASK" $ERROR_CODE_DEFAULT
             ;;
     esac
 
@@ -539,7 +539,7 @@ function str_array_convert
         local VAR=""
         local TMP="$1"
     else
-        echo_error_function "Wrong arguments count: $#, Arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
+        echo_error_function "$@" "Wrong arguments count: $#, arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
     fi
 
     if test_str "$TMP" "^[(].*[)]$"
@@ -925,10 +925,12 @@ function arguments
             ARGUMENTS_CHECK_ADD+=("$(echo_quote "$@")")
             ;;
         check/run)
+            ARGUMENTS_CHECK_SHIFT=0
             arguments init
             while test $# -gt 0
             do
                 arguments loop
+                test "$1" = "--"  && let ARGUMENTS_CHECK_SHIFT++ && break
 
                 local -a CHECK=()
                 local CHECK_INDEX
@@ -940,7 +942,7 @@ function arguments
                     test ${#CHECK[@]} = 1 && arguments check "${CHECK[0]}" "$@"
                 done
 
-                arguments shift && shift $ARGUMENTS_SHIFT && continue
+                arguments shift && let ARGUMENTS_CHECK_SHIFT+=$ARGUMENTS_SHIFT && shift $ARGUMENTS_SHIFT && continue
                 echo_error "Unknown argument: $1" 1
             done
             arguments done
@@ -949,7 +951,7 @@ function arguments
 
         check/all|oneline)
             local TYPE="$1"
-            test "$TYPE" = "unknown" && test "${#ARGUMENTS_CHECK_ALL[@]}" -ne 0 && echo_error_function "Unknown argument(s): ${ARGUMENTS_CHECK_ALL[@]}" 1
+            test "$TYPE" = "unknown" && test "${#ARGUMENTS_CHECK_ALL[@]}" -ne 0 && echo_error_function "$TASK" "$@" "Unknown argument(s): ${ARGUMENTS_CHECK_ALL[@]}" 1
             test "$TYPE" = "unknown" && return 0
             test "$TYPE" = "switch" -o "$TYPE" = "value" && local OPT1="$2" && local OPT2="$3" && shift 3
             test "$TYPE" = "option" && local OPT1="$2" && shift 2
@@ -1050,7 +1052,7 @@ function arguments
             done
             ;;
         *)
-            echo_error_function "Unknown argument: $TASK" $ERROR_CODE_DEFAULT
+            echo_error_function "$TASK" "$@" "Unknown task argument: $TASK" $ERROR_CODE_DEFAULT
             ;;
     esac
 }
@@ -1396,7 +1398,7 @@ function file_delete_local
     if test -f "$1"
     then
         $RM "$1"
-        test ! -f "$1" || echo_error_function "Can't delete $(echo_quote "$1") file" $ERROR_CODE_DEFAULT
+        test ! -f "$1" || echo_error_function "$@" "Can't delete $(echo_quote "$1") file" $ERROR_CODE_DEFAULT
     else
         return 0
     fi
@@ -1535,7 +1537,7 @@ function file_remote
         cache)
             if test "$1" = "init"
             then
-                test_yes FILE_REMOTE_CACHE_ENABLED && echo_warning_function "Cache is already enabled" && return 0
+                test_yes FILE_REMOTE_CACHE_ENABLED && echo_warning_function "$TASK" "$@" "Cache is already enabled" && return 0
                 set_yes FILE_REMOTE_CACHE_ENABLED
                 FILE_REMOTE_CACHE=()
             elif test "$1" = "done"
@@ -1551,12 +1553,12 @@ function file_remote
                 done
                 FILE_REMOTE_CACHE=()
             else
-                echo_error_function "Unknown argument for cache task: $1" $ERROR_CODE_DEFAULT
+                echo_error_function "$TASK" "$@" "Unknown argument for cache task: $1" $ERROR_CODE_DEFAULT
             fi
 
             ;;
         *)
-            echo_error_function "Unknown argument: $TASK" $ERROR_CODE_DEFAULT
+            echo_error_function "$TASK" "$@" "Unknown task argument: $TASK" $ERROR_CODE_DEFAULT
             ;;
     esac
 
@@ -1566,7 +1568,7 @@ function file_remote
 
     case "$TASK" in
         cat)
-            #test_yes FILE_REMOTE_CACHE_ENABLED && echo_warning_function "Cache is enabled but file for cat task is not cached"
+            #test_yes FILE_REMOTE_CACHE_ENABLED && echo_warning_function "$TASK" "$@" "Cache is enabled but file for cat task is not cached"
 
             if test_str "${URL[PROTOCOL]}" "^(ssh|scp|remote)$"
             then
@@ -1575,7 +1577,7 @@ function file_remote
             then
                 cat "${URL[FILE]}" || return 1
             else
-                echo_error_function "Unknown transfer protocol for $(echo_quote "$URL")" $ERROR_CODE_DEFAULT
+                echo_error_function "$TASK" "$@" "Unknown transfer protocol for $(echo_quote "$URL")" $ERROR_CODE_DEFAULT
             fi
             ;;
         delete)
@@ -1586,7 +1588,7 @@ function file_remote
             then
                 file_delete_local "${URL[FILE]}" || return 1
             else
-                echo_error_function "Unknown remote protocol for $(echo_quote "$URL")" $ERROR_CODE_DEFAULT
+                echo_error_function "$TASK" "$@" "Unknown remote protocol for $(echo_quote "$URL")" $ERROR_CODE_DEFAULT
             fi
             ;;
         get)
@@ -1601,11 +1603,11 @@ function file_remote
             then
                 cp -p "${URL[FILE]}" "$FILE_REMOTE" || return 1
             else
-                echo_error_function "Unknown transfer protocol for $(echo_quote "$URL")" $ERROR_CODE_DEFAULT
+                echo_error_function "$TASK" "$@" "Unknown transfer protocol for $(echo_quote "$URL")" $ERROR_CODE_DEFAULT
             fi
             ;;
         put)
-            test_yes FILE_REMOTE_CACHE_ENABLED && echo_warning_function "Cache is enabled but file for put task is not cached"
+            test_yes FILE_REMOTE_CACHE_ENABLED && echo_warning_function "$TASK" "$@" "Cache is enabled but file for put task is not cached"
 
             if test_str "${URL[PROTOCOL]}" "^(ssh|scp|remote)$"
             then
@@ -1614,7 +1616,7 @@ function file_remote
             then
                 cp -p "$FILE_REMOTE" "${URL[FILE]}" || return 1
             else
-                echo_error_function "Unknown transfer protocol for $(echo_quote "$URL")" $ERROR_CODE_DEFAULT
+                echo_error_function "$TASK" "$@" "Unknown transfer protocol for $(echo_quote "$URL")" $ERROR_CODE_DEFAULT
             fi
             file_delete_local "$FILE_REMOTE"
             ;;
@@ -1632,14 +1634,14 @@ function file_line_delete_local
     local ERROR_MSG="Delete line \"$REGEXP\" from file $(echo_quote "$FILE") fail"
     if test -r "$FILE"
     then
-        cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
+        cat "$FILE" > "$TEMP_FILE" || echo_error_function "$@" "$ERROR_MSG" $ERROR_CODE_DEFAULT
         if diff "$FILE" "$TEMP_FILE" > /dev/null 2> /dev/null
         then
             $GREP --invert-match --extended-regexp "$REGEXP" "$TEMP_FILE" > "$FILE" 2> /dev/null
             file_delete_local "$TEMP_FILE"
         else
             file_delete_local "$TEMP_FILE"
-            echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
+            echo_error_function "$@" "$ERROR_MSG" $ERROR_CODE_DEFAULT
         fi
     fi
 }
@@ -1661,9 +1663,9 @@ function file_line_add_local
 
     if test -z "$REGEXP_AFTER$REGEXP_REPLACE"
     then
-        command echo "$LINE" >> "$FILE" || echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
+        command echo "$LINE" >> "$FILE" || echo_error_function "$@" "$ERROR_MSG" $ERROR_CODE_DEFAULT
     else
-        cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
+        cat "$FILE" > "$TEMP_FILE" || echo_error_function "$@" "$ERROR_MSG" $ERROR_CODE_DEFAULT
         if test -n "$REGEXP_REPLACE" && $(cat "$TEMP_FILE" | $AWK 'BEGIN { f=1; } /'"$REGEXP_REPLACE"'/ { f=0; } END { exit f; }')
         then
             $AWK $AWK_VAR line="$LINE" 'BEGIN { p=0; gsub(/\n/, "\\n", line); } p==0&&/'"$REGEXP_REPLACE"'/ { p=1; print line; next } { print; } END { if (p==0) print line; }' "$TEMP_FILE" > "$FILE"
@@ -1679,7 +1681,7 @@ function file_line_add_local
         else
             cat "$TEMP_FILE" > "$FILE"
             file_delete_local "$TEMP_FILE"
-            echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
+            echo_error_function "$@" "$ERROR_MSG" $ERROR_CODE_DEFAULT
         fi
     fi
 }
@@ -1710,7 +1712,7 @@ function file_line
 # $* as for file_line_*_local function
 {
     local TASK="$1"
-    test_str "$TASK" "(delete|add|set)" || echo_error_function "Unsupported function: $TASK. Supported: delete add set" $ERROR_CODE_DEFAULT
+    test_str "$TASK" "(delete|add|set)" || echo_error_function "$@" "Unsupported task: $TASK. Supported: delete add set" $ERROR_CODE_DEFAULT
     local -A URL
     str_parse_url "$2" URL
     shift 2
@@ -1718,11 +1720,11 @@ function file_line
     then
         file_line_${TASK}_local "${URL[FILE]}" "$@"
     else
-        file_remote get "${URL[URL]}" || echo_error_function "Can't retrieve $(echo_quote "${URL[FILE]}") file from ${URL[USER_HOST]}" $ERROR_CODE_DEFAULT
+        file_remote get "${URL[URL]}" || echo_error_function "$@" "Can't retrieve $(echo_quote "${URL[FILE]}") file from ${URL[USER_HOST]}" $ERROR_CODE_DEFAULT
         #ls -la "$FILE_REMOTE"
         file_line_${TASK}_local "$FILE_REMOTE" "$@"
         #ls -la "$FILE_REMOTE"
-        file_remote put "${URL[URL]}" || echo_error_function "Can't upload $(echo_quote "$FILE_REMOTE") file to ${URL[USER_HOST]}" $ERROR_CODE_DEFAULT
+        file_remote put "${URL[URL]}" || echo_error_function "$@" "Can't upload $(echo_quote "$FILE_REMOTE") file to ${URL[USER_HOST]}" $ERROR_CODE_DEFAULT
     fi
 }
 
@@ -1736,11 +1738,11 @@ function file_replace
     shift
     if test -w "$FILE"
     then
-        cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG, temporary file create $(echo_quote "$TEMP_FILE") problem" $ERROR_CODE_DEFAULT
-        cat "$TEMP_FILE" | pipe_replace "$@" > "$FILE" || echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
+        cat "$FILE" > "$TEMP_FILE" || echo_error_function "$@" "$ERROR_MSG, temporary file create $(echo_quote "$TEMP_FILE") problem" $ERROR_CODE_DEFAULT
+        cat "$TEMP_FILE" | pipe_replace "$@" > "$FILE" || echo_error_function "$@" "$ERROR_MSG" $ERROR_CODE_DEFAULT
         file_delete_local "$TEMP_FILE"
     else
-        echo_error_function "$ERROR_MSG, file not writable" $ERROR_CODE_DEFAULT
+        echo_error_function "$@" "$ERROR_MSG, file not writable" $ERROR_CODE_DEFAULT
     fi
 }
 
@@ -1826,7 +1828,7 @@ function file_config
             arguments onestep run "$@"
             ;;
         *)
-            echo_error_function "Unknown config file task: $@" $ERROR_CODE_DEFAULT
+            echo_error_function "$TASK" "$@" "Unknown config file task: $TASK" $ERROR_CODE_DEFAULT
     esac
     case "$TASK" in
         get)
@@ -1892,7 +1894,7 @@ function file_config
             local ERROR_MSG="Configuration \"$OPTION=\"$VALUE\"\" change to file $(echo_quote "$FILE") fail"
             if test -e "$FILE"
             then
-                cat "$FILE" > "$TEMP_FILE" || echo_error_function "$ERROR_MSG, temporary file create $(echo_quote "$TEMP_FILE") problem" $ERROR_CODE_DEFAULT
+                cat "$FILE" > "$TEMP_FILE" || echo_error_function "$TASK" "$@" "$ERROR_MSG, temporary file create $(echo_quote "$TEMP_FILE") problem" $ERROR_CODE_DEFAULT
                 test -w "$FILE" || echo_error_function "$ERROR_MSG, file not writable" $ERROR_CODE_DEFAULT
                 $AWK 'BEGIN { opt_val="'"$OPTION"'=\"'"$VALUE"'\""; found=0; s=0; }
                     "'"$SECTION"'" != "." && /^[\t ]*\[.*\][\t ]*$/ {
@@ -1909,14 +1911,14 @@ function file_config
                 else
                     cat "$TEMP_FILE" > "$FILE"
                     file_delete_local "$TEMP_FILE"
-                    echo_error_function "$ERROR_MSG" $ERROR_CODE_DEFAULT
+                    echo_error_function "$TASK" "$@" "$ERROR_MSG" $ERROR_CODE_DEFAULT
                 fi
             else
                 if test "$SECTION" = "."
                 then
-                    echo "$OPTION=\"$VALUE\"" > "$FILE" || echo_error_function "$ERROR_MSG, file create problem" $ERROR_CODE_DEFAULT
+                    echo "$OPTION=\"$VALUE\"" > "$FILE" || echo_error_function "$TASK" "$@" "$ERROR_MSG, file create problem" $ERROR_CODE_DEFAULT
                 else
-                    echo "[$SECTION]" > "$FILE" || echo_error_function "$ERROR_MSG, file create problem" $ERROR_CODE_DEFAULT
+                    echo "[$SECTION]" > "$FILE" || echo_error_function "$TASK" "$@" "$ERROR_MSG, file create problem" $ERROR_CODE_DEFAULT
                     echo "$OPTION=\"$VALUE\"" >> "$FILE"
                 fi
             fi
@@ -2548,7 +2550,7 @@ function test_str_grep
 {
     local IGNORE_CASE=""
     test "$1" = "-i" -o "$1" = "--ignore-case" && IGNORE_CASE="--ignore-case" && shift
-    test $# != 2 && echo_error_function "Wrong arguments count: $#, Arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
+    test $# != 2 && echo_error_function "$@" "Wrong arguments count: $#, arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
 
     command echo "$1" | $GREP --quiet --extended-regexp $IGNORE_CASE "$2"
     return $?
@@ -2560,11 +2562,11 @@ function test_str
 {
     local IGNORE_CASE=""
     test "$1" = "-i" -o "$1" = "--ignore-case" && IGNORE_CASE="yes" && shift
-    test $# != 2 && echo_error_function "Wrong arguments count: $#, Arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
+    test $# != 2 && echo_error_function "$@" "Wrong arguments count: $#, arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
 
     #test -n "$IGNORE_CASE" && local SHOPT="$(shopt -p nocasematch)" && shopt -s nocasematch
     test -n "$IGNORE_CASE" && shopt -s nocasematch
-    #if test -n "${!1:+exist}"
+    #if test -n "${!1+exist}"
     #then
     #    [[ "${!1}" =~ $2 ]]
     #else
@@ -2576,11 +2578,28 @@ function test_str
     return $RETURN
 }
 
+function test_var
+# $1 variable to test
+# $2 regexp
+{
+    local IGNORE_CASE=""
+    test "$1" = "-i" -o "$1" = "--ignore-case" && IGNORE_CASE="yes" && shift
+    test $# != 2 && echo_error_function "$@" "Wrong arguments count: $#, arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
+
+    #test -n "$IGNORE_CASE" && local SHOPT="$(shopt -p nocasematch)" && shopt -s nocasematch
+    test -n "$IGNORE_CASE" && shopt -s nocasematch
+    [[ "${!1}" =~ $2 ]]
+    local RETURN=$?
+    #test -n "$IGNORE_CASE" && $SHOPT
+    test -n "$IGNORE_CASE" && shopt -u nocasematch
+    return $RETURN
+}
+
 function test_file
 # $1 regexp string to test
 # $2 filename
 {
-    test $# != 2 && echo_error_function "Wrong arguments count: $#, Arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
+    test $# != 2 && echo_error_function "$@" "Wrong arguments count: $#, arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
 
     test -f "$2" || return 1
 
@@ -2670,10 +2689,8 @@ function test_opt2_i
 function terminal
 {
     local TASK="$1"
-    shift
-    local OPTION="$1"
-    shift
-    local OPTION2="$1"
+    local OPTION="$2"
+    local OPTION2="$3"
 
     case "$TASK" in
         check|info)
@@ -2705,12 +2722,12 @@ function terminal
                 then
                     command echo -n "$S_ESC[1K"
                 else
-                    echo_error_function "Unknown argument: $OPTION2" $ERROR_CODE_DEFAULT
+                    echo_error_function "$@" "Unknown argument: $OPTION2" $ERROR_CODE_DEFAULT
                 fi
             fi
             ;;
         *)
-            echo_error_function "Unknown argument: $TASK" $ERROR_CODE_DEFAULT
+            echo_error_function "$@" "Unknown task argument: $TASK" $ERROR_CODE_DEFAULT
             ;;
     esac
 }
@@ -2718,8 +2735,7 @@ function terminal
 function cursor
 {
     local TASK="$1"
-    shift
-    local VALUE="$1"
+    local VALUE="$2"
 
     case "$TASK" in
         save)
@@ -2756,7 +2772,7 @@ function cursor
             command echo -n "$S_ESC[${VALUE}D"
             ;;
         *)
-            echo_error_function "Unknown argument: $TASK" $ERROR_CODE_DEFAULT
+            echo_error_function "$@" "Unknown task argument: $TASK" $ERROR_CODE_DEFAULT
             ;;
     esac
 }
@@ -2882,7 +2898,7 @@ function pipe_replace
     then
         pipe_replace_section "$1" "$2" "$3" "$4"
     else
-        echo_error_function "Wrong arguments count: $#, Arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
+        echo_error_function "$@" "Wrong arguments count: $#, arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
     fi
 }
 
@@ -2890,7 +2906,7 @@ function pipe_replace_string
 # $1 regex search
 # $2 replace
 {
-    sed --expression="s|$1|$2|g" || echo_error_function "String $(echo_quote "$1") replace $(echo_quote "$2") error" $ERROR_CODE_DEFAULT
+    sed --expression="s|$1|$2|g" || echo_error_function "$@" "String $(echo_quote "$1") replace $(echo_quote "$2") error" $ERROR_CODE_DEFAULT
 }
 
 function pipe_replace_section
@@ -2943,7 +2959,7 @@ function pipe_replace_section
             if (copybuf == "") copybuf = $0;
             else copybuf = copybuf "\n" $0;
             next;
-        }' || echo_error_function "Section $(echo_quote "$1")-$(echo_quote "$2") replace error" $ERROR_CODE_DEFAULT
+        }' || echo_error_function "$@" "Section $(echo_quote "$1")-$(echo_quote "$2") replace error" $ERROR_CODE_DEFAULT
 }
 
 function pipe_remove_color
@@ -3050,7 +3066,7 @@ function log
             log section
             ;;
         done)
-            test -z "$LOG_FILE" && echo_warning_function "Log file is not specified" && return 1
+            test -z "$LOG_FILE" && echo_warning_function "$TASK" "$@" "Log file is not specified" && return 1
 
             local LOG_DURATION
             let LOG_DURATION="$(date -u +%s) - $LOG_START"
@@ -3671,7 +3687,7 @@ function debug
                         DEBUG_PARSE_LEVEL=$I
                         DEBUG_PARSE_LEVEL_STR="$1"
                     else
-                        echo_warning_function "Unknown error level \"$1\", using default"
+                        echo_warning_function "$TASK" "$@" "Unknown error level \"$1\", using default"
                         DEBUG_PARSE_LEVEL=$DEBUG_LEVEL_DEFAULT
                         DEBUG_PARSE_LEVEL_STR="$DEBUG_LEVEL_DEFAULT_STR"
                     fi
@@ -3685,7 +3701,7 @@ function debug
                     DEBUG_PARSE_LEVEL=$1
                     DEBUG_PARSE_LEVEL_STR="$2"
                 else
-                    echo_warning_function "Wrong error level \"$1\", using default"
+                    echo_warning_function "$TASK" "$@" "Wrong error level \"$1\", using default"
                     DEBUG_PARSE_LEVEL=$DEBUG_LEVEL_DEFAULT
                     DEBUG_PARSE_LEVEL_STR="$DEBUG_LEVEL_DEFAULT_STR"
                 fi
@@ -3953,35 +3969,53 @@ function echo_error_function
 
     debug init_namespaces
 
-    local ECHO_FUNCTION="${FUNCNAME[1]}"
-    test "$ECHO_FUNCTION" = "print" && ECHO_FUNCTION="${FUNCNAME[2]}"
-    test -n "${FUNCTION_NAMESPACES[$ECHO_FUNCTION]}" && ECHO_FUNCTION="${FUNCTION_NAMESPACES[$ECHO_FUNCTION]}"
-    local ECHO_ERROR="Error in function"
+    local ECHO_FUNCTION=""
+    local ECHO_FUNCTION_N="${FUNCNAME[1]}"
+    local ECHO_FUNCTION_A=""
+    local ECHO_FUNCTION_L="("
+    local ECHO_FUNCTION_R=")"
+    test "$ECHO_FUNCTION_N" = "print" && ECHO_FUNCTION_N="${FUNCNAME[2]}"
+    test -n "${FUNCTION_NAMESPACES[$ECHO_FUNCTION_N]}" && ECHO_FUNCTION="${FUNCTION_NAMESPACES[$ECHO_FUNCTION_N]}"
+    local ECHO_MESSAGE="Error in function"
     local EXIT_CODE=""
 
     test "$1" = "--function" -o "$1" = "-f" && shift
 
-    #if test $# -eq 0
-    #then
-        # predefined output
-    #fi
-    if test $# -eq 1
+    if test $# -eq 0
     then
-        ECHO_ERROR="$@"
+        ECHO_FUNCTION_A=""
+    elif test $# -eq 1
+    then
+        ECHO_FUNCTION_A=""
+        ECHO_MESSAGE="$@"
     elif test $# -eq 2 && ! test_integer "$2"
     then
-        ECHO_FUNCTION="$1"
-        shift
-        ECHO_ERROR="$@"
-    elif test $# -ge 3
+        ECHO_FUNCTION_A="$1"
+        ECHO_MESSAGE="$2"
+    elif test $# -eq 2 && test_integer "$2"
     then
-        ECHO_FUNCTION="$1"
-        shift
-        ECHO_ERROR="$@"
+        ECHO_FUNCTION_A=""
+        ECHO_MESSAGE="$1"
+        EXIT_CODE="$2"
+    elif test $# -ge 3 && test_integer "${@:(-1)}"
+    then
+        echo_quote "${@:1:${#@}-2}" > /dev/null
+        ECHO_FUNCTION_A="$ECHO_QUOTE"
+        ECHO_MESSAGE="${@:(-2):1}"
+        EXIT_CODE="${@:(-1)}"
+    #elif test $# -ge 3 && ! test_integer "${@:(-1)}"
+    else
+        echo_quote "${@:1:${#@}-1}" > /dev/null
+        ECHO_FUNCTION_A="$ECHO_QUOTE"
+        ECHO_MESSAGE="${@:(-1)}"
     fi
-    test_integer "${@:(-1)}" && EXIT_CODE=$2 && ECHO_ERROR="${@:1:${#@}-1}"
+    if test "$ECHO_FUNCTION_N" = "main"
+    then
+        test -n "$ECHO_FUNCTION_A" && ECHO_FUNCTION_L=" " && ECHO_FUNCTION_R="" || ECHO_FUNCTION_L="" && ECHO_FUNCTION_R=""
+    fi
+    ECHO_FUNCTION="$ECHO_FUNCTION$ECHO_FUNCTION_L$ECHO_FUNCTION_A$ECHO_FUNCTION_R"
 
-    echo_error "[$ECHO_FUNCTION] $ECHO_ERROR" $EXIT_CODE
+    echo_error "[$ECHO_FUNCTION] $ECHO_MESSAGE" $EXIT_CODE
 }
 
 function echo_warning
@@ -4005,44 +4039,55 @@ function echo_warning
 
 function echo_warning_function
 {
-    #local ECHO_FUNCTION="${FUNCNAME[@]}"
-    #ECHO_FUNCTION="${ECHO_FUNCTION/echo_error_function /}"
-    ##ECHO_FUNCTION="${ECHO_FUNCTION/ */}"
-    #ECHO_FUNCTION="${ECHO_FUNCTION// / < }"
-
     debug init_namespaces
 
-    local ECHO_FUNCTION="${FUNCNAME[1]}"
-    test "$ECHO_FUNCTION" = "print" && ECHO_FUNCTION="${FUNCNAME[2]}"
-    test -n "${FUNCTION_NAMESPACES[$ECHO_FUNCTION]}" && ECHO_FUNCTION="${FUNCTION_NAMESPACES[$ECHO_FUNCTION]}"
-    local ECHO_WARNING="Warning in function"
+    local ECHO_FUNCTION=""
+    local ECHO_FUNCTION_N="${FUNCNAME[1]}"
+    local ECHO_FUNCTION_A=""
+    local ECHO_FUNCTION_L="("
+    local ECHO_FUNCTION_R=")"
+    test "$ECHO_FUNCTION_N" = "print" && ECHO_FUNCTION_N="${FUNCNAME[2]}"
+    test -n "${FUNCTION_NAMESPACES[$ECHO_FUNCTION_N]}" && ECHO_FUNCTION="${FUNCTION_NAMESPACES[$ECHO_FUNCTION_N]}"
+    local ECHO_MESSAGE="Error in function"
     local EXIT_CODE=""
 
     test "$1" = "--function" -o "$1" = "-f" && shift
 
-    #if test $# -eq 0
-    #then
-        # predefined output
-    #fi
-    if test $# -eq 1
+    if test $# -eq 0
     then
-        ECHO_WARNING="$@"
-    fi
-    if test $# -eq 2 && ! test_integer "$2"
+        ECHO_FUNCTION_A=""
+    elif test $# -eq 1
     then
-        ECHO_FUNCTION="$1"
-        shift
-        ECHO_WARNING="$@"
-    fi
-    if test $# -eq 3
+        ECHO_FUNCTION_A=""
+        ECHO_MESSAGE="$@"
+    elif test $# -eq 2 && ! test_integer "$2"
     then
-        ECHO_FUNCTION="$1"
-        shift
-        ECHO_WARNING="$@"
+        ECHO_FUNCTION_A="$1"
+        ECHO_MESSAGE="$2"
+    elif test $# -eq 2 && test_integer "$2"
+    then
+        ECHO_FUNCTION_A=""
+        ECHO_MESSAGE="$1"
+        EXIT_CODE="$2"
+    elif test $# -ge 3 && test_integer "${@:(-1)}"
+    then
+        echo_quote "${@:1:${#@}-2}" > /dev/null
+        ECHO_FUNCTION_A="$ECHO_QUOTE"
+        ECHO_MESSAGE="${@:(-2):1}"
+        EXIT_CODE="${@:(-1)}"
+    #elif test $# -ge 3 && ! test_integer "${@:(-1)}"
+    else
+        echo_quote "${@:1:${#@}-1}" > /dev/null
+        ECHO_FUNCTION_A="$ECHO_QUOTE"
+        ECHO_MESSAGE="${@:(-1)}"
     fi
-    test_integer "${@:(-1)}" && EXIT_CODE=$2 && ECHO_WARNING="${@:1:${#@}-1}"
+    if test "$ECHO_FUNCTION_N" = "main"
+    then
+        test -n "$ECHO_FUNCTION_A" && ECHO_FUNCTION_L=" " && ECHO_FUNCTION_R="" || ECHO_FUNCTION_L="" && ECHO_FUNCTION_R=""
+    fi
+    ECHO_FUNCTION="$ECHO_FUNCTION$ECHO_FUNCTION_L$ECHO_FUNCTION_A$ECHO_FUNCTION_R"
 
-    echo_warning "[$ECHO_FUNCTION] $ECHO_WARNING" $EXIT_CODE
+    echo_warning "[$ECHO_FUNCTION] $ECHO_MESSAGE" $EXIT_CODE
 }
 
 function print
@@ -4125,7 +4170,7 @@ function history
             history restore
             ;;
         restore)
-            test -z "$HISTFILE" && echo_error_function "History file is not specified for restore"
+            test -z "$HISTFILE" && echo_error_function "$TASK" "$@" "History file is not specified for restore"
 
             history -r
 
@@ -4533,6 +4578,7 @@ declare -x    ARGUMENTS_OPTION_FOUND    # only internal use     # option already
 declare -x    ARGUMENTS_OPTIONS_FOUND   # only internal use     # options already found and assigned
 declare -x    ARGUMENTS_SWITCHES_FOUND  # only internal use
 declare -x -a ARGUMENTS_CHECK_ADD       # cache for check/add
+declare -x -i ARGUMENTS_CHECK_SHIFT     # shift number to shift after last processed argument (breaked processing wth "--" argument)
 declare -x -a ARGUMENTS_CHECK_ALL       # cache for check/all, lasting values are unknown arguments
 declare -x -A ARGUMENTS=()              # storage array from arguments check/auto
 declare -x -f arguments                 # init / done / loop / shift / check
@@ -4628,6 +4674,7 @@ declare -x -f test_ok
 declare -x -f test_nok
 declare -x -f test_integer
 declare -x -f test_str;         declare -x -f test_str_grep
+declare -x -f test_var
 declare -x -f test_file
 declare -x -f test_help
 declare -x -f test_cmd

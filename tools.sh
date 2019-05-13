@@ -1072,7 +1072,6 @@ function arguments_check
 
 # $1 type: tester
 # $2 tester array
-# $3 argument value
 {
     #echo "arguments_check=$@"
 
@@ -1175,9 +1174,17 @@ function arguments_check
             ;;
     esac
 
+    if test_str "$ARG_VAR" "/" # find and cut /append /array
+    then
+        ARG_VAR_NAME="${ARG_VAR%/*}"
+        ARG_VAR_MODIFIER="${ARG_VAR#*/}"
+    else
+        ARG_VAR_NAME="$ARG_VAR"
+        ARG_VAR_MODIFIER=""
+    fi
     if test -n "$ARG_VAR"
     then
-        test_str "$ARG_VAR" "/" && ARGUMENTS_VALUE_ORIGINAL="" || ARGUMENTS_VALUE_ORIGINAL="${!ARG_VAR}"
+        test -n "$ARG_VAR_MODIFIER" && ARGUMENTS_VALUE_ORIGINAL="" || ARGUMENTS_VALUE_ORIGINAL="${!ARG_VAR}"
     else
         ARGUMENTS_VALUE_ORIGINAL=""
     fi
@@ -1235,27 +1242,26 @@ function arguments_check
             test_yes ARGUMENTS_OPTION_FOUND && return 1
             test "${1:0:1}" = "-" && return 1
             #test -n "$ARGUMENTS_VALUE_ORIGINAL" && return 1 #BAD check if already assigned - no default value
-            str_word check ARGUMENTS_OPTIONS_FOUND "$ARG_VAR" && return 1
+            str_word check ARGUMENTS_OPTIONS_FOUND "$ARG_VAR_NAME" && return 1
             ARGUMENTS_VALUE="$1"
-            arguments_check tester "$ARG_TEST" "$@" && set_yes ARG_ASSIGN ARGUMENTS_OPTION_FOUND && str_word add ARGUMENTS_OPTIONS_FOUND "$ARG_VAR" && let ARGUMENTS_SHIFT++
+            arguments_check tester "$ARG_TEST" "$@" && set_yes ARG_ASSIGN ARGUMENTS_OPTION_FOUND && let ARGUMENTS_SHIFT++
+            test -z "$ARG_VAR_MODIFIER" && str_word add ARGUMENTS_OPTIONS_FOUND "$ARG_VAR_NAME" # append/array - multiple assignments permitted
             ;;
     esac
 
     if test_yes ARG_ASSIGN
     then
         test -z "$ARG_VAR" && return 0
-        if test_str "$ARG_VAR" "/append"
+        if test "$ARG_VAR_MODIFIER" = "append"
         then
-            ARG_VAR="${ARG_VAR%/*}"
             #echo "assign \"$ARG_VAR\" \"$ARGUMENTS_VALUE\""
-            test -z "${!ARG_VAR}" && assign "$ARG_VAR" "$ARGUMENTS_VALUE" || assign "$ARG_VAR" "${!ARG_VAR}$ARGUMENTS_VALUE_DELIMITER$ARGUMENTS_VALUE"
-        elif test_str "$ARG_VAR" "/array"
+            test -z "${!ARG_VAR_NAME}" && assign "$ARG_VAR_NAME" "$ARGUMENTS_VALUE" || assign "$ARG_VAR_NAME" "${!ARG_VAR_NAME}$ARGUMENTS_VALUE_DELIMITER$ARGUMENTS_VALUE"
+        elif test "$ARG_VAR_MODIFIER" = "array"
         then
-            ARG_VAR="${ARG_VAR%/*}"
             #echo "$ARG_VAR+=(\"$ARGUMENTS_VALUE\")"
-            eval "$ARG_VAR+=(\"$ARGUMENTS_VALUE\")"
+            eval "$ARG_VAR_NAME+=(\"$ARGUMENTS_VALUE\")"
         else
-            assign "$ARG_VAR" "$ARGUMENTS_VALUE"
+            assign "$ARG_VAR_NAME" "$ARGUMENTS_VALUE"
         fi
         return 0
     fi
@@ -1917,6 +1923,31 @@ function file_config
             ;;
     esac
 }
+
+function file
+{
+    test $# = 1 && command file "$1" && return $?
+
+    local TASK="$1"
+    case "$TASK" in
+        prepare)
+            shift
+        ;;
+        *)
+            command file "$@"
+            return $?
+        ;;
+    esac
+    file_$TASK "$@"
+    return $?
+}
+
+function f
+{
+    file "$@"
+    return $?
+}
+
 #NAMESPACE/file/end
 
 #NAMESPACE/network/start
@@ -2291,7 +2322,7 @@ function get_pids
 {
     ps -e -o pid,ppid,cmd | $AWK $AWK_VAR p="$1" $AWK_VAR s="$$" '
         BEGIN { f=0; }
-        $1==s||$2==s||/tools_get_pids_tag/ { next; }
+        $1==s||/tools_get_pids_tag/ { next; }
         $0~p { print $1; f++; }
         END { if (f==0) exit(1); }';
 }
@@ -2462,7 +2493,7 @@ function test_yes
 {
     test_str_yes "$1" && return 0
     #echo "Testing $1 - variable ${!1+exist}, $1 = ${!1}"
-    test -n "${1:+exist}" && test_str_yes "${!1}" || return 1
+    test -n "${!1:+exist}" && test_str_yes "${!1}" || return 1
 }
 
 function test_str_no
@@ -2475,7 +2506,7 @@ function test_no
 # $1 no string or variable
 {
     test_str_no "$1" && return 0
-    test -n "${1:+exist}" && test_str_no "${!1}" || return 1
+    test -n "${!1:+exist}" && test_str_no "${!1}" || return 1
 }
 
 function test_ok
@@ -2533,7 +2564,12 @@ function test_str
 
     #test -n "$IGNORE_CASE" && local SHOPT="$(shopt -p nocasematch)" && shopt -s nocasematch
     test -n "$IGNORE_CASE" && shopt -s nocasematch
-    [[ "$1" =~ $2 ]]
+    #if test -n "${!1:+exist}"
+    #then
+    #    [[ "${!1}" =~ $2 ]]
+    #else
+        [[ "$1" =~ $2 ]]
+    #fi
     local RETURN=$?
     #test -n "$IGNORE_CASE" && $SHOPT
     test -n "$IGNORE_CASE" && shopt -u nocasematch
@@ -4541,6 +4577,10 @@ declare -x -f file_replace
 declare -x    FILE_CONFIG_PREFIX="CONFIG_"  # prefix before variables name for read function
 declare -x -A CONFIG=()                 # default array name to store values
 declare -x -f file_config               # format / get / read / set
+
+# aliasses for file_$1 $@
+declare -x -f file
+declare -x -f f
 
 declare -x -f check_ssh
 declare -x -f check_internet

@@ -2,16 +2,16 @@
 
 # execute as: ". <tools.sh> [options]"
 # shortest version:
-#       . "$(dirname $0)/tools.sh"
+#       source "$(dirname $0)/tools.sh"
 # shortest version with process tools known arguments and others put via command_options to $COMMAND, $OPTION, ...:
-#       . "$(dirname $0)/tools.sh" "$@"
+#       source "$(dirname $0)/tools.sh" "$@"
 # good version with some predefined arguments:
 #       export TOOLS_FILE="$(dirname $0)/tools.sh"
-#       . "$TOOLS_FILE" --debug --debug-variable --debug-function --debug-right "$@" || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
+#       source "$TOOLS_FILE" --debug --debug-variable --debug-function --debug-right "$@" || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
 # long version:
 #       unset TOOLS_LOADED
 #       export TOOLS_FILE="$(dirname $0)/tools.sh"
-#       . "$TOOLS_FILE" --debug --debug-right --debug-function --debug-variable "$@"
+#       source "$TOOLS_FILE" --debug --debug-right --debug-function --debug-variable "$@"
 #       test "$TOOLS_LOADED" != "yes" && echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1
 
 # options:
@@ -1063,6 +1063,8 @@ function arguments_check
 # $2 tester array
 # $3 argument value
 {
+    #echo "arguments_check=$@"
+
     local CHECK="$1"
     shift
     case "$CHECK" in
@@ -1162,7 +1164,12 @@ function arguments_check
             ;;
     esac
 
-    test_str "$ARG_VAR" "/" && ARGUMENTS_VALUE_ORIGINAL="" || ARGUMENTS_VALUE_ORIGINAL="${!ARG_VAR}"
+    if test -n "$ARG_VAR"
+    then
+        test_str "$ARG_VAR" "/" && ARGUMENTS_VALUE_ORIGINAL="" || ARGUMENTS_VALUE_ORIGINAL="${!ARG_VAR}"
+    else
+        ARGUMENTS_VALUE_ORIGINAL=""
+    fi
     #echo ARG_VAR=$ARG_VAR ARGUMENTS_VALUE_ORIGINAL=$ARGUMENTS_VALUE_ORIGINAL
 
     local ARG_ASSIGN="no"
@@ -1175,15 +1182,14 @@ function arguments_check
             then # single long or single short switch
                 let ARGUMENTS_SHIFT++
                 ARG_FOUND_COUNT=1
-            fi
-            if test -n "$ARG_SHORT" && test_str "$1" "^-[^-]" && test "${#1}" -ge 3 && test_str "$1" "$ARG_SHORT"
+            elif test -n "$ARG_SHORT" && test_str "$1" "^-[^-]" && test "${#1}" -ge 3 && test_str "$1" "$ARG_SHORT"
             then # multiple short switches
                 test -z "$ARGUMENTS_SWITCHES_FOUND" && ARGUMENTS_SWITCHES_FOUND="${1:1};"
                 ARGUMENTS_SWITCHES_FOUND="${ARGUMENTS_SWITCHES_FOUND}$ARG_SHORT"
                 str_count_chars ARG_FOUND_COUNT "$1" "$ARG_SHORT"
             fi
-
             test $ARG_FOUND_COUNT = 0 && return 1
+
             ARGUMENTS_VALUE="$ARG_VALUE"
             local -i ARG_FOUND_COUNT_I=0
             while test $ARG_FOUND_COUNT_I -lt $ARG_FOUND_COUNT
@@ -2612,10 +2618,20 @@ function terminal
 
     case "$TASK" in
         check|info)
-            test -z "$COLUMNS" -o "$COLUMNS" = 0 && COLUMNS="$(tput cols)"
+            if test "$TERM" = "dumb"
+            then
+                COLUMNS=0
+            else
+                test -z "$COLUMNS" -o "$COLUMNS" = 0 && COLUMNS="$(tput cols)"
+            fi
             ;;
         get)
-            COLUMNS="$(tput cols)"
+            if test "$TERM" = "dumb"
+            then
+                COLUMNS=0
+            else
+                COLUMNS="$(tput cols)"
+            fi
             ;;
         *)
             echo_error_function "Unknown argument: $TASK" $ERROR_CODE_DEFAULT
@@ -3631,7 +3647,8 @@ function echo_debug_right
             local DEBUG_MESSAGE="$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$@"
             local DEBUG_MESSAGE_STR="$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$@"
         fi
-        local -i SHIFT_MESSAGE="$(tput cols)"
+        local -i SHIFT_MESSAGE=0
+        test -t 1 && SHIFT_MESSAGE="$(tput cols)"
         let SHIFT_MESSAGE="$SHIFT_MESSAGE - ${#DEBUG_MESSAGE_STR}"
 
 ##############OLD
@@ -3928,9 +3945,12 @@ function init_colors
     # set colors to current terminal
     #echo "Initial color usage is set to $TOOLS_COLOR and using $TOOLS_COLORS colors"
 
-# echo $TERM
+#echo T=$TERM
+#echo TT=$TOOLS_TERM
+#echo C=`tput cols`
+
 # ok xterm/rxvt/konsole/linux
-# no dumb/sun
+# no dumb???/sun
 
     # set TERM if is not set
     test -z "$TERM" -a -n "$TOOLS_TERM" && TERM="$TOOLS_TERM"
@@ -3941,7 +3961,7 @@ function init_colors
     # init color usage if is not set
     if ! test_yes "$TOOLS_COLOR" && ! test_no "$TOOLS_COLOR"
     then
-        if test "${TERM:0:5}" = "xterm" -o "$TERM" = "rxvt" -o "$TERM" = "konsole" -o "$TERM" = "linux" -o "$TERM" = "putty"
+        if test "${TERM:0:5}" = "xterm" -o "$TERM" = "rxvt" -o "$TERM" = "konsole" -o "$TERM" = "linux" -o "$TERM" = "putty" -o "$TERM" = "dumb"
         then
             TOOLS_COLOR="yes"
             TOOLS_COLORS=256
@@ -4135,6 +4155,13 @@ function init_tools
         TOOLS_NAME=""
         TOOLS_PATH="$SCRIPT_PATH"
     fi
+
+    # set echo prefix or uname prefix
+    test_yes TOOLS_PREFIX && ECHO_PREFIX="### " || ECHO_PREFIX=""
+    test -n "$ECHO_PREFIX" && ECHO_PREFIX_C="$COLOR_PREFIX$ECHO_PREFIX$COLOR_RESET"
+
+    test_yes TOOLS_UNAME && ECHO_UNAME="$(uname -n): " || ECHO_UNAME=""
+    test -n "$ECHO_UNAME" && ECHO_UNAME_C="$COLOR_UNAME$ECHO_UNAME$COLOR_RESET"
 }
 
 ### tools exports
@@ -4155,7 +4182,7 @@ declare -x    TOOLS_TERM="xterm" # default value if TERM is not set
 declare -x    TOOLS_COLOR="unknown"
 declare -x -i TOOLS_COLORS=-1
 declare -x    TOOLS_PREFIX="no"
-declare -x    TOOLS_UNAME=""
+declare -x    TOOLS_UNAME="no"
 
 declare -x ECHO_PREFIX=""
 declare -x ECHO_PREFIX_DEBUG="@@@ "
@@ -4520,11 +4547,5 @@ declare -x -f init_tools
 init_debug
 init_colors
 init_tools "$@"
-
-# set echo prefix or uname prefix
-test_yes TOOLS_PREFIX && ECHO_PREFIX="### " || ECHO_PREFIX=""
-test -n "$ECHO_PREFIX" && ECHO_PREFIX_C="$COLOR_PREFIX$ECHO_PREFIX$COLOR_RESET"
-test_yes TOOLS_UNAME && ECHO_UNAME="$(uname -n): " || ECHO_UNAME=""
-test -n "$ECHO_UNAME" && ECHO_UNAME_C="$COLOR_UNAME$ECHO_UNAME$COLOR_RESET"
 
 return 0

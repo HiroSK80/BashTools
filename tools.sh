@@ -862,9 +862,9 @@ function str_get_arg_from_quoted
 
 function arguments
 {
-    local TASK="$1"
+    local ARGUMENTS_TASK="$1"
     shift
-    case "$TASK" in
+    case "$ARGUMENTS_TASK" in
         init)
             ARGUMENTS_STORE[$ARGUMENTS_STORE_I]="$ARGUMENTS_SHIFT|$ARGUMENTS_OPTION_FOUND|$ARGUMENTS_OPTIONS_FOUND|$ARGUMENTS_SWITCHES_FOUND"
             ARGUMENTS_OPTIONS_FOUND=""
@@ -910,7 +910,7 @@ function arguments
                 local SWITCHES_ARGUMENT="${ARGUMENTS_SWITCHES_FOUND%;*}"
                 local SWITCHES_FOUND="${ARGUMENTS_SWITCHES_FOUND#*;}"
                 SWITCHES_ARGUMENT_UNKNOWN="${SWITCHES_ARGUMENT//[$SWITCHES_FOUND]/}"
-                test -n "$SWITCHES_ARGUMENT_UNKNOWN" -a "$TASK" = "shift" && echo_error "Unknown switches: $SWITCHES_ARGUMENT_UNKNOWN in -$SWITCHES_ARGUMENT" $ERROR_CODE_DEFAULT
+                test -n "$SWITCHES_ARGUMENT_UNKNOWN" -a "$ARGUMENTS_TASK" = "shift" && echo_error "Unknown switches: $SWITCHES_ARGUMENT_UNKNOWN in -$SWITCHES_ARGUMENT" $ERROR_CODE_DEFAULT
                 #test -n "$SWITCHES_ARGUMENT_UNKNOWN" && echo_warning "Unknown switches: $SWITCHES_ARGUMENT_UNKNOWN in -$SWITCHES_ARGUMENT"
                 let ARGUMENTS_SHIFT++
             else
@@ -922,7 +922,12 @@ function arguments
             arguments_check "$@"
             ;;
         onestep)
-            test "$1" = "run" && shift && arguments check/run "$@" || arguments check/add "$@"
+            test "$1" = "run" && shift && arguments check/run "$@" && return
+            test "$1" = "set" && shift && arguments check/set "$@" && return
+            arguments check/add "$@"
+            ;;
+        check/set)
+            test "$1" = "error_on_unknown" && ARGUMENTS_CHECK_ERROR_ON_UNKNOWN="$2"
             ;;
         check/add)
             ARGUMENTS_CHECK_ADD+=("$(echo_quote "$@")")
@@ -935,18 +940,18 @@ function arguments
                 arguments loop
                 test "$1" = "--"  && let ARGUMENTS_CHECK_SHIFT++ && break
 
-                local -a CHECK=()
-                local CHECK_INDEX
-                for CHECK_INDEX in "${!ARGUMENTS_CHECK_ADD[@]}"
+                local -a ARGUMENTS_CHECK_RUN_ARRAY=()
+                local ARGUMENTS_CHECK_RUN_INDEX
+                for ARGUMENTS_CHECK_RUN_INDEX in "${!ARGUMENTS_CHECK_ADD[@]}"
                 do
-                    array_assign CHECK "(${ARGUMENTS_CHECK_ADD[$CHECK_INDEX]})"
-                    test ${#CHECK[@]} = 3 && arguments check "${CHECK[0]}" "${CHECK[1]}" "${CHECK[2]}" "$@"
-                    test ${#CHECK[@]} = 2 && arguments check "${CHECK[0]}" "${CHECK[1]}" "$@"
-                    test ${#CHECK[@]} = 1 && arguments check "${CHECK[0]}" "$@"
+                    array_assign ARGUMENTS_CHECK_RUN_ARRAY "(${ARGUMENTS_CHECK_ADD[$ARGUMENTS_CHECK_RUN_INDEX]})"
+                    test ${#ARGUMENTS_CHECK_RUN_ARRAY[@]} = 3 && arguments check "${ARGUMENTS_CHECK_RUN_ARRAY[0]}" "${ARGUMENTS_CHECK_RUN_ARRAY[1]}" "${ARGUMENTS_CHECK_RUN_ARRAY[2]}" "$@"
+                    test ${#ARGUMENTS_CHECK_RUN_ARRAY[@]} = 2 && arguments check "${ARGUMENTS_CHECK_RUN_ARRAY[0]}" "${ARGUMENTS_CHECK_RUN_ARRAY[1]}" "$@"
+                    test ${#ARGUMENTS_CHECK_RUN_ARRAY[@]} = 1 && arguments check "${ARGUMENTS_CHECK_RUN_ARRAY[0]}" "$@"
                 done
 
                 arguments shift && let ARGUMENTS_CHECK_SHIFT+=$ARGUMENTS_SHIFT && shift $ARGUMENTS_SHIFT && continue
-                echo_error "Unknown argument: $1" 1
+                test_yes ARGUMENTS_CHECK_ERROR_ON_UNKNOWN && echo_error "Unknown argument: $1" 1 || break
             done
             arguments done
             ARGUMENTS_CHECK_ADD=()
@@ -954,7 +959,7 @@ function arguments
 
         check/all|oneline)
             local TYPE="$1"
-            test "$TYPE" = "unknown" && test "${#ARGUMENTS_CHECK_ALL[@]}" -ne 0 && echo_error_function "$TASK" "$@" "Unknown argument(s): ${ARGUMENTS_CHECK_ALL[@]}" 1
+            test "$TYPE" = "unknown" && test "${#ARGUMENTS_CHECK_ALL[@]}" -ne 0 && echo_error_function "$ARGUMENTS_TASK" "$@" "Unknown argument(s): ${ARGUMENTS_CHECK_ALL[@]}" 1
             test "$TYPE" = "unknown" && return 0
             test "$TYPE" = "switch" -o "$TYPE" = "value" && local OPT1="$2" && local OPT2="$3" && shift 3
             test "$TYPE" = "option" && local OPT1="$2" && shift 2
@@ -1055,7 +1060,7 @@ function arguments
             done
             ;;
         *)
-            echo_error_function "$TASK" "$@" "Unknown task argument: $TASK" $ERROR_CODE_DEFAULT
+            echo_error_function "$ARGUMENTS_TASK" "$@" "Unknown task argument: $TASK" $ERROR_CODE_DEFAULT
             ;;
     esac
 }
@@ -1080,9 +1085,9 @@ function arguments_check
 {
     #echo "arguments_check=$@"
 
-    local CHECK="$1"
+    local ARGUMENTS_CHECK_TASK="$1"
     shift
-    case "$CHECK" in
+    case "$ARGUMENTS_CHECK_TASK" in
         switch)
             if test_str "$1" "^.*\|.*$"
             then
@@ -1174,7 +1179,7 @@ function arguments_check
             fi
             return $RESULT
             ;;
-        *)  arguments_check_$CHECK "$@"
+        *)  arguments_check_$ARGUMENTS_CHECK_TASK "$@"
             return $?
             ;;
     esac
@@ -1198,7 +1203,7 @@ function arguments_check
     local ARG_ASSIGN="no"
     ARGUMENTS_NAME="$1"
     ARGUMENTS_VALUE=""
-    case "$CHECK" in
+    case "$ARGUMENTS_CHECK_TASK" in
         switch)
             local -i ARG_FOUND_COUNT=0
             if test "$1" = "--$ARG_LONG" -o "$1" = "-$ARG_SHORT"
@@ -1263,9 +1268,10 @@ function arguments_check
             test -z "${!ARG_VAR_NAME}" && assign "$ARG_VAR_NAME" "$ARGUMENTS_VALUE" || assign "$ARG_VAR_NAME" "${!ARG_VAR_NAME}$ARGUMENTS_VALUE_DELIMITER$ARGUMENTS_VALUE"
         elif test "$ARG_VAR_MODIFIER" = "array"
         then
-            #echo "$ARG_VAR+=(\"$ARGUMENTS_VALUE\")"
+            #echo "$ARG_VAR_NAME+=(\"$ARGUMENTS_VALUE\")"
             eval "$ARG_VAR_NAME+=(\"$ARGUMENTS_VALUE\")"
         else
+            #echo "assign \"$ARG_VAR_NAME\" \"$ARGUMENTS_VALUE\" ($ARG_VAR_NAME=${!ARG_VAR_NAME})"
             assign "$ARG_VAR_NAME" "$ARGUMENTS_VALUE"
         fi
         return 0
@@ -2489,16 +2495,26 @@ function daemon
     return 0
 }
 
+function trap
+{
+    event add --single "$2" "$1"
+}
+
 function event
 {
-    local TASK="$1"
-    shift
+    local TASK=""
+    local TRAP=""
+    local SINGLE="no"
+    arguments onestep set error_on_unknown no
+    arguments onestep switch s"|single" "SINGLE|yes"
+    arguments onestep option "TASK|(add remove)"
+    arguments onestep option "TRAP|(EXIT INT QUIT TERM)"
+    arguments onestep run "$@"
 
     case "$TASK" in
         add)
-            local TRAP="$1"
-            shift
-            EVENT_LISTENERS+=("$TRAP|$@")
+            shift $ARGUMENTS_CHECK_SHIFT
+            test_no SINGLE && EVENT_LISTENERS+=("$TRAP|$@") || EVENT_LISTENERS_SINGLE[$TRAP]="$@"
             ;;
         *)
             echo_error_function "$TASK" "$@" "Unknown task argument: $TASK" $ERROR_CODE_DEFAULT
@@ -2517,11 +2533,12 @@ function event_exit
     for INDEX in ${!EVENT_LISTENERS[@]}
     do
         test "${EVENT_LISTENERS[$INDEX]%%|*}" != "EXIT" && continue
-        print debug "Calling event on EXIT: ${EVENT_LISTENERS[$INDEX]#*|}"
+        print debug --custom event "Calling event on EXIT: ${EVENT_LISTENERS[$INDEX]#*|}"
         eval "${EVENT_LISTENERS[$INDEX]#*|}"
     done
+    test -n "${EVENT_LISTENERS_SINGLE[EXIT]}" && print debug --custom event "Calling single event on EXIT: ${EVENT_LISTENERS_SINGLE[EXIT]}" && eval "${EVENT_LISTENERS_SINGLE[EXIT]}"
 
-    trap '' EXIT INT QUIT TERM
+    command trap '' EXIT INT QUIT TERM
     exit $ERROR
 }
 
@@ -2533,11 +2550,12 @@ function event_int
     for INDEX in ${!EVENT_LISTENERS[@]}
     do
         test "${EVENT_LISTENERS[$INDEX]%%|*}" != "INT" && continue
-        print debug "Calling event on INT: ${EVENT_LISTENERS[$INDEX]#*|}"
+        print debug --custom event "Calling event on INT: ${EVENT_LISTENERS[$INDEX]#*|}"
         eval "${EVENT_LISTENERS[$INDEX]#*|}"
     done
+    test -n "${EVENT_LISTENERS_SINGLE[INT]}" && print debug --custom event "Calling single event on INT: ${EVENT_LISTENERS_SINGLE[INT]}" && eval "${EVENT_LISTENERS_SINGLE[INT]}"
     
-    trap '' EXIT
+    command trap '' EXIT
     event_exit INT
 }
 
@@ -2549,11 +2567,12 @@ function event_quit
     for INDEX in ${!EVENT_LISTENERS[@]}
     do
         test "${EVENT_LISTENERS[$INDEX]%%|*}" != "QUIT" && continue
-        print debug "Calling event on QUIT: ${EVENT_LISTENERS[$INDEX]#*|}"
+        print debug --custom event "Calling event on QUIT: ${EVENT_LISTENERS[$INDEX]#*|}"
         eval "${EVENT_LISTENERS[$INDEX]#*|}"
     done
+    test -n "${EVENT_LISTENERS_SINGLE[QUIT]}" && print debug --custom event "Calling single event on QUIT: ${EVENT_LISTENERS_SINGLE[QUIT]}" && eval "${EVENT_LISTENERS_SINGLE[QUIT]}"
     
-    trap '' EXIT
+    command trap '' EXIT
     event_exit QUIT
 }
 
@@ -2565,11 +2584,12 @@ function event_term
     for INDEX in ${!EVENT_LISTENERS[@]}
     do
         test "${EVENT_LISTENERS[$INDEX]%%|*}" != "TERM" && continue
-        print debug "Calling event on TERM: ${EVENT_LISTENERS[$INDEX]#*|}"
+        print debug --custom event "Calling event on TERM: ${EVENT_LISTENERS[$INDEX]#*|}"
         eval "${EVENT_LISTENERS[$INDEX]#*|}"
     done
+    test -n "${EVENT_LISTENERS_SINGLE[TERM]}" && print debug --custom event "Calling single event on TERM: ${EVENT_LISTENERS_SINGLE[TERM]}" && eval "${EVENT_LISTENERS_SINGLE[TERM]}"
     
-    trap '' EXIT
+    command trap '' EXIT
     event_exit TERM
 }
 #NAMESPACE/shell/end
@@ -3376,7 +3396,7 @@ function echo_line
 # usage as standard echo
 # echoes arguments to standard output and log to the file
 {
-    local ESCAPE="no"
+    local ESCAPE="$ECHO_LINE_ESCAPE"
     local NEWLINE="yes"
     local PRESERVE=""
     local LOG="yes"
@@ -3395,6 +3415,10 @@ function echo_line
                 ;;
             "-e"|"--escape")
                 ESCAPE="yes"
+                shift
+                ;;
+            "--no-escape")
+                ESCAPE="no"
                 shift
                 ;;
             "-n"|"--no-newline")
@@ -4271,27 +4295,27 @@ function print
 {
     test $# = 1 -a "$1" != "waiter" && echo_line "$1" && return 0
 
-    local TASK="$1"
-    case "$TASK" in
+    local PRINT_TASK="$1"
+    case "$PRINT_TASK" in
         debug)
             shift
 #arguments automatic "$@"
-            arguments contains "v|variable" "$@" && TASK="${TASK}_variable"
-            arguments contains "f|function" "$@" && TASK="${TASK}_function"
-            arguments contains "c|custom" "$@" && TASK="${TASK}_custom"
+            arguments contains "v|variable" "$@" && PRINT_TASK="${PRINT_TASK}_variable"
+            arguments contains "f|function" "$@" && PRINT_TASK="${PRINT_TASK}_function"
+            arguments contains "c|custom" "$@" && PRINT_TASK="${PRINT_TASK}_custom"
         ;;
         warning|error)
             shift
-            arguments contains "f|function" "$@" && TASK="${TASK}_function"
+            arguments contains "f|function" "$@" && PRINT_TASK="${PRINT_TASK}_function"
         ;;
         line|title|info|step|substep|waiter|quote|cut)
             shift
         ;;
         *)
-            TASK="line"
+            PRINT_TASK="line"
         ;;
     esac
-    echo_$TASK "$@"
+    echo_$PRINT_TASK "$@"
     return 0
 }
 
@@ -4762,8 +4786,9 @@ declare -x -i ARGUMENTS_SHIFT=0
 declare -x    ARGUMENTS_OPTION_FOUND    # only internal use     # option already found and assigned in this loop
 declare -x    ARGUMENTS_OPTIONS_FOUND   # only internal use     # options already found and assigned
 declare -x    ARGUMENTS_SWITCHES_FOUND  # only internal use
-declare -x -a ARGUMENTS_CHECK_ADD       # cache for check/add
 declare -x -i ARGUMENTS_CHECK_SHIFT     # shift number to shift after last processed argument (breaked processing wth "--" argument)
+declare -x    ARGUMENTS_CHECK_ERROR_ON_UNKNOWN="yes"    # exit error on unknown or simple break on first unknown
+declare -x -a ARGUMENTS_CHECK_ADD       # cache for check/add
 declare -x -a ARGUMENTS_CHECK_ALL       # cache for check/all, lasting values are unknown arguments
 declare -x -A ARGUMENTS=()              # storage array from arguments check/auto
 declare -x -f arguments                 # init / done / loop / shift / check
@@ -4847,11 +4872,13 @@ declare -x    DAEMON_PID
 declare -x -f daemon                    # init / done / status
 
 declare -x -a EVENT_LISTENERS
+declare -x -A EVENT_LISTENERS_SINGLE    # single trap listeners added by "trap x SIG"
+declare -x -f trap                      # redirected call to "event add" function
 declare -x -f event                     # add
-trap event_exit EXIT
-trap event_int INT
-trap event_quit QUIT
-trap event_term TERM
+command trap event_exit EXIT
+command trap event_int INT
+command trap event_quit QUIT
+command trap event_term TERM
 
 declare -x    PERFORMANCE_DETAILS="yes" # show detailed output / show only elapsed time
 declare -x -A PERFORMANCE_DATA          # only internal use
@@ -4959,6 +4986,7 @@ declare -x TITLE_STYLE="${TITLE_STYLES[DEFAULT]}"
 declare -x TITLE_MSG_SPACES=" "     # one space on both sides
 declare -x ECHO_QUOTE
 declare -x -f echo_quote
+declare -x    ECHO_LINE_ESCAPE="yes"        # default to escape string
 declare -x    ECHO_LINE_PRESERVE="debug"    # default preserve for previous output - aligned left right center or debug messages
 # full settings: ECHO_LINE_PRESERVE="left right center debug"
 declare -x -i ECHO_LINE_MESSAGE_LENGTH=0    # last line message length

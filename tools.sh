@@ -527,7 +527,7 @@ function str_date
     else
         FORMAT="$1"
     fi
-    test ${BASH_VERSINFO[0]} -ge 4 -a ${BASH_VERSINFO[1]} -ge 2 && printf STR '%('"$FORMAT"')T\n' -1 || STR="$(date +"$FORMAT")"
+    test ${BASH_VERSINFO[0]} -ge 4 -a ${BASH_VERSINFO[1]} -ge 2 && printf -v STR '%('"$FORMAT"')T' -1 || STR="$(date +"$FORMAT")"
     test -n "$VAR" && assign "$VAR" "$STR" || command echo -n "$STR"
 }
 
@@ -2586,8 +2586,7 @@ function performance
     local MSG=""
     test -n "${PERFORMANCE_MESSAGES[$VAR]}" && MSG=" \"${PERFORMANCE_MESSAGES[$VAR]}\"" || { test "$VAR" != "default" && MSG=" id=$VAR"; }
     local DATE_NOW
-    str_date DATE_NOW "%s.%N"
-    DATE_NOW="$(echo "$DATE_NOW" | $AWK '{ printf "%.3f", $1; }')"
+    DATE_NOW="$(date +"%s.%3N")" # printf not support %N format
     local DATE_NOW_STR
     str_date DATE_NOW_STR "%Y-%m-%d %H:%M:%S"
     case "$TASK" in

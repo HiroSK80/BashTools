@@ -1497,6 +1497,7 @@ function file_prepare
     fi
     test -w "$FILE" || echo_error_function "Can't create and prepare file for writting: $(echo_quote "$FILE")" $ERROR_CODE_DEFAULT
 
+    echo "TEST" > "$FILE" || echo_error_function "Can't write to file: $(echo_quote "$FILE")" $ERROR_CODE_DEFAULT
     test_yes "$EMPTY" && cat /dev/null > "$FILE"
 
     test -n "$USER" && chgrp "$USER" "$FILE" 2> /dev/null
@@ -2449,15 +2450,18 @@ function daemon
             TEST_FILE="$DAEMON_PATH/$DAEMON_NAME.pid"
             echo -n "$$" > "$TEST_FILE"
             chmod 644 "$TEST_FILE"
-            print debug "Daemon $DAEMON_NAME on $$ started, pidfile: $(print quote "$TEST_FILE")"
+            print debug --custom daemon "$BASHPID: Daemon $DAEMON_NAME started, pidfile: $(print quote "$TEST_FILE")"
             event add EXIT "daemon done \"$DAEMON_NAME\""
             ;;
         done)
             for TEST_PATH in "${TEST_PATHS[@]}"
             do
-                TEST_FILE="$TEST_PATH/$DAEMON_NAME.pid"
-                test -f "$TEST_FILE" && rm -f "$TEST_FILE" && print debug "Daemon $DAEMON_NAME on $$ finished, pidfile: $(print quote "$TEST_FILE") removed"
+                for TEST_FILE in "$TEST_PATH/$DAEMON_NAME.pid" "$TEST_PATH/$DAEMON_NAME.task"
+                do
+                    test -f "$TEST_FILE" && rm -f "$TEST_FILE" && print debug --custom daemon "$BASHPID: Daemon $DAEMON_NAME finished, pidfile: $(print quote "$TEST_FILE") removed"
+                done
             done
+            event remove EXIT "daemon done \"$DAEMON_NAME\""
             ;;
         status)
             for TEST_PATH in "${TEST_PATHS[@]}"
@@ -2475,6 +2479,20 @@ function daemon
             done
             return 1
             ;;
+        stop)
+            for TEST_PATH in "${TEST_PATHS[@]}"
+            do
+                test ! -f "$TEST_PATH/$DAEMON_NAME.pid" && continue
+                DAEMON_PID="$(<"$TEST_PATH/$DAEMON_NAME.pid")"
+                if test -d "/proc/$DAEMON_PID"
+                then
+                    echo "DAEMON_TASK=\"stop\"" > "$TEST_PATH/$DAEMON_NAME.task"
+                else
+                    rm -f "$TEST_PATH/$DAEMON_NAME.pid"
+                    DAEMON_PID=""
+                fi
+            done
+            ;;
         kill)
             for TEST_PATH in "${TEST_PATHS[@]}"
             do
@@ -2484,8 +2502,18 @@ function daemon
                 then
                     kill $DAEMON_PID
                 else
+                    rm -f "$TEST_PATH/$DAEMON_NAME.pid"
                     DAEMON_PID=""
                 fi
+            done
+            ;;
+        loop)
+            for TEST_PATH in "${TEST_PATHS[@]}"
+            do
+                test ! -f "$TEST_PATH/$DAEMON_NAME.task" && continue
+                source "$TEST_PATH/$DAEMON_NAME.task"
+                rm -f "$TEST_PATH/$DAEMON_NAME.task"
+                test "$DAEMON_TASK" = "stop" && print debug --custom daemon "$BASHPID: Daemon $DAEMON_NAME stop task, taskfile: $(print quote "$TEST_PATH/$DAEMON_NAME.task")" && return 1 || return 0
             done
             ;;
         *)
@@ -2517,6 +2545,19 @@ function event
             shift $ARGUMENTS_CHECK_SHIFT
             test_no SINGLE && EVENT_LISTENERS+=("$TRAP|$@") || EVENT_LISTENERS_SINGLE[$TRAP]="$@"
             ;;
+        remove)
+            shift $ARGUMENTS_CHECK_SHIFT
+            if test_no SINGLE
+            then
+                local EVENT_LISTENERS_INDEX
+                for EVENT_LISTENERS_INDEX in "${!EVENT_LISTENERS[@]}"
+                do
+                    test "${EVENT_LISTENERS[$EVENT_LISTENERS_INDEX]}" = "$TRAP|$@" && unset EVENT_LISTENERS[$EVENT_LISTENERS_INDEX]
+                done
+            else
+                EVENT_LISTENERS_SINGLE[$TRAP]=""
+            fi
+            ;;
         *)
             echo_error_function "$TASK" "$@" "Unknown task argument: $TASK" $ERROR_CODE_DEFAULT
             ;;
@@ -2528,16 +2569,16 @@ function event
 function event_exit
 {
     local -i ERROR=$?
-    test $# -eq 0 && print debug --custom event "Terminating via SIG EXIT" || print debug --custom event "Terminating EXIT (after SIG $@)"
+    test $# -eq 0 && print debug --custom event "$BASHPID: Terminating via SIG EXIT" || print debug --custom event "$BASHPID: Terminating EXIT (after SIG $@)"
 
     local INDEX
     for INDEX in ${!EVENT_LISTENERS[@]}
     do
         test "${EVENT_LISTENERS[$INDEX]%%|*}" != "EXIT" && continue
-        print debug --custom event "Calling event on EXIT: ${EVENT_LISTENERS[$INDEX]#*|}"
+        print debug --custom event "$BASHPID: Calling event on EXIT: ${EVENT_LISTENERS[$INDEX]#*|}"
         eval "${EVENT_LISTENERS[$INDEX]#*|}"
     done
-    test -n "${EVENT_LISTENERS_SINGLE[EXIT]}" && print debug --custom event "Calling single event on EXIT: ${EVENT_LISTENERS_SINGLE[EXIT]}" && eval "${EVENT_LISTENERS_SINGLE[EXIT]}"
+    test -n "${EVENT_LISTENERS_SINGLE[EXIT]}" && print debug --custom event "$BASHPID: Calling single event on EXIT: ${EVENT_LISTENERS_SINGLE[EXIT]}" && eval "${EVENT_LISTENERS_SINGLE[EXIT]}"
 
     command trap '' EXIT INT QUIT TERM
     exit $ERROR
@@ -2545,16 +2586,16 @@ function event_exit
 
 function event_int
 {
-    print debug --custom event "Terminating via SIG INT"
+    print debug --custom event "$BASHPID: Terminating via SIG INT"
 
     local INDEX
     for INDEX in ${!EVENT_LISTENERS[@]}
     do
         test "${EVENT_LISTENERS[$INDEX]%%|*}" != "INT" && continue
-        print debug --custom event "Calling event on INT: ${EVENT_LISTENERS[$INDEX]#*|}"
+        print debug --custom event "$BASHPID: Calling event on INT: ${EVENT_LISTENERS[$INDEX]#*|}"
         eval "${EVENT_LISTENERS[$INDEX]#*|}"
     done
-    test -n "${EVENT_LISTENERS_SINGLE[INT]}" && print debug --custom event "Calling single event on INT: ${EVENT_LISTENERS_SINGLE[INT]}" && eval "${EVENT_LISTENERS_SINGLE[INT]}"
+    test -n "${EVENT_LISTENERS_SINGLE[INT]}" && print debug --custom event "$BASHPID: Calling single event on INT: ${EVENT_LISTENERS_SINGLE[INT]}" && eval "${EVENT_LISTENERS_SINGLE[INT]}"
     
     command trap '' EXIT
     event_exit INT
@@ -2562,16 +2603,16 @@ function event_int
 
 function event_quit
 {
-    print debug --custom event "Terminating via SIG QUIT"
+    print debug --custom event "$BASHPID: Terminating via SIG QUIT"
 
     local INDEX
     for INDEX in ${!EVENT_LISTENERS[@]}
     do
         test "${EVENT_LISTENERS[$INDEX]%%|*}" != "QUIT" && continue
-        print debug --custom event "Calling event on QUIT: ${EVENT_LISTENERS[$INDEX]#*|}"
+        print debug --custom event "$BASHPID: Calling event on QUIT: ${EVENT_LISTENERS[$INDEX]#*|}"
         eval "${EVENT_LISTENERS[$INDEX]#*|}"
     done
-    test -n "${EVENT_LISTENERS_SINGLE[QUIT]}" && print debug --custom event "Calling single event on QUIT: ${EVENT_LISTENERS_SINGLE[QUIT]}" && eval "${EVENT_LISTENERS_SINGLE[QUIT]}"
+    test -n "${EVENT_LISTENERS_SINGLE[QUIT]}" && print debug --custom event "$BASHPID: Calling single event on QUIT: ${EVENT_LISTENERS_SINGLE[QUIT]}" && eval "${EVENT_LISTENERS_SINGLE[QUIT]}"
     
     command trap '' EXIT
     event_exit QUIT
@@ -2579,16 +2620,16 @@ function event_quit
 
 function event_term
 {
-    print debug --custom event "Terminating via SIG TERM"
+    print debug --custom event "$BASHPID: Terminating via SIG TERM"
 
     local INDEX
     for INDEX in ${!EVENT_LISTENERS[@]}
     do
         test "${EVENT_LISTENERS[$INDEX]%%|*}" != "TERM" && continue
-        print debug --custom event "Calling event on TERM: ${EVENT_LISTENERS[$INDEX]#*|}"
+        print debug --custom event "$BASHPID: Calling event on TERM: ${EVENT_LISTENERS[$INDEX]#*|}"
         eval "${EVENT_LISTENERS[$INDEX]#*|}"
     done
-    test -n "${EVENT_LISTENERS_SINGLE[TERM]}" && print debug --custom event "Calling single event on TERM: ${EVENT_LISTENERS_SINGLE[TERM]}" && eval "${EVENT_LISTENERS_SINGLE[TERM]}"
+    test -n "${EVENT_LISTENERS_SINGLE[TERM]}" && print debug --custom event "$BASHPID: Calling single event on TERM: ${EVENT_LISTENERS_SINGLE[TERM]}" && eval "${EVENT_LISTENERS_SINGLE[TERM]}"
     
     command trap '' EXIT
     event_exit TERM
@@ -3898,7 +3939,7 @@ function debug
             #DEBUG_TYPES[function]="F"
             #DEBUG_TYPES[variable]="V"
             DEBUG_PARSE_TYPE="${DEBUG_TYPES[$1]}"
-            #test -n "$DEBUG_PARSE_TYPE" && DEBUG_PARSE_TYPE_STR="[$DEBUG_PARSE_TYPE] " || DEBUG_PARSE_TYPE_STR=""
+            test -z "$DEBUG_PARSE_TYPE" && DEBUG_PARSE_TYPE="D/$1"
             ;;
         set_level)
             debug parse_level "$@"
@@ -5106,7 +5147,6 @@ DEBUG_TYPES[right]="R"
 DEBUG_TYPES[function]="F"
 DEBUG_TYPES[variable]="V"
 DEBUG_TYPES[command]="C"
-DEBUG_TYPES[event]="E"
 declare -x -i DEBUG_LEVEL
 declare -x    DEBUG_LEVEL_STR
 declare -x -i DEBUG_LEVEL_DEFAULT=80

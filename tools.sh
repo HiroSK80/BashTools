@@ -2329,7 +2329,7 @@ function get_pids
     local S2="$BASHPID"
     ps -e -o pid,ppid,cmd | $AWK $AWK_VAR p="$1" $AWK_VAR s1="$S1" $AWK_VAR s2="$S2" '
         BEGIN { f=0; }
-        $1==s1||$1==s2||/tools_get_pids_tag/ { next; }
+        $1==s1||$1==s2||$2==s1||$2==s2||/tools_get_pids_tag/ { next; }
         $0~p { print $1; f++; }
         END { if (f==0) exit(1); }';
 }
@@ -2706,6 +2706,27 @@ function terminal
                 test -z "$TERMINAL_COLUMNS" -o "$TERMINAL_COLUMNS" = 0 && TERMINAL_COLUMNS="$(tput cols)"
             fi
             ;;
+        restore)
+            command echo -n "${S_CSI}1t"
+            ;;
+        minimize|min)
+            command echo -n "${S_CSI}2t"
+            ;;
+        raise)
+            command echo -n "${S_CSI}5t"
+            ;;
+        lower)
+            command echo -n "${S_CSI}6t"
+            ;;
+        resize)
+            command echo -n "${S_CSI}8;$OPTION;${OPTION2}t"
+            ;;
+        maximize|max)
+            command echo -n "${S_CSI}9;1t"
+            ;;
+        normalize|nor)
+            command echo -n "${S_CSI}9;0t"
+            ;;
         get)
             if test "$TERM" = "dumb"
             then
@@ -2719,13 +2740,13 @@ function terminal
             then
                 if test -z "$OPTION2" -o "$OPTION2" = "all"
                 then
-                    command echo -n "$S_ESC[2K"
+                    command echo -n "${S_CSI}2K"
                 elif test "$OPTION2" = "right"
                 then
-                    command echo -n "$S_ESC[K"
+                    command echo -n "${S_CSI}K"
                 elif test "$OPTION2" = "left"
                 then
-                    command echo -n "$S_ESC[1K"
+                    command echo -n "${S_CSI}1K"
                 else
                     echo_error_function "$@" "Unknown argument: $OPTION2" $ERROR_CODE_DEFAULT
                 fi
@@ -2744,37 +2765,37 @@ function cursor
 
     case "$TASK" in
         save)
-            command echo -n "$S_ESC[s"
+            command echo -n "${S_CSI}s"
             ;;
         restore|load)
-            command echo -n "$S_ESC[u"
+            command echo -n "${S_CSI}u"
             ;;
         hide)
             #tput civis
-            command echo -n "$S_ESC[?25l"
+            command echo -n "${S_CSI}?25l"
             ;;
         show)
             #tput cnorm
-            command echo -n "$S_ESC[?25h"
+            command echo -n "${S_CSI}?25h"
             ;;
         column)
-            command echo -n "$S_ESC[${VALUE}G"
+            command echo -n "${S_CSI}${VALUE}G"
             ;;
         up)
             test -z "$VALUE" && VALUE=1
-            command echo -n "$S_ESC[${VALUE}A"
+            command echo -n "${S_CSI}${VALUE}A"
             ;;
         down)
             test -z "$VALUE" && VALUE=1
-            command echo -n "$S_ESC[${VALUE}B"
+            command echo -n "${S_CSI}${VALUE}B"
             ;;
         forward|right)
             test -z "$VALUE" && VALUE=1
-            command echo -n "$S_ESC[${VALUE}C"
+            command echo -n "${S_CSI}${VALUE}C"
             ;;
         backward|left)
             test -z "$VALUE" && VALUE=1
-            command echo -n "$S_ESC[${VALUE}D"
+            command echo -n "${S_CSI}${VALUE}D"
             ;;
         *)
             echo_error_function "$@" "Unknown task argument: $TASK" $ERROR_CODE_DEFAULT
@@ -2789,7 +2810,7 @@ function cursor_get_position
         exec < /dev/tty
         OLD_stty=$(stty -g)
         stty raw -echo min 0
-        command echo -n "$S_ESC[6n" > /dev/tty
+        command echo -n "${S_CSI}6n" > /dev/tty
         read -r -s -d "R" CURSOR_POSITION
         stty $OLD_stty
         CURSOR_POSITION="${CURSOR_POSITION#*[}"
@@ -4257,31 +4278,31 @@ function init_colors
     if test_yes "$TOOLS_COLOR"
     then
         # color definitions
-        COLOR_RESET="$S_ESC[0m"
+        COLOR_RESET="${S_CSI}0m"
 
-        COLOR_BLACK="$S_ESC[30m"
-        COLOR_RED="$S_ESC[31m"
-        COLOR_GREEN="$S_ESC[32m"
-        COLOR_YELLOW="$S_ESC[33m"
-        COLOR_BLUE="$S_ESC[34m"
-        COLOR_MAGENTA="$S_ESC[35m"
-        COLOR_CYAN="$S_ESC[36m"
-        COLOR_GRAY="$S_ESC[37m"
-        COLOR_LIGHT_GRAY="$S_ESC[37m"
+        COLOR_BLACK="${S_CSI}30m"
+        COLOR_RED="${S_CSI}31m"
+        COLOR_GREEN="${S_CSI}32m"
+        COLOR_YELLOW="${S_CSI}33m"
+        COLOR_BLUE="${S_CSI}34m"
+        COLOR_MAGENTA="${S_CSI}35m"
+        COLOR_CYAN="${S_CSI}36m"
+        COLOR_GRAY="${S_CSI}37m"
+        COLOR_LIGHT_GRAY="${S_CSI}37m"
 
         if test $TOOLS_COLORS -gt 8
         then
-            COLOR_DARK_GRAY="$S_ESC[90m"
-            COLOR_LIGHT_RED="$S_ESC[91m"
-            COLOR_LIGHT_GREEN="$S_ESC[92m"
-            COLOR_LIGHT_YELLOW="$S_ESC[93m"
-            COLOR_LIGHT_BLUE="$S_ESC[94m"
-            COLOR_LIGHT_MAGENTA="$S_ESC[95m"
-            COLOR_LIGHT_CYAN="$S_ESC[96m"
-            COLOR_WHITE="$S_ESC[97m"
+            COLOR_DARK_GRAY="${S_CSI}90m"
+            COLOR_LIGHT_RED="${S_CSI}91m"
+            COLOR_LIGHT_GREEN="${S_CSI}92m"
+            COLOR_LIGHT_YELLOW="${S_CSI}93m"
+            COLOR_LIGHT_BLUE="${S_CSI}94m"
+            COLOR_LIGHT_MAGENTA="${S_CSI}95m"
+            COLOR_LIGHT_CYAN="${S_CSI}96m"
+            COLOR_WHITE="${S_CSI}97m"
 
-            COLOR_ORANGE="$S_ESC[38;5;208m"
-            COLOR_CHARCOAL="$S_ESC[38;5;236m"
+            COLOR_ORANGE="${S_CSI}38;5;208m"
+            COLOR_CHARCOAL="${S_CSI}38;5;236m"
         else
             COLOR_DARK_GRAY="$COLOR_GRAY"
             COLOR_LIGHT_RED="$COLOR_RED"
@@ -4297,29 +4318,29 @@ function init_colors
         fi
 
         # definitions for readline / awk / prompt
-        COLOR_RESET_E="\001${COLOR_RESET}\002"
+        COLOR_RESET_E="${S_CHR1}${COLOR_RESET}${S_CHR2}"
 
-        COLOR_BLACK_E="\001${COLOR_BLACK}\002"
-        COLOR_RED_E="\001${COLOR_RED}\002"
-        COLOR_GREEN_E="\001${COLOR_GREEN}\002"
-        COLOR_YELLOW_E="\001${COLOR_YELLOW}\002"
-        COLOR_BLUE_E="\001${COLOR_BLUE}\002"
-        COLOR_MAGENTA_E="\001${COLOR_MAGENTA}\002"
-        COLOR_CYAN_E="\001${COLOR_CYAN}\002"
-        COLOR_GRAY_E="\001${COLOR_GRAY}\002"
-        COLOR_LIGHT_GRAY_E="\001${COLOR_LIGHT_GRAY}\002"
+        COLOR_BLACK_E="${S_CHR1}${COLOR_BLACK}${S_CHR2}"
+        COLOR_RED_E="${S_CHR1}${COLOR_RED}${S_CHR2}"
+        COLOR_GREEN_E="${S_CHR1}${COLOR_GREEN}${S_CHR2}"
+        COLOR_YELLOW_E="${S_CHR1}${COLOR_YELLOW}${S_CHR2}"
+        COLOR_BLUE_E="${S_CHR1}${COLOR_BLUE}${S_CHR2}"
+        COLOR_MAGENTA_E="${S_CHR1}${COLOR_MAGENTA}${S_CHR2}"
+        COLOR_CYAN_E="${S_CHR1}${COLOR_CYAN}${S_CHR2}"
+        COLOR_GRAY_E="${S_CHR1}${COLOR_GRAY}${S_CHR2}"
+        COLOR_LIGHT_GRAY_E="${S_CHR1}${COLOR_LIGHT_GRAY}${S_CHR2}"
 
-        COLOR_DARK_GRAY_E="\001${COLOR_DARK_GRAY}\002"
-        COLOR_LIGHT_RED_E="\001${COLOR_LIGHT_RED}\002"
-        COLOR_LIGHT_GREEN_E="\001${COLOR_LIGHT_GREEN}\002"
-        COLOR_LIGHT_YELLOW_E="\001${COLOR_LIGHT_YELLOW}\002"
-        COLOR_LIGHT_BLUE_E="\001${COLOR_LIGHT_BLUE}\002"
-        COLOR_LIGHT_MAGENTA_E="\001${COLOR_LIGHT_MAGENTA}\002"
-        COLOR_LIGHT_CYAN_E="\001${COLOR_LIGHT_CYAN}\002"
-        COLOR_WHITE_E="\001${COLOR_WHITE}\002"
+        COLOR_DARK_GRAY_E="${S_CHR1}${COLOR_DARK_GRAY}${S_CHR2}"
+        COLOR_LIGHT_RED_E="${S_CHR1}${COLOR_LIGHT_RED}${S_CHR2}"
+        COLOR_LIGHT_GREEN_E="${S_CHR1}${COLOR_LIGHT_GREEN}${S_CHR2}"
+        COLOR_LIGHT_YELLOW_E="${S_CHR1}${COLOR_LIGHT_YELLOW}${S_CHR2}"
+        COLOR_LIGHT_BLUE_E="${S_CHR1}${COLOR_LIGHT_BLUE}${S_CHR2}"
+        COLOR_LIGHT_MAGENTA_E="${S_CHR1}${COLOR_LIGHT_MAGENTA}${S_CHR2}"
+        COLOR_LIGHT_CYAN_E="${S_CHR1}${COLOR_LIGHT_CYAN}${S_CHR2}"
+        COLOR_WHITE_E="${S_CHR1}${COLOR_WHITE}${S_CHR2}"
 
-        COLOR_ORANGE_E="\001${COLOR_ORANGE}\002"
-        COLOR_CHARCOAL_E="\001${COLOR_CHARCOAL}\002"
+        COLOR_ORANGE_E="${S_CHR1}${COLOR_ORANGE}${S_CHR2}"
+        COLOR_CHARCOAL_E="${S_CHR1}${COLOR_CHARCOAL}${S_CHR2}"
     else
         COLOR_RESET=""
 
@@ -4472,6 +4493,9 @@ declare -x    TOOLS_UNAME="no"
 declare -x ECHO_PREFIX=""           # TOOLS_PREFIX="yes" && ECHO_PREFIX="#TOOLS# "
 declare -x ECHO_UNAME=""
 
+declare -x F_BLACK F_BLACK_E
+declare -x B_BLACK B_BLACK_E
+
 declare -x COLOR_BLACK COLOR_BLACK_E
 declare -x COLOR_RESET COLOR_RESET_E
 declare -x COLOR_RED COLOR_RED_E
@@ -4543,8 +4567,11 @@ declare -x -f array_copy
 
 #declare -x -r S_CHR0="$(command echo -e "\000")"
 declare -x -r S_CHR1="$(command echo -e "\001")"
+declare -x -r S_CHR2="$(command echo -e "\002")"
 declare -x -r S_CHR255="$(command echo -e "\xFF")"
 declare -x -r S_ESC="$(command echo -e "\e")"
+declare -x -r S_CSI="$S_ESC["                           # Control Sequence Introducer
+declare -x -r S_OSC="$S_ESC]"                           # Operating System Command
 declare -x -r S_TAB="$(command echo -e "\t")"
 #declare -x -r S_NEWLINE="$(command echo -e "\n")"
 declare -x -r S_NEWLINE=$'\n'

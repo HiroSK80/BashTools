@@ -2448,6 +2448,7 @@ function daemon
             test -z "$DAEMON_PATH" && echo_error_function "$TASK" "$@" "Can't find suitable directory from ${TEST_PATHS[@]} for PID file with write access" $ERROR_CODE_DEFAULT
             TEST_FILE="$DAEMON_PATH/$DAEMON_NAME.pid"
             echo -n "$$" > "$TEST_FILE"
+            chmod 644 "$TEST_FILE"
             print debug "Daemon $DAEMON_NAME on $$ started, pidfile: $(print quote "$TEST_FILE")"
             event add EXIT "daemon done \"$DAEMON_NAME\""
             ;;
@@ -4014,10 +4015,20 @@ function echo_debug_custom
             if test_yes TOOLS_COLOR
             then
                 #command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@$COLOR_RESET" > $REDIRECT_DEBUG
-                echo_line $ALIGN_OPTION $NEWLINE_OPTION $PRESERVE_OPTION --log-prefix="$ECHO_PREFIX_DEBUG" "$COLOR_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@$COLOR_RESET" > $REDIRECT_DEBUG
+                if test -z "$REDIRECT_DEBUG"
+                then
+                    echo_line $ALIGN_OPTION $NEWLINE_OPTION $PRESERVE_OPTION --log-prefix="$ECHO_PREFIX_DEBUG" "$COLOR_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@$COLOR_RESET"
+                else
+                    echo_line $ALIGN_OPTION $NEWLINE_OPTION $PRESERVE_OPTION --log-prefix="$ECHO_PREFIX_DEBUG" "$COLOR_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@$COLOR_RESET" > $REDIRECT_DEBUG
+                fi
             else
                 #command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@" > $REDIRECT_DEBUG
-                echo_line $ALIGN_OPTION $NEWLINE_OPTION $PRESERVE_OPTION "$ECHO_PREFIX_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@" > $REDIRECT_DEBUG
+                if test -z "$REDIRECT_DEBUG"
+                then
+                    echo_line $ALIGN_OPTION $NEWLINE_OPTION $PRESERVE_OPTION "$ECHO_PREFIX_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@"
+                else
+                    echo_line $ALIGN_OPTION $NEWLINE_OPTION $PRESERVE_OPTION "$ECHO_PREFIX_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@" > $REDIRECT_DEBUG
+                fi
             fi
             #log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@"
             test "$ALIGN" = "right" && set_yes ECHO_LINE_DEBUG_RIGHT_FLAG
@@ -4198,9 +4209,19 @@ function echo_error
 
     if test_yes "$TOOLS_COLOR"
     then
-        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_ERROR$ECHO_ERROR_PREFIX$ECHO_ERROR!$COLOR_RESET" > $REDIRECT_ERROR
+        if test -z "$REDIRECT_ERROR"
+        then
+            command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_ERROR$ECHO_ERROR_PREFIX$ECHO_ERROR!$COLOR_RESET"
+        else
+            command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_ERROR$ECHO_ERROR_PREFIX$ECHO_ERROR!$COLOR_RESET" > $REDIRECT_ERROR
+        fi
     else
-        command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_ERROR_PREFIX$ECHO_ERROR!" > $REDIRECT_ERROR
+        if test -z "$REDIRECT_ERROR"
+        then
+            command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_ERROR_PREFIX$ECHO_ERROR!"
+        else
+            command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_ERROR_PREFIX$ECHO_ERROR!" > $REDIRECT_ERROR
+        fi
     fi
 
     log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_ERROR_PREFIX$ECHO_ERROR!"
@@ -4286,9 +4307,19 @@ function echo_warning
 
     if test_yes "$TOOLS_COLOR"
     then
-        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_WARNING$ECHO_WARNING_PREFIX$ECHO_WARNING.$COLOR_RESET" > $REDIRECT_WARNING
+        if test -z "$REDIRECT_WARNING"
+        then
+            command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_WARNING$ECHO_WARNING_PREFIX$ECHO_WARNING.$COLOR_RESET"
+        else
+            command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_WARNING$ECHO_WARNING_PREFIX$ECHO_WARNING.$COLOR_RESET" > $REDIRECT_WARNING
+        fi
     else
-        command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_WARNING_PREFIX$ECHO_WARNING." > $REDIRECT_WARNING
+        if test -z "$REDIRECT_WARNING"
+        then
+            command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_WARNING_PREFIX$ECHO_WARNING."
+        else
+            command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_WARNING_PREFIX$ECHO_WARNING." > $REDIRECT_WARNING
+        fi
     fi
 
     log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_WARNING_PREFIX$ECHO_WARNING."
@@ -4683,6 +4714,11 @@ function init_tools
         TOOLS_PATH="$SCRIPT_PATH"
     fi
 
+    # set permissions for other users
+    test -n "$REDIRECT_DEBUG" && chmod 666 "$(readlink --canonicalize "$REDIRECT_DEBUG")" 2> /dev/null
+    test -n "$REDIRECT_ERROR" && chmod 666 "$(readlink --canonicalize "$REDIRECT_ERROR")" 2> /dev/null
+    test -n "$REDIRECT_WARNING" && chmod 666 "$(readlink --canonicalize "$REDIRECT_WARNING")" 2> /dev/null
+
     # set echo prefix or uname prefix
     test_yes TOOLS_PREFIX && ECHO_PREFIX="#TOOLS# " || ECHO_PREFIX=""
     test -n "$ECHO_PREFIX" && ECHO_PREFIX_C="$COLOR_PREFIX$ECHO_PREFIX$COLOR_RESET"
@@ -4702,9 +4738,9 @@ declare -x TOOLS_NAME=""
 declare -x TOOLS_PATH=""
 declare -x TEMP_PATH="/tmp"
 
-declare -x REDIRECT_DEBUG=/dev/stderr
-declare -x REDIRECT_ERROR=/dev/stdout
-declare -x REDIRECT_WARNING=/dev/stdout
+declare -x REDIRECT_DEBUG="/dev/stderr"
+declare -x REDIRECT_ERROR="" #/dev/stdout
+declare -x REDIRECT_WARNING="" #/dev/stdout
 
 declare -x    TOOLS_TERM="xterm" # default value if TERM is not set
 declare -x    TOOLS_COLOR="unknown"

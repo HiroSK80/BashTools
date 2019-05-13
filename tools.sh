@@ -363,31 +363,31 @@ function array_copy_bad
 # $2 new array name with the same content
 {
     local ORIGINAL=$(declare -p "$1")
-    local NEW="${ORIGINAL/declare -[aA]/}"
-    local NEW="${NEW/$1=\'/$2=}"
+    #echo "array_copy_bad ORIGINAL=$ORIGINAL"
+    #local NEW="${ORIGINAL/declare -[aA]/}"
+    #local NEW="${NEW/$1=\'/$2=}"
+    #local NEW="${NEW%\'}"
+    local NEW="${ORIGINAL/$1=\'/$2=}"
+    local NEW="${NEW#* }"
+    local NEW="${NEW#* }"
+    local NEW="${NEW#\'}"
     local NEW="${NEW%\'}"
+    local NEW="${NEW//\'\\\'\'/\'}"
     # error processing ' character
-    echo "NEW=$NEW"
+    #echo "array_copy_bad NEW=${NEW[@]}"
     eval "$NEW"
+    #eval "echo \"array_copy_bad $2=\${$2[@]}\""
 }
 
 function array_copy
 # $1 original array name
 # $2 new array name with the same content
 {
-    declare -a ARRAY_COPY
-    local ORIGINAL=$(declare -p "$1")
-    #echo "ORIGINAL=$ORIGINAL"
-    local NEW="${ORIGINAL/$1=/ARRAY_COPY=}"
-    eval "$NEW"
-    #echo "AC!=${!ARRAY_COPY[@]}"
-    #echo "AC@=${ARRAY_COPY[@]}"
-
     local INDEX
-    for INDEX in "${!ARRAY_COPY[@]}"
+    for INDEX in $(eval echo "\${!$1[@]}")
     do
-        #echo "INDEX=$INDEX    $2[\"$INDEX\"]=${ARRAY_COPY[$INDEX]}"
-        eval "$2[\"$INDEX\"]=\"\${ARRAY_COPY[$INDEX]}\""
+        #echo "INDEX=$INDEX    $2[\"$INDEX\"]=${$1[$INDEX]}"
+        eval "$2[\"$INDEX\"]=\"\${$1[$INDEX]}\""
     done
 }
 

@@ -2655,6 +2655,22 @@ function cursor
         column)
             command echo -n "$S_ESC[${VALUE}G"
             ;;
+        up)
+            test -z "$VALUE" && VALUE=1
+            command echo -n "$S_ESC[${VALUE}A"
+            ;;
+        down)
+            test -z "$VALUE" && VALUE=1
+            command echo -n "$S_ESC[${VALUE}B"
+            ;;
+        forward|right)
+            test -z "$VALUE" && VALUE=1
+            command echo -n "$S_ESC[${VALUE}C"
+            ;;
+        backward|left)
+            test -z "$VALUE" && VALUE=1
+            command echo -n "$S_ESC[${VALUE}D"
+            ;;
         *)
             echo_error_function "Unknown argument: $TASK" $ERROR_CODE_DEFAULT
             ;;
@@ -3329,6 +3345,33 @@ function echo_substep
     return 0
 }
 
+function echo_waiter
+{
+    local WAITER_NAME="DEFAULT"
+    test -n "$1" && WAITER_NAME="$1"
+    if test -z "${WAITER_DATA_STYLES[$WAITER_NAME]}"
+    then
+        WAITER_DATA_STYLES[$WAITER_NAME]="$WAITER_STYLE"
+        WAITER_DATA_INDEXES[$WAITER_NAME]=0
+    fi
+    local WAITER_STYLE_LOCAL="${WAITER_DATA_STYLES[$WAITER_NAME]}"
+    local WAITER_INDEX_LOCAL="${WAITER_DATA_INDEXES[$WAITER_NAME]}"
+
+    local WAITER_CHAR="${WAITER_STYLE_LOCAL:$WAITER_INDEX_LOCAL:1}"
+    if test_yes "$TOOLS_COLOR"
+    then
+        command echo -e -n "$COLOR_WAITER$WAITER_CHAR$COLOR_RESET"
+    else
+        command echo -n "$WAITER_CHAR"
+    fi
+
+    let WAITER_INDEX_LOCAL++
+    test $WAITER_INDEX_LOCAL -ge ${#WAITER_STYLE_LOCAL} && WAITER_INDEX_LOCAL=0
+    WAITER_DATA_INDEXES[$WAITER_NAME]=$WAITER_INDEX_LOCAL
+
+    return 0
+}
+
 #NAMESPACE/debug/start
 function debug
 {
@@ -3832,7 +3875,7 @@ function print
             shift
             arguments contains "f|function" "$@" && TASK="${TASK}_function"
         ;;
-        line|info|step|substep|title|quote|cut)
+        line|title|info|step|substep|waiter|quote|cut)
             shift
         ;;
         *)
@@ -4096,6 +4139,7 @@ function init_colors
     COLOR_INFO="$COLOR_LIGHT_YELLOW"
     COLOR_STEP="$COLOR_WHITE"
     COLOR_SUBSTEP="$COLOR_LIGHT_GREY"
+    COLOR_WAITER="$COLOR_DARK_GRAY"
     test $TOOLS_COLORS -gt 8 && COLOR_DEBUG="$COLOR_CHARCOAL" || COLOR_DEBUG="$COLOR_BLUE"
     COLOR_ERROR="$COLOR_LIGHT_RED"
     COLOR_WARNING="$COLOR_CYAN"
@@ -4217,6 +4261,7 @@ declare -x COLOR_TITLE; declare -x COLOR_TITLE_BORDER
 declare -x COLOR_INFO
 declare -x COLOR_STEP
 declare -x COLOR_SUBSTEP
+declare -x COLOR_WAITER
 declare -x COLOR_DEBUG
 declare -x COLOR_ERROR
 declare -x COLOR_WARNING
@@ -4257,7 +4302,7 @@ declare -x -f array_assign
 declare -x -f array_assign_arguments
 declare -x -f array_copy
 
-declare -x -r S_CHR0="$(command echo -e "\000")"
+#declare -x -r S_CHR0="$(command echo -e "\000")"
 declare -x -r S_CHR1="$(command echo -e "\001")"
 declare -x -r S_CHR255="$(command echo -e "\xFF")"
 declare -x -r S_ESC="$(command echo -e "\e")"
@@ -4405,7 +4450,7 @@ declare -x -f test_opt2_i
 declare -x    CURSOR_POSITION="0;0"
 declare -x -i CURSOR_COLUMN=0
 declare -x -i CURSOR_ROW=0
-declare -x -f cursor # save / restore
+declare -x -f cursor # save / restore / column / up / down / forward / right / backward / left
 declare -x -f cursor_get_position
 declare -x -f cursor_move_down
 
@@ -4485,6 +4530,15 @@ declare -x -f echo_title
 declare -x -f echo_info
 declare -x -f echo_step
 declare -x -f echo_substep
+declare -x -A WAITER_STYLES
+WAITER_STYLES[DEFAULT]="-\\|/"
+WAITER_STYLES[DOT]=". "
+WAITER_STYLES[ASTERIX]=".*"
+WAITER_STYLES[DASH]="-= "
+declare -x WAITER_STYLE="${WAITER_STYLES[DEFAULT]}"
+declare -x -A WAITER_DATA_STYLES # only internal use
+declare -x -A WAITER_DATA_INDEXES # only internal use
+declare -x -f echo_waiter
 
 declare -x    DEBUG_INIT_NAMESPACES="no"
 declare -x    DEBUG_TYPE=""

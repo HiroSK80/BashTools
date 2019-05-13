@@ -1393,7 +1393,7 @@ function file_temporary_name
 # $1 temporary file postfix
 # $2 source filename to be use as part of temporary filename
 {
-    test -n "$2" && echo "/tmp/$(basename "$2").$1.$$.tmp" || echo "/tmp/tools.$1.$$.tmp"
+    test -n "$2" && echo "/tmp/$(basename "$2").$1.$BASHPID.tmp" || echo "/tmp/tools.$1.$BASHPID.tmp"
 }
 
 function file_delete_local
@@ -2325,9 +2325,11 @@ function call_command
 function get_pids
 # return PIDs found by command regex
 {
-    ps -e -o pid,ppid,cmd | $AWK $AWK_VAR p="$1" $AWK_VAR s="$$" '
+    local S1="$$"
+    local S2="$BASHPID"
+    ps -e -o pid,ppid,cmd | $AWK $AWK_VAR p="$1" $AWK_VAR s1="$S1" $AWK_VAR s2="$S2" '
         BEGIN { f=0; }
-        $1==s||/tools_get_pids_tag/ { next; }
+        $1==s1||$1==s2||/tools_get_pids_tag/ { next; }
         $0~p { print $1; f++; }
         END { if (f==0) exit(1); }';
 }
@@ -2340,7 +2342,7 @@ function get_pids_tree_loop
     do
         local CHILD_PIDS="$(ps -o pid --no-headers --ppid ${CHECK_PID})"
         test -n "$CHILD_PIDS" && get_pids_tree_loop $CHILD_PIDS && str_word add PIDS_TREE $CHILD_PIDS
-        test $CHECK_PID != "$$" && str_word add PIDS_TREE $CHECK_PID
+        test $CHECK_PID -ne $$ -a $CHECK_PID -ne $BASHPID && str_word add PIDS_TREE $CHECK_PID
     done
 }
 
@@ -2377,7 +2379,7 @@ function kill_tree_verbose
             echo_line "${SPACE}No child PIDs from $CHECK_PID" 
         fi
         echo_line "${SPACE}Killing PID: $CHECK_PID"
-        if test "$CHECK_PID" != "$$"
+        if test $CHECK_PID -ne $$ -a $CHECK_PID -ne $BASHPID
         then
             local PID_INFO="$(ps -f --no-heading $CHECK_PID)"
             test -n "$PID_INFO" && echo_debug INFO "${SPACE}  PID $CHECK_PID killed:     <$PID_INFO>" || echo_debug INFO "  PID $CHECK_PID already killed"

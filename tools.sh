@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# execute as: ". <tools.sh> [options]"
+# execute as: "source <tools.sh> [options]"
 # shortest version:
 #       source "$(dirname $0)/tools.sh"
 # shortest version with process tools known arguments and others put via command_options to $COMMAND, $OPTION, ...:
@@ -2246,7 +2246,9 @@ function call_command
     local EXIT_CODE
     if is_localhost "$HOST"
     then
+        test "$SHIFT1" = "-1" && cursor up
         test_yes "$LOCAL_DEBUG" && echo_debug_custom command --right "$COMMAND_STRING"
+        test "$SHIFT1" = "-1" && cursor down
         if test_no "$USER_SET" -o "$(get_id)" = "$USER"
         then
             #bash -c "$@"
@@ -2259,7 +2261,9 @@ function call_command
     else
         USER_SSH=""
         test -n "$USER" && USER_SSH="$USER@"
+        test "$SHIFT1" = "-1" && cursor up
         test_yes "$LOCAL_DEBUG" && echo_debug_custom command --right "$SSH $TOPT $USER_SSH$HOST $COMMAND_STRING"
+        test "$SHIFT1" = "-1" && cursor down
         $SSH $TOPT $USER_SSH$HOST "$@" 2>&1 | grep --invert-match "Connection to .* closed" | tee "$FILE" | $PIPE > $REDIRECT
         EXIT_CODE=$?
     fi
@@ -3188,7 +3192,9 @@ function echo_line
                 command echo $ESCAPE_OPTION $NEW_LINE_OPTION "$MESSAGE_E"
                 cursor load
             else
-                command echo $ESCAPE_OPTION $NEW_LINE_OPTION "\r$MESSAGE_E"
+                command echo -e -n "\r"
+                command echo $ESCAPE_OPTION $NEW_LINE_OPTION "$MESSAGE_E"
+                command echo
             fi
             ;;
         "center")
@@ -3208,7 +3214,9 @@ function echo_line
                 command echo $ESCAPE_OPTION $NEW_LINE_OPTION "$MESSAGE_E"
                 cursor load
             else
-                command echo $ESCAPE_OPTION $NEW_LINE_OPTION "\r$MESSAGE_E"
+                command echo -e -n "\r"
+                command echo $ESCAPE_OPTION $NEW_LINE_OPTION "$MESSAGE_E"
+                command echo
             fi
             ;;
     esac

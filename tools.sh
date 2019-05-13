@@ -375,12 +375,15 @@ function array_copy
 # $1 original array name
 # $2 new array name with the same content
 {
+    declare -a ARRAY_COPY
     local ORIGINAL=$(declare -p "$1")
+    #echo "ORIGINAL=$ORIGINAL"
     local NEW="${ORIGINAL/$1=/ARRAY_COPY=}"
     eval "$NEW"
     #echo "AC!=${!ARRAY_COPY[@]}"
     #echo "AC@=${ARRAY_COPY[@]}"
 
+    local INDEX
     for INDEX in "${!ARRAY_COPY[@]}"
     do
         #echo "INDEX=$INDEX    $2[\"$INDEX\"]=${ARRAY_COPY[$INDEX]}"
@@ -3423,7 +3426,7 @@ function echo_line
             ;;
     esac
 
-    test_yes TOOLS_COLOR && command echo -e "$COLOR_RESET\c"
+    #test_yes TOOLS_COLOR && command echo -e "$COLOR_RESET\c"
 
     if test_yes LOG
     then

@@ -2970,6 +2970,7 @@ function log
 
             log section
             log log "${LOG_SECTION_SHORT}Log $TASK started on $(hostname --fqdn), command: $0$LOG_TITLE_OPTIONS" >> "$LOG_FILE"
+            log section
             ;;
         done)
             test -z "$LOG_FILE" && echo_warning_function "Log file is not specified" && return 1
@@ -2977,8 +2978,10 @@ function log
             local LOG_DURATION
             let LOG_DURATION="$(date -u +%s) - $LOG_START"
 
+            log section
             log log "${LOG_SECTION_SHORT}Log $TASK, script runtime $LOG_DURATION seconds" >> "$LOG_FILE"
             log section
+            log log
             ;;
         section)
             test -z "$LOG_FILE" && return
@@ -3108,7 +3111,11 @@ function echo_line
     local PRESERVE=""
     local LOG="yes"
     local LOG_PREFIX=""
+    local LOG_POSTFIX=""
     local ALIGN="left"
+    local PREFIX=""
+    local POSTFIX=""
+    local MESSAGE="yes"
     while test $# -ge 2
     do
         case "$1" in
@@ -3144,7 +3151,7 @@ function echo_line
                 PRESERVE="${1#*=}"
                 shift
                 ;;
-            "--nolog"|"--no-log"|"--log=no")
+            "--no-log"|"--nolog"|"--log=no")
                 LOG="no"
                 shift
                 ;;
@@ -3154,6 +3161,14 @@ function echo_line
                 ;;
             "--log-prefix="*)
                 LOG_PREFIX="${1#*=}"
+                shift
+                ;;
+            "--log-postfix")
+                LOG_POSTFIX="$2"
+                shift 2
+                ;;
+            "--log-postfix="*)
+                LOG_POSTFIX="${1#*=}"
                 shift
                 ;;
             "-l"|"--left"|"--align-left"|"--align=left")
@@ -3168,6 +3183,26 @@ function echo_line
                 ALIGN="center"
                 shift
                 ;;
+            "--prefix")
+                PREFIX="$2"
+                shift 2
+                ;;
+            "--prefix="*)
+                PREFIX="${1#*=}"
+                shift
+                ;;
+            "--postfix")
+                POSTFIX="$2"
+                shift 2
+                ;;
+            "--postfix="*)
+                POSTFIX="${1#*=}"
+                shift
+                ;;
+            "--no-message")
+                MESSAGE="no"
+                shift 2
+                ;;
             *)
                 break
                 ;;
@@ -3177,11 +3212,12 @@ function echo_line
     test_yes ESCAPE && local ESCAPE_OPTION="-e" || local ESCAPE_OPTION=""
     test_yes NEWLINE && local NEWLINE_OPTION="" || local NEWLINE_OPTION="-n"
 
+    test_yes MESSAGE && MESSAGE="$PREFIX$@$POSTFIX" || MESSAGE="$PREFIX$POSTFIX"
     if test_yes TOOLS_COLOR
     then
-        local MESSAGE_E="$ECHO_PREFIX_C$ECHO_UNAME_C$@"
+        local MESSAGE_E="$ECHO_PREFIX_C$ECHO_UNAME_C$MESSAGE"
     else
-        local MESSAGE_E="$ECHO_PREFIX$ECHO_UNAME$@"
+        local MESSAGE_E="$ECHO_PREFIX$ECHO_UNAME$MESSAGE"
         str_remove_color MESSAGE_E
     fi
 
@@ -3294,9 +3330,11 @@ function echo_line
             ;;
     esac
 
+    test_yes TOOLS_COLOR && command echo -e "$COLOR_RESET\c"
+
     if test_yes LOG
     then
-        local MESSAGE_L="$ECHO_PREFIX$ECHO_UNAME$LOG_PREFIX$@"
+        local MESSAGE_L="$ECHO_PREFIX$ECHO_UNAME$LOG_PREFIX$MESSAGE$LOG_POSTFIX"
         str_remove_color MESSAGE_L
         log echo "$MESSAGE_L"
     fi
@@ -3304,33 +3342,6 @@ function echo_line
 
 function echo_title
 {
-    local ALIGN="left"
-    while test $# -ge 2
-    do
-        case "$1" in
-            "--")
-                shift
-                break
-                ;;
-            "-l"|"--left"|"--align-left"|"--align=left")
-                shift
-                ALIGN="left"
-                ;;
-            "-r"|"--right"|"--align-right"|"--align=right")
-                shift
-                ALIGN="right"
-                ;;
-            "-c"|"--center"|"--align-center"|"--align=center")
-                shift
-                ALIGN="center"
-                ;;
-            *)
-                break
-                ;;
-        esac
-    done
-    test ALIGN = "left" && local ALIGN_OPTION="" || local ALIGN_OPTION="--align=$ALIGN"
-
     #TITLE_STYLE="01234567"
     local TITLE_MSG="$TITLE_MSG_SPACES${COLOR_TITLE}$@${COLOR_RESET}$TITLE_MSG_SPACES"
     local TITLE_MSG_NO_COLOR="$TITLE_MSG_SPACES$@$TITLE_MSG_SPACES"
@@ -3363,101 +3374,24 @@ function echo_title
     local TITLE_TAIL="$COLOR_TITLE_BORDER$TITLE_STYLE5$TITLE_STYLE6SEQ$TITLE_STYLE7$COLOR_RESET"
     test -z "$TITLE_STYLE5$TITLE_STYLE6SEQ$TITLE_STYLE7" && TITLE_TAIL=""
 
-    test -n "$TITLE_HEAD" && echo_line $ALIGN_OPTION "$TITLE_HEAD"
-    echo_line $ALIGN_OPTION "$TITLE_MSG"
-    test -n "$TITLE_TAIL" && echo_line $ALIGN_OPTION "$TITLE_TAIL"
+    test -n "$TITLE_HEAD" && echo_line --prefix "$TITLE_HEAD" --no-message $@
+    echo_line $ALIGN_OPTION --prefix "$TITLE_MSG" --no-message $@
+    test -n "$TITLE_TAIL" && echo_line --prefix "$TITLE_TAIL" --no-message $@
 
     return 0
 }
 
 function echo_info
 {
-    local ESCAPE="no"
-    local NEWLINE="yes"
-    local PRESERVE=""
-    local LOG="yes"
-    local LOG_PREFIX=""
-    local ALIGN="left"
-    while test $# -ge 2
-    do
-        case "$1" in
-            "--")
-                shift
-                break
-                ;;
-            "-e"|"--escape")
-                ESCAPE="yes"
-                shift
-                ;;
-            "-n"|"--no-newline")
-                NEWLINE="no"
-                shift
-                ;;
-            "-t"|"--newline"|"--trailing-newline")
-                NEWLINE="yes"
-                shift
-                ;;
-            "--newline="*)
-                NEWLINE="${1#*=}"
-                shift
-                ;;
-            "--no-preserve")
-                PRESERVE="no"
-                shift
-                ;;
-            "-p"|"--preserve")
-                PRESERVE="yes"
-                shift
-                ;;
-            "--preserve="*)
-                PRESERVE="${1#*=}"
-                shift
-                ;;
-            "--nolog"|"--no-log"|"--log=no")
-                LOG="no"
-                shift
-                ;;
-            "--log-prefix")
-                LOG_PREFIX="$2"
-                shift 2
-                ;;
-            "--log-prefix="*)
-                LOG_PREFIX="${1#*=}"
-                shift
-                ;;
-            "-l"|"--left"|"--align-left"|"--align=left")
-                ALIGN="left"
-                shift
-                ;;
-            "-r"|"--right"|"--align-right"|"--align=right")
-                ALIGN="right"
-                shift
-                ;;
-            "-c"|"--center"|"--align-center"|"--align=center")
-                ALIGN="center"
-                shift
-                ;;
-            *)
-                break
-                ;;
-        esac
-    done
-    test_yes ESCAPE && local ESCAPE_OPTION="-e" || local ESCAPE_OPTION=""
-    test_yes NEWLINE && local NEWLINE_OPTION="" || local NEWLINE_OPTION="-n"
-    test_yes PRESERVE && local PRESERVE_OPTION="--preserve" || local PRESERVE_OPTION=""
-    test ALIGN = "left" && local ALIGN_OPTION="" || local ALIGN_OPTION="--align=$ALIGN"
-
     if test_yes "$TOOLS_COLOR"
     then
         #command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_INFO$@$COLOR_RESET"
-        echo_line $ALIGN_OPTION $ESCAPE_OPTION $NEWLINE_OPTION $PRESERVE_OPTION "$COLOR_INFO$@$COLOR_RESET"
-        command echo -e "$COLOR_RESET\c"
+        echo_line --prefix "$COLOR_INFO$ECHO_INFO_PREFIX_C" --postfix "$ECHO_INFO_POSTFIX_C$COLOR_RESET" --log-prefix "$ECHO_INFO_PREFIX_BW" --log-postfix "$ECHO_INFO_POSTFIX_BW" "$@"
     else
         #command echo "$ECHO_PREFIX$ECHO_UNAME$@"
-        echo_line $ALIGN_OPTION $ESCAPE_OPTION $NEWLINE_OPTION $PRESERVE_OPTION "$@"
+        echo_line --prefix "$ECHO_INFO_PREFIX_BW" --postfix "$ECHO_INFO_POSTFIX_BW" "$@"
     fi
 
-    log echo "$ECHO_PREFIX$ECHO_UNAME$@"
     return 0
 }
 
@@ -3475,13 +3409,14 @@ function echo_step
 
     if test_yes "$TOOLS_COLOR"
     then
-        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_STEP$ECHO_STEP_PREFIX$STEP_NUMBER_STR$@$COLOR_RESET"
-        command echo -e "$COLOR_RESET\c"
+        #command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_STEP$ECHO_STEP_PREFIX$STEP_NUMBER_STR$@$COLOR_RESET"
+        echo_line --prefix "$COLOR_STEP$ECHO_STEP_PREFIX$STEP_NUMBER_STR" --postfix "$COLOR_RESET" "$@"
     else
-        command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_STEP_PREFIX$STEP_NUMBER_STR$@"
+        #command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_STEP_PREFIX$STEP_NUMBER_STR$@"
+        echo_line --prefix "$ECHO_STEP_PREFIX$STEP_NUMBER_STR" "$@"
     fi
 
-    log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_STEP_PREFIX$STEP_NUMBER_STR$@"
+    #log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_STEP_PREFIX$STEP_NUMBER_STR$@"
 
     test_integer "$STEP_NUMBER" && let STEP_NUMBER++ && assign "$STEP_VARIABLE" $STEP_NUMBER
     test_str "$STEP_NUMBER" "^[a-z]$" && assign $STEP_VARIABLE "$(command echo "$STEP_NUMBER" | tr "a-z" "b-z_")"
@@ -3493,13 +3428,13 @@ function echo_substep
 {
     if test_yes "$TOOLS_COLOR"
     then
-        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_SUBSTEP$ECHO_SUBSTEP_PREFIX$@$COLOR_RESET"
-        command echo -e "$COLOR_RESET\c"
+        #command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_SUBSTEP$ECHO_SUBSTEP_PREFIX$@$COLOR_RESET"
+        echo_line --prefix "$COLOR_SUBSTEP$ECHO_SUBSTEP_PREFIX" --postfix "$COLOR_RESET" "$@"
     else
-        command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_SUBSTEP_PREFIX$@"
+        #command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_SUBSTEP_PREFIX$@"
+        echo_line --prefix "$ECHO_SUBSTEP_PREFIX" "$@"
     fi
 
-    log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_SUBSTEP_PREFIX$@"
     return 0
 }
 
@@ -3771,11 +3706,11 @@ function echo_debug_variable
             elif test -z "${!VAR_NAME+exist}" > /dev/null 2>&1
             then
                 test -n "$VAR_LIST" && VAR_LIST="$VAR_LIST "
-                VAR_LIST="${VAR_LIST}${VAR_NAME}=<variable not exist>"
+                VAR_LIST="${VAR_LIST}${VAR_NAME}=<not exist>"
             elif ! declare -p "$VAR_NAME" > /dev/null 2>&1
             then
                 test -n "$VAR_LIST" && VAR_LIST="$VAR_LIST "
-                VAR_LIST="${VAR_LIST}${VAR_NAME}=<variable not found>"
+                VAR_LIST="${VAR_LIST}${VAR_NAME}=<not found>"
             else
                 test -n "$VAR_LIST" && VAR_LIST="$VAR_LIST "
                 VAR_LIST="${VAR_LIST}${VAR_NAME}=\"${!VAR_NAME}\""
@@ -3897,12 +3832,12 @@ function echo_error
 
     if test_yes "$TOOLS_COLOR"
     then
-        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_ERROR$ECHO_PREFIX_ERROR$ECHO_ERROR!$COLOR_RESET" > $REDIRECT_ERROR
+        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_ERROR$ECHO_ERROR_PREFIX$ECHO_ERROR!$COLOR_RESET" > $REDIRECT_ERROR
     else
-        command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_ERROR$ECHO_ERROR!" > $REDIRECT_ERROR
+        command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_ERROR_PREFIX$ECHO_ERROR!" > $REDIRECT_ERROR
     fi
 
-    log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_ERROR$ECHO_ERROR!"
+    log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_ERROR_PREFIX$ECHO_ERROR!"
 
     test -n "$EXIT_CODE" && exit $EXIT_CODE
     return 0
@@ -3967,12 +3902,12 @@ function echo_warning
 
     if test_yes "$TOOLS_COLOR"
     then
-        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_WARNING$ECHO_PREFIX_WARNING$ECHO_WARNING.$COLOR_RESET" > $REDIRECT_WARNING
+        command echo -e "$ECHO_PREFIX_C$ECHO_UNAME_C$COLOR_WARNING$ECHO_WARNING_PREFIX$ECHO_WARNING.$COLOR_RESET" > $REDIRECT_WARNING
     else
-        command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_WARNING$ECHO_WARNING." > $REDIRECT_WARNING
+        command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_WARNING_PREFIX$ECHO_WARNING." > $REDIRECT_WARNING
     fi
 
-    log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_WARNING$ECHO_WARNING."
+    log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_WARNING_PREFIX$ECHO_WARNING."
 
     test -n "$EXIT_CODE" && exit $EXIT_CODE
     return 0
@@ -4365,7 +4300,7 @@ function init_tools
     fi
 
     # set echo prefix or uname prefix
-    test_yes TOOLS_PREFIX && ECHO_PREFIX="### " || ECHO_PREFIX=""
+    test_yes TOOLS_PREFIX && ECHO_PREFIX="#TOOLS# " || ECHO_PREFIX=""
     test -n "$ECHO_PREFIX" && ECHO_PREFIX_C="$COLOR_PREFIX$ECHO_PREFIX$COLOR_RESET"
 
     test_yes TOOLS_UNAME && ECHO_UNAME="$(uname -n): " || ECHO_UNAME=""
@@ -4392,10 +4327,7 @@ declare -x -i TOOLS_COLORS=-1
 declare -x    TOOLS_PREFIX="no"
 declare -x    TOOLS_UNAME="no"
 
-declare -x ECHO_PREFIX=""
-declare -x ECHO_PREFIX_DEBUG="@@@ "
-declare -x ECHO_PREFIX_ERROR="Error: "
-declare -x ECHO_PREFIX_WARNING="Warning: "
+declare -x ECHO_PREFIX=""           # TOOLS_PREFIX="yes" && ECHO_PREFIX="#TOOLS# "
 declare -x ECHO_UNAME=""
 
 declare -x COLOR_BLACK COLOR_BLACK_E
@@ -4421,7 +4353,8 @@ declare -x COLOR_WHITE COLOR_WHITE_E
 declare -x COLOR_ORANGE COLOR_ORANGE_E
 declare -x COLOR_CHARCOAL COLOR_CHARCOAL_E
 
-declare -x COLOR_TITLE; declare -x COLOR_TITLE_BORDER
+declare -x COLOR_TITLE
+declare -x COLOR_TITLE_BORDER
 declare -x COLOR_INFO
 declare -x COLOR_STEP
 declare -x COLOR_SUBSTEP
@@ -4686,9 +4619,6 @@ TITLE_STYLES[LEFTDOWN]="$S_CHR255$S_CHR255$S_CHR255|$S_CHR255==$S_CHR255"
 declare -x TITLE_STYLE="${TITLE_STYLES[DEFAULT]}"
 declare -x TITLE_MSG_SPACES=" "     # one space on both sides
 declare -x ECHO_QUOTE
-declare -x ECHO_STEP_PREFIX="  "
-declare -x ECHO_STEP_NUMBER_POSTFIX=". "
-declare -x ECHO_SUBSTEP_PREFIX="    - "
 declare -x -f echo_quote
 declare -x    ECHO_LINE_PRESERVE="debug"    # default preserve for previous output - aligned left right center or debug messages
 # full settings: ECHO_LINE_PRESERVE="left right center debug"
@@ -4696,8 +4626,15 @@ declare -x -i ECHO_LINE_MESSAGE_LENGTH=0    # last line message length
 declare -x    ECHO_LINE_DEBUG_RIGHT_FLAG    # internal: last debug was right aligned
 declare -x -f echo_line
 declare -x -f echo_title
+declare -x ECHO_INFO_PREFIX_C=""
+declare -x ECHO_INFO_POSTFIX_C=""
+declare -x ECHO_INFO_PREFIX_BW="| "
+declare -x ECHO_INFO_POSTFIX_BW=" |"
 declare -x -f echo_info
+declare -x ECHO_STEP_PREFIX="  "
+declare -x ECHO_STEP_NUMBER_POSTFIX=". "
 declare -x -f echo_step
+declare -x ECHO_SUBSTEP_PREFIX="    - "
 declare -x -f echo_substep
 declare -x -A WAITER_STYLES
 WAITER_STYLES[DEFAULT]="-\\|/"
@@ -4736,17 +4673,20 @@ declare -x -f debug                     # init / init_namespaces / reinit_namesp
 declare -x    DEBUG_PARSE_LEVEL
 declare -x    DEBUG_PARSE_LEVEL_STR
 
+declare -x ECHO_PREFIX_DEBUG="# "
 declare -x -f echo_debug_custom
 declare -x -f echo_debug
 declare -x -f echo_debug_variable
 declare -x -f echo_debug_function
 declare -x -f echo_debug_right          # !!!OBSOLETED!!!
+declare -x ECHO_ERROR_PREFIX="Error: "
 declare -x -i ERROR_CODE_DEFAULT=99
 declare -x -f echo_error
 declare -x -f echo_error_ne0
 declare -x -A FUNCTION_NAMESPACES=()
 declare -x -f echo_error_function
 declare -x -f echo_error_exit
+declare -x ECHO_WARNING_PREFIX="Warning: "
 declare -x -f echo_warning
 declare -x -f echo_warning_function
 

@@ -1,5 +1,0 @@
-test file
-START
-REPL1, REPL2
-END
-file end

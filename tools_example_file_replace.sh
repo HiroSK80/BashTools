@@ -1,7 +1,7 @@
 #!/bin/bash
 
 export TOOLS_FILE="`dirname $0`/tools.sh"
-. "$TOOLS_FILE" --debug --debug-variable --debug-function --debug-right "$@" || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
+. "$TOOLS_FILE" "$@" || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
 
 function file
 {

@@ -211,19 +211,28 @@ function command_options
                 "OPTION8")
                     OPTION9="$1" && COMMAND_OPTIONS_FILLED="OPTION9"
                     ;;
+                "OPTION9")
+                    OPTION10="$1" && COMMAND_OPTIONS_FILLED="OPTION10"
+                    ;;
+                "OPTION10")
+                    OPTION11="$1" && COMMAND_OPTIONS_FILLED="OPTION11"
+                    ;;
+                "OPTION11")
+                    OPTION12="$1" && COMMAND_OPTIONS_FILLED="OPTION12"
+                    ;;
             esac
-            OPTIONS="$OPTION $OPTION2 $OPTION3 $OPTION4 $OPTION5 $OPTION6 $OPTION7 $OPTION8 $OPTION9"
-            OPTIONS2="$OPTION2 $OPTION3 $OPTION4 $OPTION5 $OPTION6 $OPTION7 $OPTION8 $OPTION9"
-            OPTIONS3="$OPTION3 $OPTION4 $OPTION5 $OPTION6 $OPTION7 $OPTION8 $OPTION9"
-            OPTIONS4="$OPTION4 $OPTION5 $OPTION6 $OPTION7 $OPTION8 $OPTION9"
-            OPTIONS_A=("$OPTION" "$OPTION2" "$OPTION3" "$OPTION4" "$OPTION5" "$OPTION6" "$OPTION7" "$OPTION8" "$OPTION9")
+            OPTIONS="$OPTION $OPTION2 $OPTION3 $OPTION4 $OPTION5 $OPTION6 $OPTION7 $OPTION8 $OPTION9 $OPTION10 $OPTION11 $OPTION12"
+            OPTIONS2="$OPTION2 $OPTION3 $OPTION4 $OPTION5 $OPTION6 $OPTION7 $OPTION8 $OPTION9 $OPTION10 $OPTION11 $OPTION12"
+            OPTIONS3="$OPTION3 $OPTION4 $OPTION5 $OPTION6 $OPTION7 $OPTION8 $OPTION9 $OPTION10 $OPTION11 $OPTION12"
+            OPTIONS4="$OPTION4 $OPTION5 $OPTION6 $OPTION7 $OPTION8 $OPTION9 $OPTION10 $OPTION11 $OPTION12"
+            OPTIONS_A=("$OPTION" "$OPTION2" "$OPTION3" "$OPTION4" "$OPTION5" "$OPTION6" "$OPTION7" "$OPTION8" "$OPTION9" "$OPTION10" "$OPTION11" "$OPTION12")
             ;;
         fill)
             COMMAND="$1"
             OPTIONS="$2 $3 $4 $5 $6 $7 $8 $9"
             OPTIONS2="$3 $4 $5 $6 $7 $8 $9 ${10}"
-            OPTIONS3="$4 $5 $6 $7 $8 $9 $10 ${11}"
-            OPTIONS4="$5 $6 $7 $8 $9 $10 $11 ${12}"
+            OPTIONS3="$4 $5 $6 $7 $8 $9 ${10} ${11}"
+            OPTIONS4="$5 $6 $7 $8 $9 ${10} ${11} ${12}"
             OPTION="$2"
             OPTION1="$2"
             OPTION2="$3"
@@ -234,7 +243,10 @@ function command_options
             OPTION7="$8"
             OPTION8="$9"
             OPTION9="${10}"
-            OPTIONS_A=("$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}")
+            OPTION10="${11}"
+            OPTION11="${12}"
+            OPTION12="${13}"
+            OPTIONS_A=("$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}" "${11}" "${12}" "${13}")
             ;;
         parse)
             COMMAND="$(str_get_arg "$INPUT" 1)"
@@ -252,11 +264,17 @@ function command_options
             OPTION7="$(str_get_arg "$INPUT" 8)"
             OPTION8="$(str_get_arg "$INPUT" 9)"
             OPTION9="$(str_get_arg "$INPUT" 10)"
-            OPTIONS_A=("$OPTION" "$OPTION2" "$OPTION3" "$OPTION4" "$OPTION5" "$OPTION6" "$OPTION7" "$OPTION8" "$OPTION9")
+            OPTION10="$(str_get_arg "$INPUT" 11)"
+            OPTION11="$(str_get_arg "$INPUT" 12)"
+            OPTION12="$(str_get_arg "$INPUT" 13)"
+            OPTIONS_A=("$OPTION" "$OPTION2" "$OPTION3" "$OPTION4" "$OPTION5" "$OPTION6" "$OPTION7" "$OPTION8" "$OPTION9" "$OPTION10" "$OPTION11" "$OPTION12")
             ;;
         insert|insert_command)
             # $1 command
             # move command to options, insert new command
+            OPTION12="$OPTION11"
+            OPTION11="$OPTION10"
+            OPTION10="$OPTION9"
             OPTION9="$OPTION8"
             OPTION8="$OPTION7"
             OPTION7="$OPTION6"
@@ -272,7 +290,7 @@ function command_options
             COMMAND="$1"
             ;;
         debug)
-            echo_debug_variable COMMAND OPTION OPTION2 OPTION3 OPTION4 OPTION5 OPTION6 OPTION7 OPTION8 OPTION9
+            echo_debug_variable COMMAND OPTION OPTION2 OPTION3 OPTION4 OPTION5 OPTION6 OPTION7 OPTION8 OPTION9 OPTION10 OPTION11 OPTION12
             ;;
         *)
             echo_error_function "$TASK" "$@" "Unknown task argument: $TASK" $ERROR_CODE_DEFAULT
@@ -2533,10 +2551,10 @@ function call_command
         then
             #bash -c "$@"
             eval "stdbuf -i0 -o0 -e0 $@" 2>&1 | tee "$FILE" | $PIPE > $REDIRECT
-            EXIT_CODE=$?
+            EXIT_CODE=${PIPESTATUS[0]}
         else
             su - "$USER" --command "$@" 2>&1 | tee "$FILE" | $PIPE > $REDIRECT
-            EXIT_CODE=$?
+            EXIT_CODE=${PIPESTATUS[0]}
         fi
     else
         USER_SSH=""
@@ -2545,7 +2563,7 @@ function call_command
         test_yes "$LOCAL_DEBUG" && echo_debug_custom command --right "$SSH $TOPT $USER_SSH$HOST $COMMAND_STRING"
         test "$SHIFT1" = "-1" && cursor down
         $SSH $TOPT $USER_SSH$HOST "$@" 2>&1 | grep --invert-match "Connection to .* closed" | tee "$FILE" | $PIPE > $REDIRECT
-        EXIT_CODE=$?
+        EXIT_CODE=${PIPESTATUS[0]}
     fi
 
     CALL_COMMAND="$(<"$FILE")"
@@ -3632,6 +3650,19 @@ function terminal
                     event remove EXIT terminal_looper_event
                     terminal_looper_event
                     ;;
+                echo)
+                    shift
+                    shift
+                    echo -n "$@"
+                    terminal clear line right && echo
+                    if test $TERMINAL_LOOPER_COUNT -eq -1
+                    then
+                        terminal looper line
+                        return $?
+                    else
+                        return 0
+                    fi
+                    ;;
                 line)
                     test $TERMINAL_LOOPER_COUNT -eq -1 && let TERMINAL_LOOPER_CURRENT++
                     test $TERMINAL_LOOPER_COUNT -gt 0 -a $TERMINAL_LOOPER_CURRENT -gt 0 && let TERMINAL_LOOPER_CURRENT--
@@ -3658,7 +3689,7 @@ function terminal
                     ;;
                 loop)
                     test "$TERMINAL_LOOPER_BREAK" = "yes" && return 1
-                    test -n "$OPTION2" && echo -n -e "$OPTION2\r" || echo -n -e "Press any key to break the loop or Ctrl+C to exit...\r"
+                    test -n "$OPTION2" && echo -n -e "$OPTION2\r" || echo -n -e "$TERMINAL_LOOPER_MESSAGE\r"
 
                     local X=""
                     #test
@@ -4238,15 +4269,19 @@ function echo_quote
     echo "$ECHO_QUOTE"
 }
 
-#declare -x -A ECHO_LINES_LINE=()
-#declare -x -A ECHO_LINES_VARS=()
-#declare -x -i ECHO_LINES_INDEX=0
+##### DEBUG!!!
+declare -x -A ECHO_LINES_LINE=()
+declare -x -A ECHO_LINES_VARS=()
+declare -x -i ECHO_LINES_INDEX=0
+##### DEBUG!!!
 
 function echo_line
 # usage as standard echo
 # echoes arguments to standard output and log to the file
 {
-    #ECHO_LINES_LINE[$ECHO_LINES_INDEX]="@=$@"
+##### DEBUG!!!
+ECHO_LINES_LINE[$ECHO_LINES_INDEX]="$@"
+##### DEBUG!!!
 
     local ESCAPE="$ECHO_LINE_ESCAPE"
     local NEWLINE="yes"
@@ -4370,11 +4405,15 @@ function echo_line
         local MESSAGE_E_NO_COLOR="$MESSAGE_E"
     fi
     MESSAGE_E_LENGTH="${#MESSAGE_E_NO_COLOR}"
-    #ECHO_LINES_LINE[$ECHO_LINES_INDEX]="$MESSAGE_E_LENGTH ${ECHO_LINES_LINE[$ECHO_LINES_INDEX]}"
-    #let ECHO_FREEB="$TERMINAL_COLUMNS - $ECHO_LINE_MESSAGE_LEFT_LENGTH - $ECHO_LINE_MESSAGE_CENTER_LENGTH - $ECHO_LINE_MESSAGE_RIGHT_LENGTH"
+##### DEBUG!!!
+ECHO_LINES_LINE[$ECHO_LINES_INDEX]="$MESSAGE_E_LENGTH ${ECHO_LINES_LINE[$ECHO_LINES_INDEX]}"
+let ECHO_FREEB="$TERMINAL_COLUMNS - $ECHO_LINE_MESSAGE_LEFT_LENGTH - $ECHO_LINE_MESSAGE_CENTER_LENGTH - $ECHO_LINE_MESSAGE_RIGHT_LENGTH"
+##### DEBUG!!!
     local -i ECHO_FREE=$TERMINAL_COLUMNS
     test $TERMINAL_COLUMNS -gt 0 && let ECHO_FREE="$TERMINAL_COLUMNS - $ECHO_LINE_MESSAGE_LEFT_LENGTH - $ECHO_LINE_MESSAGE_CENTER_LENGTH - $ECHO_LINE_MESSAGE_RIGHT_LENGTH - $MESSAGE_E_LENGTH" || ECHO_FREE=-1
-    #ECHO_LINES_VARS[$ECHO_LINES_INDEX]="$TERMINAL_COLUMNS <$ECHO_LINE_MESSAGE_LEFT_LENGTH $ECHO_LINE_MESSAGE_CENTER_LENGTH $ECHO_LINE_MESSAGE_RIGHT_LENGTH +$MESSAGE_E_LENGTH> $ECHO_FREEB|$ECHO_FREE"
+##### DEBUG!!!
+ECHO_LINES_VARS[$ECHO_LINES_INDEX]="$TERMINAL_COLUMNS <$ECHO_LINE_MESSAGE_LEFT_LENGTH $ECHO_LINE_MESSAGE_CENTER_LENGTH $ECHO_LINE_MESSAGE_RIGHT_LENGTH> +$MESSAGE_E_LENGTH $ECHO_FREEB|$ECHO_FREE"
+##### DEBUG!!!
 
     test $TERMINAL_COLUMNS -le 0 && set_no PRESERVE
     test \( $ECHO_LINE_MESSAGE_CENTER_LENGTH -eq 0 -a $ECHO_LINE_MESSAGE_CENTER_LENGTH -eq 0 -a $ECHO_LINE_MESSAGE_RIGHT_LENGTH -eq 0 \) && set_no PRESERVE
@@ -4507,7 +4546,9 @@ function echo_line
         log echo "$MESSAGE_L"
     fi
 
-    #let ECHO_LINES_INDEX++
+##### DEBUG!!!
+let ECHO_LINES_INDEX++
+##### DEBUG!!!
 }
 
 function echo_title
@@ -5625,10 +5666,10 @@ function show_config
     print substep "SCRIPT_NAME=$(print quote "$SCRIPT_NAME")"
     print substep "SCRIPT_NAME_NOEXT=$(print quote "$SCRIPT_NAME_NOEXT")"
     print substep "SCRIPT_PATH=$(print quote "$SCRIPT_PATH")"
-    local C=""
-    local R=""
-    test -f "$CONFIG_FILE" || C="$COLOR_LIGHT_RED" && R="$COLOR_RESET"
-    print substep "CONFIG_FILE=$C$(print quote "$CONFIG_FILE")$R"
+    local CONFIG_FILE_ADD_INFO=""
+    test -r "$CONFIG_FILE" || CONFIG_FILE_ADD_INFO="  $COLOR_LIGHT_RED[file not readable]$COLOR_RESET"
+    test -f "$CONFIG_FILE" || CONFIG_FILE_ADD_INFO="  $COLOR_LIGHT_RED[file not found]$COLOR_RESET"
+    print substep "CONFIG_FILE=$(print quote "$CONFIG_FILE")$CONFIG_FILE_ADD_INFO"
     print substep "TOOLS_NAME=$(print quote "$TOOLS_NAME")"
     print substep "TOOLS_PATH=$(print quote "$TOOLS_PATH")"
     print substep "TEMP_PATH=$(print quote "$TEMP_PATH")"
@@ -5739,6 +5780,9 @@ declare -x OPTION6
 declare -x OPTION7
 declare -x OPTION8
 declare -x OPTION9
+declare -x OPTION10
+declare -x OPTION11
+declare -x OPTION12
 declare -a OPTIONS_A
 declare -x -f command_options           # add / fill / parse / insert / debug
 declare -x -f fill_command_options      # = command_options fill $@
@@ -5951,6 +5995,7 @@ declare -x -f test_opt2_i
 declare -x -i TERMINAL_COLUMNS=-2
 declare -x -i TERMINAL_ROWS=-2
 # internal used variables: TERMINAL_LOOPER_CURRENT=current count to shift cursor down, TERMINAL_LOOPER_COUNT=all the lines, TERMINAL_LOOPER_BREAK=break the loop after keypress
+declare -x    TERMINAL_LOOPER_MESSAGE="Press any key to break the loop or Ctrl+C to exit..."   # read1=wait 0.001 if keypress nonblock=use before read: stty -icanon time 0 min 0
 declare -x    TERMINAL_LOOPER_CATCH_INPUT="read1"   # read1=wait 0.001 if keypress nonblock=use before read: stty -icanon time 0 min 0
 declare -x -i TERMINAL_LOOPER_COUNT=0
 declare -x -i TERMINAL_LOOPER_CURRENT=0

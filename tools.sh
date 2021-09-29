@@ -5,12 +5,12 @@
 #       source "$(dirname $0)/tools.sh"
 # shortest version with process tools known arguments and others put via command_options to $COMMAND, $OPTION, ...:
 #       source "$(dirname $0)/tools.sh" "$@"
-# good version with some predefined arguments:
-#       export TOOLS_FILE="$(dirname $0)/tools.sh"
-#       source "$TOOLS_FILE" --debug --debug-variable --debug-function --debug-right "$@" || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
-# long version:
+# good version:
+#       export TOOLS_FILE="$(dirname "$0")/tools.sh"
+#       source "$TOOLS_FILE" "$@" || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
+# long version with some predefined arguments:
 #       unset TOOLS_LOADED
-#       export TOOLS_FILE="$(dirname $0)/tools.sh"
+#       export TOOLS_FILE="$(dirname "$0")/tools.sh"
 #       source "$TOOLS_FILE" --debug --debug-right --debug-function --debug-variable "$@"
 #       test "$TOOLS_LOADED" != "yes" && echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1
 
@@ -547,20 +547,22 @@ function str_date
 {
     local VAR=""
     local FORMAT="$LOG_DATE"
-    if test $# = 2
+    local TIME=""
+    while test $# -gt 0
+    do
+        test -n "${!1:+exist}" && VAR="$1" && shift && continue
+        test_integer "$1" && TIME=$1 && shift && continue
+        test_str "$1" ".*[-% ].*" && FORMAT="$1" && shift && continue
+        VAR="$1" && shift && continue
+    done
+    if test ${BASH_VERSINFO[0]} -ge 5 -o \( ${BASH_VERSINFO[0]} -eq 4 -a ${BASH_VERSINFO[1]} -ge 2 \)
     then
-        VAR="$1"
-        local FORMAT="$2"
-    elif test_str "$1" ".*[-% ].*"
-    then
-        FORMAT="$1"
-    elif test -n "${!1:+exist}"
-    then
-        VAR="$1"
+        test -z "$TIME" && TIME=-1
+        printf -v STR '%('"$FORMAT"')T' $TIME
     else
-        FORMAT="$1"
+        test -n "$TIME" && TIME="--date=@$TIME"
+        STR="$(date $TIME +"$FORMAT")"
     fi
-    test ${BASH_VERSINFO[0]} -ge 5 -o \( ${BASH_VERSINFO[0]} -eq 4 -a ${BASH_VERSINFO[1]} -ge 2 \) && printf -v STR '%('"$FORMAT"')T' -1 || STR="$(date +"$FORMAT")"
     test -n "$VAR" && assign "$VAR" "$STR" || command echo -n "$STR"
 }
 
@@ -734,8 +736,8 @@ function str_parse_url
 # $1 URL
 #   [path/]filename
 #   host[:port][:][path/]filename
-#   user@host[:port][:][path/]filename
-#   protocol://user@host[:port][:][path/]filename
+#   user[:password]@host[:port][:][path/]filename
+#   protocol://user[:password]@host[:port][:][path/]filename
 # $2 VAR_ARRAY       - associative array variable name to store values in
 #   ${2[PROTOCOL]}
 #   ${2[USER_HOST]}
@@ -749,7 +751,7 @@ function str_parse_url
 {
     local REGEX_PROTOCOL="[a-zA-Z]+"
     local REGEX_USER="[a-zA-Z][-_.%a-zA-Z0-9]*"
-    local REGEX_PASSWORD="[^/]+"
+    local REGEX_PASSWORD="[^/]*"
     local REGEX_HOST="[a-zA-Z0-9][-.a-zA-Z0-9]*"
     local REGEX_PORT="[0-9]+"
 
@@ -809,6 +811,8 @@ function str_parse_url
     test -n "$PARSE_URL_PASSWORD" && PARSE_URL_USER_HOST="$PARSE_URL_USER:$PARSE_URL_PASSWORD@$PARSE_URL_USER_HOST"
     test -z "$PARSE_URL_PASSWORD" && test -n "$PARSE_URL_USER" && PARSE_URL_USER_HOST="$PARSE_URL_USER@$PARSE_URL_USER_HOST"
     test -n "$PARSE_URL_PORT" && PARSE_URL_USER_HOST="$PARSE_URL_USER_HOST:$PARSE_URL_PORT"
+    PARSE_URL_HOST_PORT="$PARSE_URL_HOST"
+    test -n "$PARSE_URL_PORT" && PARSE_URL_HOST_PORT="$PARSE_URL_HOST_PORT:$PARSE_URL_PORT"
     if test -n "$2"
     then
         assign "$2[URL]" "$PARSE_URL"
@@ -1435,12 +1439,22 @@ function file_temporary_name
     test -n "$2" && echo "/tmp/$(basename "$2").$1.$BASHPID.tmp" || echo "/tmp/tools.$1.$BASHPID.tmp"
 }
 
+function file_size_local
+{
+    test -f "$1" && stat --format="%s" "$1" || echo -1
+}
+
+function file_timestamp_local
+{
+    test -f "$1" && stat --format="%Y" "$1" || echo -1
+}
+
 function file_delete_local
 {
     if test -f "$1"
     then
         $RM "$1"
-        test ! -f "$1" || echo_error_function "$@" "Can't delete $(echo_quote "$1") file" $ERROR_CODE_DEFAULT
+        test -f "$1" && echo_error_function "$@" "Can't delete $(echo_quote "$1") file" $ERROR_CODE_DEFAULT
     else
         return 0
     fi
@@ -1509,8 +1523,8 @@ function file_prepare
 
     if test "$SIZE" -ne 0 -a -f "$FILE"
     then
-        local CURRENT_SIZE="$(stat -c %s "$FILE")"
-        test $CURRENT_SIZE -gt $SIZE && set_yes ROLL
+        local CURRENT_SIZE="$(stat --format="%s" "$FILE")"
+        test $CURRENT_SIZE -gt $SIZE && set_yes ROLL || set_no ROLL
     fi
 
     if test_yes "$ROLL" && test -f "$FILE"
@@ -1530,7 +1544,7 @@ function file_prepare
     fi
     test -w "$FILE" || echo_error_function "Can't create and prepare file for writting: $(echo_quote "$FILE")" $ERROR_CODE_DEFAULT
 
-    echo -n "" > "$FILE" || echo_error_function "Can't write to file: $(echo_quote "$FILE")" $ERROR_CODE_DEFAULT
+    echo -n "" >> "$FILE" || echo_error_function "Can't write to file: $(echo_quote "$FILE")" $ERROR_CODE_DEFAULT
     test_yes "$EMPTY" && { echo "TEST" > "$FILE" || echo_error_function "Can't write to file: $(echo_quote "$FILE")" $ERROR_CODE_DEFAULT; cat /dev/null > "$FILE"; }
 
     test -n "$USER" && chgrp "$USER" "$FILE" 2> /dev/null
@@ -2462,6 +2476,45 @@ function fd_find_free
         fd_check $FILE_FD || break
     done
     command echo $FILE_FD
+}
+
+function cronjob
+{
+    local TAG="TOOLS_TAG_${SCRIPT_NAME_NOEXT}"
+    local TIME="* * * * *"
+    local USER="root"
+    #arguments onestep set error_on_unknown no
+    arguments onestep value "|tag" "TAG"
+    arguments onestep value "t|time" "TIME"
+    arguments onestep value "u|user" "USER"
+    arguments onestep switch "|5minutes" "TIME|*/5 * * * *"
+    arguments onestep switch "|10minutes" "TIME|*/10 * * * *"
+    arguments onestep switch "|hourly" "TIME|0 * * * *"
+    arguments onestep switch "|daily" "TIME|0 0 * * *"
+    arguments onestep option "TASK|(set remove)"
+    arguments onestep option "TAG"
+    arguments onestep option "COMMAND"
+    arguments onestep run "$@"
+    TAG="${TAG#__}"
+    TAG="${TAG%__}"
+    test -n "$TAG" && TAG="__${TAG}__"
+    case "$TASK" in
+        set)
+            grep --quiet "$TAG" "/etc/crontab" && return 0
+
+            test -n "$TAG" && { echo "$TIME $USER $COMMAND;    # $TAG" >> "/etc/crontab" || exit 1; }
+            test -z "$TAG" && { echo "$TIME $USER $COMMAND" >> "/etc/crontab" || exit 1; }
+            type systemctl > /dev/null 2>&1 && systemctl reload crond.service || service crond reload
+            ;;
+        remove)
+            #test -z "$TAG" && echo_error_function "$@" "Can't remove crontab job without specified tag" $ERROR_CODE_DEFAULT
+            grep --invert-match "$TAG" "/etc/crontab" > "/etc/crontab.tmp" || exit 1
+            cat "/etc/crontab.tmp" > "/etc/crontab" || exit 1
+            rm -f "/etc/crontab.tmp"
+            type systemctl > /dev/null 2>&1 && systemctl reload crond.service || service crond reload
+            ;;
+    esac
+    return 0
 }
 
 function daemon
@@ -4242,7 +4295,12 @@ function echo_debug_custom
                 then
                     echo_line $ALIGN_OPTION $NEWLINE_OPTION $PRESERVE_OPTION --log-prefix="$ECHO_PREFIX_DEBUG" "$COLOR_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@$COLOR_RESET"
                 else
-                    echo_line $ALIGN_OPTION $NEWLINE_OPTION $PRESERVE_OPTION --log-prefix="$ECHO_PREFIX_DEBUG" "$COLOR_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@$COLOR_RESET" > $REDIRECT_DEBUG
+                    if test "$REDIRECT_DEBUG" = "/dev/stderr"
+                    then
+                        echo_line $ALIGN_OPTION $NEWLINE_OPTION $PRESERVE_OPTION --log-prefix="$ECHO_PREFIX_DEBUG" "$COLOR_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@$COLOR_RESET" >&2
+                    else
+                        echo_line $ALIGN_OPTION $NEWLINE_OPTION $PRESERVE_OPTION --log-prefix="$ECHO_PREFIX_DEBUG" "$COLOR_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@$COLOR_RESET" > $REDIRECT_DEBUG
+                    fi
                 fi
             else
                 #command echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@" > $REDIRECT_DEBUG
@@ -4250,7 +4308,12 @@ function echo_debug_custom
                 then
                     echo_line $ALIGN_OPTION $NEWLINE_OPTION $PRESERVE_OPTION "$ECHO_PREFIX_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@"
                 else
-                    echo_line $ALIGN_OPTION $NEWLINE_OPTION $PRESERVE_OPTION "$ECHO_PREFIX_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@" > $REDIRECT_DEBUG
+                    if test "$REDIRECT_DEBUG" = "/dev/stderr"
+                    then
+                        echo_line $ALIGN_OPTION $NEWLINE_OPTION $PRESERVE_OPTION "$ECHO_PREFIX_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@" >&2
+                    else
+                        echo_line $ALIGN_OPTION $NEWLINE_OPTION $PRESERVE_OPTION "$ECHO_PREFIX_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@" > $REDIRECT_DEBUG
+                    fi
                 fi
             fi
             #log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_PREFIX_DEBUG$ECHO_DEBUG_TYPE$ECHO_DEBUG_LEVEL$@"
@@ -4954,16 +5017,19 @@ function init_tools
 }
 
 #EXCLUDE/start
+declare -x UNION_FILE=""
 function tools_union
 {
-    IN_FILE="$1"
+    local IN_FILE="$1"
     test ! -f "$IN_FILE" && print error "Input file $(print quote "$IN_FILE") not found" 1
-    OUT_FILE="$2"
+    local OUT_FILE="$2"
     test -z "$OUT_FILE" && OUT_FILE="${1%.sh}_union.sh"
 
     cat "$TOOLS_FILE" | awk '
         BEGIN {
             print "#!/bin/bash";
+            print "# tools.sh | '"$(file_size_local "$TOOLS_FILE") | $(str_date $(file_timestamp_local "$TOOLS_FILE"))"'";
+            print "# '"$(basename "$1") | $(file_size_local "$1") | $(str_date $(file_timestamp_local "$1"))"'";
             p=1;
         }
         /^#EXCLUDE[/]start/ {
@@ -4995,6 +5061,7 @@ function tools_union
         }' >> "$OUT_FILE"
 
     chmod +x "$OUT_FILE"
+    UNION_FILE="$OUT_FILE"
 }
 declare -x -f tools_union
 #EXCLUDE/end
@@ -5171,6 +5238,8 @@ declare -x -f file_find
 declare -x -f file_loop
 
 declare -x -f file_temporary_name
+declare -x -f file_size_local
+declare -x -f file_timestamp_local
 declare -x -f file_delete_local
 declare -x -f file_delete
 declare -x    FILE_PREPARE_ROLL="no"

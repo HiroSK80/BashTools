@@ -348,13 +348,37 @@ function array_assign_arguments
     shift
     local ARRAY
     local ARGUMENT
-    local BACKUP_IFS="$IFS"
+    local IFS_BACKUP="$IFS"
     IFS=''
     for ARGUMENT in "$@"
     do
         ARRAY+=($ARGUMENT)
     done
-    IFS="$BACKUP_IFS"
+    IFS="$IFS_BACKUP"
+    array_copy ARRAY "$VAR"
+}
+
+function array_assign_split
+{
+    #unset -v "$1" || echo_error_function "$@" "Invalid variable name: $1" $ERROR_CODE_DEFAULT
+    test $# = 0 && echo_error_function "$@" "Empty variable name argument" $ERROR_CODE_DEFAULT
+    local VAR="$1"
+    shift
+
+    test $# = 0 && echo_error_function "$@" "Missing split character argument" $ERROR_CODE_DEFAULT
+    local SPLIT="$1"
+    shift
+
+    test $# = 0 && echo_error_function "$@" "Missing string to split argument" $ERROR_CODE_DEFAULT
+    local STR="$1"
+    #STR="${STR//}"
+
+    local ARRAY
+    local ARGUMENT
+    local IFS_BACKUP="$IFS"
+    IFS="$SPLIT"
+    ARRAY+=($STR)
+    IFS="$IFS_BACKUP"
     array_copy ARRAY "$VAR"
 }
 
@@ -527,13 +551,16 @@ function str_date
     then
         VAR="$1"
         local FORMAT="$2"
-    elif test -n "${!1+exist}"
+    elif test_str "$1" ".*[-% ].*"
+    then
+        FORMAT="$1"
+    elif test -n "${!1:+exist}"
     then
         VAR="$1"
     else
         FORMAT="$1"
     fi
-    test ${BASH_VERSINFO[0]} -ge 4 -a ${BASH_VERSINFO[1]} -ge 2 && printf -v STR '%('"$FORMAT"')T' -1 || STR="$(date +"$FORMAT")"
+    test ${BASH_VERSINFO[0]} -ge 5 -o \( ${BASH_VERSINFO[0]} -eq 4 -a ${BASH_VERSINFO[1]} -ge 2 \) && printf -v STR '%('"$FORMAT"')T' -1 || STR="$(date +"$FORMAT")"
     test -n "$VAR" && assign "$VAR" "$STR" || command echo -n "$STR"
 }
 
@@ -2340,9 +2367,12 @@ function get_pids
 {
     local S1="$$"
     local S2="$BASHPID"
-    ps -e -o pid,ppid,cmd | $AWK $AWK_VAR p="$1" $AWK_VAR s1="$S1" $AWK_VAR s2="$S2" '
+    local EXCLUDE_SHELL_CHILDS="no"
+    test "$1" = "--exclude-shell-childs" -o "$1" = "--shell-childs=no" && EXCLUDE_CHILDS="yes"
+    ps -e -o pid,ppid,cmd | $AWK $AWK_VAR p="$1" $AWK_VAR s1="$S1" $AWK_VAR s2="$S2" $AWK_VAR c="$EXCLUDE_CHILDS" '
         BEGIN { f=0; }
-        $1==s1||$1==s2||$2==s1||$2==s2||/tools_get_pids_tag/ { next; }
+        $1==s1||$1==s2||/tools_get_pids_tag/ { next; }
+        c=="yes"&&$2==s1||$2==s2 { next; }
         $0~p { print $1; f++; }
         END { if (f==0) exit(1); }';
 }
@@ -2368,7 +2398,7 @@ function get_pids_tree
     then # search tree for PIDs
         get_pids_tree_loop $*
     else # search tree for PIDs from name
-        local PID_LIST="$(get_pids "$1")"
+        local PID_LIST="$(get_pids --shell-childs=no "$1")"
         get_pids_tree_loop $PID_LIST
     fi
     echo "$PIDS_TREE"
@@ -2618,7 +2648,7 @@ function tools_trap_int
 {
     print debug --custom event "$BASHPID: SIG INT"
     EVENT_INT_SIG="yes"
-    printf -v NOW "%(%s)T" -1
+    str_date NOW "%s"
     local -i INTERVAL
     let INTERVAL="$NOW - $EVENT_INT_TIME"
     test $INTERVAL -le $EVENT_INT_REPEAT_TIME && { let EVENT_INT_COUNTER++; true; } || EVENT_INT_COUNTER=0
@@ -2630,7 +2660,7 @@ function tools_trap_int
         tools_trap_exit INT
     else
         event call INT
-        printf -v EVENT_INT_TIME "%(%s)T" -1
+        str_date EVENT_INT_TIME "%s"
     fi
 }
 
@@ -3327,7 +3357,9 @@ function pipe_replace_string
 # $1 regex search
 # $2 replace
 {
-    sed --expression="s|$1|$2|g" || echo_error_function "$@" "String $(echo_quote "$1") replace $(echo_quote "$2") error" $ERROR_CODE_DEFAULT
+    #sed --expression="s|$1|$2|g" || echo_error_function "$@" "String $(echo_quote "$1") replace $(echo_quote "$2") error" $ERROR_CODE_DEFAULT
+    # multiline fix
+    $AWK $AWK_VAR regexp="$1" $AWK_VAR replace="$2" '{ gsub(regexp, replace); print; }'
 }
 
 function pipe_replace_section
@@ -4238,6 +4270,7 @@ function echo_debug_variable
         do
             local VAR_NAME="$1"
             shift
+            local VAR_NAME_PART="${VAR_NAME%%[*}"
             if array_variable "$VAR_NAME"
             then
                 local -A VAR_ARRAY
@@ -4254,6 +4287,10 @@ function echo_debug_variable
             then
                 test -n "$VAR_LIST" && VAR_LIST="$VAR_LIST "
                 VAR_LIST="${VAR_LIST}${VAR_NAME}=<not exist>"
+            elif test -n "$VAR_NAME_PART" -a "$VAR_NAME" != "$VAR_NAME_PART" > /dev/null 2>&1
+            then
+                test -n "$VAR_LIST" && VAR_LIST="$VAR_LIST "
+                VAR_LIST="${VAR_LIST}${VAR_NAME}=\"${!VAR_NAME}\""
             elif ! declare -p "$VAR_NAME" > /dev/null 2>&1
             then
                 test -n "$VAR_LIST" && VAR_LIST="$VAR_LIST "
@@ -4656,6 +4693,7 @@ function history
 
 function arguments_check_tools
 {
+    arguments check value "|execute" "TOOLS_EXECUTE" "$@"
     arguments check switch "|ignore-unknown" "TOOLS_IGNORE_UNKNOWN|yes" "$@"
     arguments check switch "|debug" "" "$@" && debug set debug
     arguments check switch "|debug-variable" "" "$@" && debug set variable
@@ -4889,6 +4927,8 @@ function init_tools
 
     test_yes TOOLS_UNAME && ECHO_UNAME="$(uname -n): " || ECHO_UNAME=""
     test -n "$ECHO_UNAME" && ECHO_UNAME_C="$COLOR_UNAME$ECHO_UNAME$COLOR_RESET"
+
+    test -n "$TOOLS_EXECUTE" && bash -c "$TOOLS_EXECUTE"
 }
 
 ### tools exports
@@ -4901,6 +4941,7 @@ declare -x SCRIPT_PATH=""
 declare -x TOOLS_NAME=""
 declare -x TOOLS_PATH=""
 declare -x TEMP_PATH="/tmp"
+declare -x TOOLS_EXECUTE=""
 
 declare -x REDIRECT_DEBUG="/dev/stderr"
 declare -x REDIRECT_ERROR="" #/dev/stdout
@@ -4985,6 +5026,7 @@ declare -x -f function_copy
 declare -x -f array_variable
 declare -x -f array_assign
 declare -x -f array_assign_arguments
+declare -x -f array_assign_split        # <VAR> <SPLIT> <STR>
 declare -x -f array_copy
 
 #declare -x -r S_CHR0="$(command echo -e "\000")"
@@ -5333,4 +5375,4 @@ event init
 init_colors
 init_tools "$@"
 
-return 0
+[[ "${BASH_SOURCE[0]}" != "$0" ]] && return 0 || exit 0

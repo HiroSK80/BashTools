@@ -2,16 +2,16 @@
 
 # execute as: "source <tools.sh> [options]"
 # shortest version:
-#       source "$(dirname $0)/tools.sh"
-# shortest version with process tools known arguments and others put via command_options to $COMMAND, $OPTION, ...:
-#       source "$(dirname $0)/tools.sh" "$@"
+#       source "$(dirname $0)/tools.sh" || exit 1
+# shortest version with search tools in original path and process known arguments and others put via command_options to $COMMAND, $OPTION, ...:
+#       source "$(dirname $(readlink --canonicalize "$0"))/tools.sh" "$@" || exit 1
 # good version:
-#       export TOOLS_FILE="$(dirname "$0")/tools.sh"
-#       source "$TOOLS_FILE" "$@" || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
+#       export TOOLS_FILE="$(dirname $(readlink --canonicalize "$0"))/tools.sh"
+#       source "$TOOLS_FILE" "$@" 2> /dev/null || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
 # long version with some predefined arguments:
 #       unset TOOLS_LOADED
-#       export TOOLS_FILE="$(dirname "$0")/tools.sh"
-#       source "$TOOLS_FILE" --debug --debug-right --debug-function --debug-variable "$@"
+#       export TOOLS_FILE="$(dirname $(readlink --canonicalize "$0"))/tools.sh"
+#       source "$TOOLS_FILE" --debug --debug-right --debug-function --debug-variable "$@" 2> /dev/null
 #       test "$TOOLS_LOADED" != "yes" && echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1
 
 # options:
@@ -593,6 +593,81 @@ function str_date
         printf -v STR '%('"$FORMAT"')T' $TIME
         printf -v STR "${STR/\%N/%s}" "${EPOCHREALTIME#*.}"
     fi
+    test -n "$VAR" && assign "$VAR" "$STR" || command echo -n "$STR"
+}
+
+function str_convert_human
+{
+    local VAR=""
+    local STR=""
+    local -i VALUE=-1
+    if test $# = 2
+    then
+        local VAR="$1"
+        local STR="$2"
+    elif test $# = 1
+    then
+        local VAR=""
+        local STR="$1"
+    else
+        echo_error_function "$@" "Wrong arguments count: $#, arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
+    fi
+
+    if test_integer "$STR"
+    then
+        VALUE=$STR
+    else
+        local X="${STR: -1}"
+        if test_str "$X" "[kKmMgGtT]"
+        then
+            STR="${STR:0:-1}"
+            let VALUE="$STR * ${I_BASE[$X]}"
+        else
+            VALUE="$STR"
+        fi
+    fi
+
+    test -n "$VAR" && assign "$VAR" "$VALUE" || command echo -n "$VALUE"
+}
+
+function str_convert_to_human
+{
+    local SI="no"
+    test "$1" = "--si" && SI="yes" && shift
+
+    local VAR=""
+    local VALUE=""
+    local STR="-1"
+    if test $# = 2
+    then
+        local VAR="$1"
+        local VALUE="$2"
+    elif test $# = 1
+    then
+        local VAR=""
+        local VALUE="$1"
+    else
+        echo_error_function "$@" "Wrong arguments count: $#, arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
+    fi
+
+    STR="$VALUE"
+    if test_integer "$VALUE"
+    then
+        local UNITS="T G M K"
+        test_yes $SI && UNITS="t g m k"
+        for X in $UNITS
+        do
+            local -i VALUEX=${I_BASE[$X]}
+            if test $VALUE -ge $VALUEX
+            then
+                local -i VALUEI=$VALUE
+                let VALUEI="$VALUE / $VALUEX"
+                STR="${VALUEI}$X"
+                break
+            fi
+        done
+    fi
+    
     test -n "$VAR" && assign "$VAR" "$STR" || command echo -n "$STR"
 }
 
@@ -1356,6 +1431,11 @@ function arguments_tester_info
     echo_debug INFO "Argument tester for string: $1"
 }
 
+function arguments_tester_human
+{
+    ARGUMENTS_VALUE="$(str_convert_human $ARGUMENTS_VALUE)"
+}
+
 function arguments_tester_file
 {
     test -f "$1" || echo_error "Specified file: $(echo_quote "$1") doesn't exist" $ERROR_CODE_DEFAULT
@@ -1471,12 +1551,25 @@ function file_temporary_name
 
 function file_size_local
 {
-    test -f "$1" && stat --format="%s" "$1" || echo -1
+    local HUMAN="no"
+    test "$1" = "-h" -o "$1" == "--human" && HUMAN="yes" && shift
+    if test -f "$1"
+    then
+        if test_yes HUMAN
+        then
+            str_convert_to_human $(stat --format="%s" "$1")
+            command echo -n "B"
+        else
+            stat --printf="%s" "$1"
+        fi
+    else
+        command echo -n "-1"
+    fi
 }
 
 function file_timestamp_local
 {
-    test -f "$1" && stat --format="%Y" "$1" || echo -1
+    test -f "$1" && stat --printf="%Y" "$1" || echo -n "-1"
 }
 
 function file_delete_local
@@ -1524,7 +1617,8 @@ function file_prepare
     local EMPTY="no"
     local ROLL="$FILE_PREPARE_ROLL"
     local COUNT="$FILE_PREPARE_COUNT"
-    local -i SIZE=0
+    local -i SIZE=0                     # rotate file if is bigger
+    local -i SIZE_TRUNCATE=0            # truncate before rotate if bigger
     local USER=""
     local GROUP=""
 
@@ -1540,7 +1634,8 @@ function file_prepare
             arguments check switch "e|empty" "EMPTY|yes" "$@"
             arguments check switch "r|roll" "ROLL|yes" "$@"
             arguments check value "c|count" "COUNT" "$@"
-            arguments check value s"|size" "SIZE" "$@"
+            arguments check value s"|size" "SIZE|human" "$@"
+            arguments check value "t|size-truncate" "SIZE_TRUNCATE|human" "$@"
             arguments check switch "u|user" "USER|" "$@"
             arguments check switch "g|group" "GROUP|" "$@"
             arguments check option "FILE" "$@"
@@ -1551,7 +1646,7 @@ function file_prepare
     fi
     test -z "$FILE" && echo_error_function "Filename is not specified" $ERROR_CODE_DEFAULT
 
-    if test "$SIZE" -ne 0 -a -f "$FILE"
+    if test "$SIZE" -gt 0 -a -f "$FILE"
     then
         local CURRENT_SIZE="$(stat --format="%s" "$FILE")"
         test $CURRENT_SIZE -gt $SIZE && set_yes ROLL || set_no ROLL
@@ -1560,6 +1655,11 @@ function file_prepare
     if test_yes "$ROLL" && test -f "$FILE"
     then
         test -f "$FILE-1" && file_prepare_move "$FILE" 1 "$COUNT"
+        if test "$SIZE_TRUNCATE" -gt 0
+        then
+            local CURRENT_SIZE="$(stat --format="%s" "$FILE")"
+            test $CURRENT_SIZE -gt $SIZE_TRUNCATE && type truncate > /dev/null 2>&1 && truncate --size=$SIZE_TRUNCATE "$FILE"
+        fi
         cp -p "$FILE" "$FILE-1" 2> /dev/null || echo_error_function "Can't backup file $(echo_quote "$FILE") to $(echo_quote "$FILE-1")" $ERROR_CODE_DEFAULT
         cat /dev/null > "$FILE" 2> /dev/null || echo_error_function "Can't truncate file $(echo_quote "$FILE")" $ERROR_CODE_DEFAULT
     fi
@@ -2411,14 +2511,16 @@ function get_pids
 {
     local S1="$$"
     local S2="$BASHPID"
-    local EXCLUDE_SHELL_CHILDS="no"
+    #echo "D=$S1 B=$S2"
+    local EXCLUDE_SHELL_CHILDS="yes"
+    test "$1" = "--shell-childs=yes" && EXCLUDE_CHILDS="no" && shift
     test "$1" = "--exclude-shell-childs" -o "$1" = "--shell-childs=no" && EXCLUDE_CHILDS="yes" && shift
     ps -e -o pid,ppid,cmd | $AWK $AWK_VAR p="$1" $AWK_VAR s1="$S1" $AWK_VAR s2="$S2" $AWK_VAR c="$EXCLUDE_CHILDS" '
         BEGIN { f=0; }
-        $1==s1 || $1==s2 || /tools_get_pids_tag/ { next; }
-        c=="yes" && ( $2==s1 || $2==s2 ) { next; }
+        /tools_get_pids_tag/ { next; } #{ print "t=" $1 "/" $2; next; }
+        c=="yes" && ( $2==s1 || $2==s2 ) { next; } #{ print "I=" $1 "/" $2; next; }
         $0~p { print $1; f++; }
-        END { if (f==0) exit(1); }';
+        END { if (f==0) exit(1); }'
 }
 
 function get_pids_tree_loop
@@ -2453,40 +2555,58 @@ function kill_tree_verbose
 {
     local SPACE="$1"
     shift
-    test_yes KILL_ECHO && echo_line "${SPACE}Killing tree from parent PIDs: $*"
+    test_yes KILL_ECHO && echo "${SPACE}Killing tree from parent PIDs: $*"
     local CHECK_PID
     for CHECK_PID in $*
     do
         CHILD_PIDS="$(ps -o pid --no-headers --ppid ${CHECK_PID})"
         if test -n "$CHILD_PIDS"
         then
-            echo_line "${SPACE}Found child PIDs from $CHECK_PID: "$CHILD_PIDS
+            echo "${SPACE}Found child PIDs from $CHECK_PID: "$CHILD_PIDS
             kill_tree_verbose "$SPACE  " $CHILD_PIDS
         else
-            echo_line "${SPACE}No child PIDs from $CHECK_PID" 
+            echo "${SPACE}No child PIDs from $CHECK_PID"
         fi
-        echo_line "${SPACE}Killing PID: $CHECK_PID"
+        echo "${SPACE}Killing PID: $CHECK_PID"
         if test $CHECK_PID -ne $$ -a $CHECK_PID -ne $BASHPID
         then
             local PID_INFO="$(ps -f --no-heading $CHECK_PID)"
-            test -n "$PID_INFO" && echo_debug INFO "${SPACE}  PID $CHECK_PID killed:     <$PID_INFO>" || echo_debug INFO "  PID $CHECK_PID already killed"
+            test -n "$PID_INFO" && print debug "${SPACE}  PID $CHECK_PID killed:     <$PID_INFO>" || print debug "  PID $CHECK_PID already killed"
             kill -9 "$CHECK_PID" 2>/dev/null
         else
-            echo_line "${SPACE}  PID $CHECK_PID skipping as its me"
+            print debug "${SPACE}  PID $CHECK_PID skipping as its me"
         fi
     done
 }
 
 function kill_tree
-# $1 regexp for process name or pid
-# $2 exclude PIDs
+# $1,$2,... regexp for process name or pid
+# -e <PID> exclude PID
 {
-    local PID_LIST="$(get_pids_tree "$1")"
-    test -n "$2" && PID_LIST="$(command echo "$PID_LIST" | $GREP --invert-match "$2")"
+    local PID_LIST=""
+    local PID_EXCLUDE=""
+    while test $# -gt 0
+    do
+        if test "$1" = "-e"
+        then
+            shift
+            PID_EXCLUDE="$1"
+        elif test_integer "$1"
+        then
+            PID_LIST="$PID_LIST $(get_pids_tree $1)"
+        else
+            PID_LIST="$PID_LIST $(get_pids_tree "$1")"
+        fi
+        shift
+    done
+
+    test -n "$PID_EXCLUDE" && PID_LIST="$(command echo "$PID_LIST" | $GREP --invert-match "$PID_EXCLUDE")"
+
     for KILL_PID in $PID_LIST
     do
         local PID_INFO="$(ps -f --no-heading $KILL_PID)"
-        test -n "$PID_INFO" && echo_debug INFO "PID $KILL_PID killed:     <$PID_INFO>" || echo_debug INFO "PID $KILL_PID already killed"
+        test -n "$PID_INFO" && print debug "PID $KILL_PID killed:     <$PID_INFO>" || print debug "PID $KILL_PID already killed"
+        kill $KILL_PID 2>/dev/null
         kill -9 $KILL_PID 2>/dev/null
     done
 }
@@ -2526,7 +2646,7 @@ function cronjob
     arguments onestep switch "|hourly" "TIME|0 * * * *"
     arguments onestep switch "|daily" "TIME|0 0 * * *"
     arguments onestep switch "c|command" "COMMAND"
-    arguments onestep option "TASK|(set remove)"
+    arguments onestep option "TASK|(check set remove)"
     arguments onestep option "TAG"
     arguments onestep option "COMMANDS/array"
     arguments onestep run "$@"
@@ -2546,6 +2666,10 @@ function cronjob
     TAG="${TAG%__}"
     test -n "$TAG" && TAG="__${TAG}__"
     case "$TASK" in
+        check)
+            grep --quiet "$TAG" "/etc/crontab"
+            return $?
+            ;;
         set)
             grep --quiet "$TAG" "/etc/crontab" && return 0
 
@@ -2553,7 +2677,7 @@ function cronjob
             test -z "$TAG" && { echo "$TIME $USER $COMMAND" >> "/etc/crontab" || exit 1; }
             ;;
         remove)
-            #test -z "$TAG" && echo_error_function "$@" "Can't remove crontab job without specified tag" $ERROR_CODE_DEFAULT
+            test -z "$TAG" && echo_error_function "$@" "Can't remove crontab job without specified tag" $ERROR_CODE_DEFAULT
             grep --invert-match "$TAG" "/etc/crontab" > "/etc/crontab.tmp" || exit 1
             cat "/etc/crontab.tmp" > "/etc/crontab" || exit 1
             rm -f "/etc/crontab.tmp"
@@ -5374,7 +5498,7 @@ function tools_union
         /^#/ || /^$/ {
             next;
         }
-        /^(export )?TOOLS_FILE=/ || /^([.]|source) "?[$]TOOLS_FILE/ || /^#[!][/]/ {
+        /^(export )?TOOLS_FILE=/ || /^([.]|source) ("?[$]TOOLS_FILE|tools[.]sh)/ || /^#[!][/]/ {
             next;
         }
         {
@@ -5504,6 +5628,12 @@ declare -x -f str_remove_color
 declare -x -f str_word                  # set / add / delete / check
 declare -x -A DATE_FORMAT_CALL_DATE_COMMAND=()
 declare -x -f str_date
+
+declare -x -r -A -i I_BASE2=([k]=1024 [K]=1024 [m]=1048576 [M]=1048576 [g]=1073741824 [G]=1073741824 [t]=1099511627776 [T]=1099511627776)
+declare -x -r -A -i I_BASE10=([k]=1000 [K]=1000 [m]=1000000 [M]=1000000 [g]=1000000000 [G]=1000000000 [t]=1000000000000 [T]=1000000000000)
+declare -x -r -A I_BASE=([k]=1000 [K]=1024 [m]=1000000 [M]=1048576 [g]=1000000000 [G]=1073741824 [t]=1000000000000 [T]=1099511627776)
+declare -x -f str_convert_human
+declare -x -f str_convert_to_human
 
 declare -x -a ARRAY_CONVERT=()
 declare -x -f str_array_convert

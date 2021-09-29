@@ -1,7 +1,7 @@
 #!/bin/bash
 
-export TOOLS_FILE="`dirname $0`/tools.sh"
-. "$TOOLS_FILE" "$@" || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
+export TOOLS_FILE="$(dirname "$0")/tools.sh"
+source "$TOOLS_FILE" "$@" || { echo "Error: Can't load \"$TOOLS_FILE\" file!" && exit 1; }
 
 FILE_TEST="TestFile"
 
@@ -18,9 +18,9 @@ function testfiles
         ;;
         show)
             #    file_loop "TestFile*" << 'EOF'
-            #echo -e "    $FILE\\t`cat $FILE`"
+            #echo -e "    $FILE\\t$(cat $FILE)"
             #EOF
-            file_loop "$FILE_TEST*" 'echo -e "    $FILE\t`cat $FILE`"'
+            file_loop "$FILE_TEST*" 'echo -e "    $FILE\t\t$(cat $FILE)\t$(stat -c %s "$FILE")b"'
         ;;
         delete)
             rm -f "$FILE_TEST"*
@@ -31,13 +31,15 @@ function testfiles
 print info "Rolling old files example"
 
 testfiles prepare
-print step "Files before"
+print step "Files before prepare"
 testfiles show
 
-# default old files count = 9
-file_prepare -r "$FILE_TEST"
+# roll file if is bigger than 1b
+file_prepare --size 1 "$FILE_TEST"
+# roll files, default old files count = 9
+file_prepare --roll "$FILE_TEST"
 
-print step "Files after"
+print step "Files after prepare"
 testfiles show
 
 testfiles delete

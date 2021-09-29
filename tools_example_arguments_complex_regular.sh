@@ -12,6 +12,7 @@ SWITCH_B="no"
 SWITCH_C="no"
 VERBOSE="0"
 VALUE="none"
+SIZE=0
 
 arguments init
 while test $# -gt 0
@@ -24,6 +25,7 @@ do
     arguments check switch "c" "SWITCH_C|yes" "$@"
     arguments check switch "v|verbose" "VERBOSE||increase" "$@"
     arguments check value  "V|value" "VALUE" "$@"
+    arguments check value  s"|size" "SIZE|human"
     arguments check option "COMMAND|(start stop test)" "$@"
     arguments check option "FILE/array|file_read file_canonicalize" "$@"
     arguments check value  "h|host" "HOST/append|ping" "$@"
@@ -41,6 +43,7 @@ then
     print "         -v | --verbose                      multiple verbose options supported to increase verbose"
     print "         -V <value> | --value=<value> | --value <value>"
     print "         -h <host> | --host=<host> | --host <host>"
+    print "         -s <size> | --size=<size>           assign integer value and recognize human readable value like 100k (=x1000) 20M (=x1024x1024)..."
     print
     print info "Example call: $EXAMPLE_CALL"
     print
@@ -56,3 +59,4 @@ print step "switch a b c:\t\t$SWITCH_A  $SWITCH_B  $SWITCH_C"
 print step "verbose level:\t$VERBOSE"
 print step "option value:\t\t$VALUE"
 print step "host(s):\t\t$HOST"
+print step "option size:\t\t$SIZE"

@@ -944,7 +944,7 @@ function arguments
             while test $# -gt 0
             do
                 arguments loop
-                test "$1" = "--"  && let ARGUMENTS_CHECK_SHIFT++ && break
+                test "$1" = "--"  && { let ARGUMENTS_CHECK_SHIFT++; true; } && break
 
                 local -a ARGUMENTS_CHECK_RUN_ARRAY=()
                 local ARGUMENTS_CHECK_RUN_INDEX
@@ -956,7 +956,7 @@ function arguments
                     test ${#ARGUMENTS_CHECK_RUN_ARRAY[@]} = 1 && arguments check "${ARGUMENTS_CHECK_RUN_ARRAY[0]}" "$@"
                 done
 
-                arguments shift && let ARGUMENTS_CHECK_SHIFT+=$ARGUMENTS_SHIFT && shift $ARGUMENTS_SHIFT && continue
+                arguments shift && { let ARGUMENTS_CHECK_SHIFT+=$ARGUMENTS_SHIFT; true; } && shift $ARGUMENTS_SHIFT && continue
                 test_yes ARGUMENTS_CHECK_ERROR_ON_UNKNOWN && echo_error "Unknown argument: $1" 1 || break
             done
             arguments done
@@ -2544,12 +2544,32 @@ function event
     arguments onestep set error_on_unknown no
     arguments onestep switch s"|single" "SINGLE|yes"
     arguments onestep switch c"|command" "COMMAND|yes"
-    arguments onestep option "TASK|(add remove)"
+    arguments onestep option "TASK|(init call add remove)"
     arguments onestep option "TRAP|(EXIT INT QUIT TERM)"
     arguments onestep run "$@"
 
     case "$TASK" in
+        init)
+            command trap tools_trap_exit EXIT
+            command trap tools_trap_int INT
+            command trap tools_trap_quit QUIT
+            command trap tools_trap_term TERM
+            EVENT_LISTENERS=()
+            EVENT_LISTENERS_SINGLE=()
+            event add EXIT tools_event_stty_restore
+            ;;
+        call)
+            local INDEX
+            for INDEX in ${!EVENT_LISTENERS[@]}
+            do
+                test "${EVENT_LISTENERS[$INDEX]%%|*}" != "$TRAP" && continue
+                print debug --custom event "$BASHPID: Calling event on $TRAP: ${EVENT_LISTENERS[$INDEX]#*|}"
+                eval "${EVENT_LISTENERS[$INDEX]#*|}"
+            done
+            test -n "${EVENT_LISTENERS_SINGLE[$TRAP]}" && print debug --custom event "$BASHPID: Calling single event on $TRAP: ${EVENT_LISTENERS_SINGLE[$TRAP]}" && eval "${EVENT_LISTENERS_SINGLE[$TRAP]}"
+            ;;
         add)
+            test -z "$TRAP" && echo_error_function "$TASK" "$@" "Can't add command to unknown trap signal" $ERROR_CODE_DEFAULT
             shift $ARGUMENTS_CHECK_SHIFT
             if test_no COMMAND
             then
@@ -2559,6 +2579,7 @@ function event
             fi
             ;;
         remove)
+            test -z "$TRAP" && echo_error_function "$TASK" "$@" "Can't remove command from unknown trap signal" $ERROR_CODE_DEFAULT
             shift $ARGUMENTS_CHECK_SHIFT
             if test_no SINGLE
             then
@@ -2587,71 +2608,57 @@ function event
 function tools_trap_exit
 {
     local -i ERROR=$?
-    test $# -eq 0 && print debug --custom event "$BASHPID: Terminating via SIG EXIT" || print debug --custom event "$BASHPID: Terminating EXIT (after SIG $@)"
-
-    local INDEX
-    for INDEX in ${!EVENT_LISTENERS[@]}
-    do
-        test "${EVENT_LISTENERS[$INDEX]%%|*}" != "EXIT" && continue
-        print debug --custom event "$BASHPID: Calling event on EXIT: ${EVENT_LISTENERS[$INDEX]#*|} = ${EVENT_LISTENERS[$INDEX]}"
-        eval "${EVENT_LISTENERS[$INDEX]#*|}"
-    done
-    test -n "${EVENT_LISTENERS_SINGLE[EXIT]}" && print debug --custom event "$BASHPID: Calling single event on EXIT: ${EVENT_LISTENERS_SINGLE[EXIT]}" && eval "${EVENT_LISTENERS_SINGLE[EXIT]}"
-
+    test $# -eq 0 && print debug --custom event "$BASHPID: SIG EXIT" || print debug --custom event "$BASHPID: EXIT (after SIG $@)"
     command trap '' EXIT INT QUIT TERM
+    event call EXIT
     exit $ERROR
 }
 
 function tools_trap_int
 {
-    print debug --custom event "$BASHPID: Terminating via SIG INT"
-
-    local INDEX
-    for INDEX in ${!EVENT_LISTENERS[@]}
-    do
-        test "${EVENT_LISTENERS[$INDEX]%%|*}" != "INT" && continue
-        print debug --custom event "$BASHPID: Calling event on INT: ${EVENT_LISTENERS[$INDEX]#*|}"
-        eval "${EVENT_LISTENERS[$INDEX]#*|}"
-    done
-    test -n "${EVENT_LISTENERS_SINGLE[INT]}" && print debug --custom event "$BASHPID: Calling single event on INT: ${EVENT_LISTENERS_SINGLE[INT]}" && eval "${EVENT_LISTENERS_SINGLE[INT]}"
-    
-    command trap '' EXIT
-    tools_trap_exit INT
+    print debug --custom event "$BASHPID: SIG INT"
+    EVENT_INT_SIG="yes"
+    printf -v NOW "%(%s)T" -1
+    local -i INTERVAL
+    let INTERVAL="$NOW - $EVENT_INT_TIME"
+    test $INTERVAL -le $EVENT_INT_REPEAT_TIME && { let EVENT_INT_COUNTER++; true; } || EVENT_INT_COUNTER=0
+    #echo "$NOW $EVENT_INT_TIME $INTERVAL $EVENT_INT_COUNTER"
+    if test $EVENT_INT_COUNTER -ge $EVENT_INT_REPEAT_COUNT
+    then
+        command trap '' EXIT
+        event call INT
+        tools_trap_exit INT
+    else
+        event call INT
+        printf -v EVENT_INT_TIME "%(%s)T" -1
+    fi
 }
 
 function tools_trap_quit
 {
-    print debug --custom event "$BASHPID: Terminating via SIG QUIT"
-
-    local INDEX
-    for INDEX in ${!EVENT_LISTENERS[@]}
-    do
-        test "${EVENT_LISTENERS[$INDEX]%%|*}" != "QUIT" && continue
-        print debug --custom event "$BASHPID: Calling event on QUIT: ${EVENT_LISTENERS[$INDEX]#*|}"
-        eval "${EVENT_LISTENERS[$INDEX]#*|}"
-    done
-    test -n "${EVENT_LISTENERS_SINGLE[QUIT]}" && print debug --custom event "$BASHPID: Calling single event on QUIT: ${EVENT_LISTENERS_SINGLE[QUIT]}" && eval "${EVENT_LISTENERS_SINGLE[QUIT]}"
-    
+    print debug --custom event "$BASHPID: SIG QUIT"
     command trap '' EXIT
+    event call QUIT
     tools_trap_exit QUIT
 }
 
 function tools_trap_term
 {
-    print debug --custom event "$BASHPID: Terminating via SIG TERM"
-
-    local INDEX
-    for INDEX in ${!EVENT_LISTENERS[@]}
-    do
-        test "${EVENT_LISTENERS[$INDEX]%%|*}" != "TERM" && continue
-        print debug --custom event "$BASHPID: Calling event on TERM: ${EVENT_LISTENERS[$INDEX]#*|}"
-        eval "${EVENT_LISTENERS[$INDEX]#*|}"
-    done
-    test -n "${EVENT_LISTENERS_SINGLE[TERM]}" && print debug --custom event "$BASHPID: Calling single event on TERM: ${EVENT_LISTENERS_SINGLE[TERM]}" && eval "${EVENT_LISTENERS_SINGLE[TERM]}"
-    
+    print debug --custom event "$BASHPID: SIG TERM"
     command trap '' EXIT
+    event call TERM
     tools_trap_exit TERM
 }
+
+declare -x    TOOLS_STTY_BACKUP="$(stty --save 2> /dev/null)"
+function tools_event_stty_restore
+{
+    #[[ $- == *i* ]] && test -n "$TOOLS_STTY_BACKUP" && stty "$TOOLS_STTY_BACKUP"
+    #longjmp causes uninitialized stack
+    test -n "$TOOLS_STTY_BACKUP" && stty "$TOOLS_STTY_BACKUP" > /dev/null 2> /dev/null
+    #stty echo
+}
+
 #NAMESPACE/shell/end
 
 #NAMESPACE/misc/start
@@ -2927,7 +2934,8 @@ function terminal_looper_event
     test $TERMINAL_LOOPER_COUNT -gt 0 && cursor down $TERMINAL_LOOPER_CURRENT
     cursor return
     terminal clear line
-    terminal echo
+    stty echo
+    stty sane
 }
 
 function terminal
@@ -2954,38 +2962,38 @@ function terminal
             fi
             ;;
         restore)
-            command echo -n "${S_CSI}1t"
+            command echo -n "${S_CSI}1t" 2> /dev/null
             ;;
         minimize|min)
-            command echo -n "${S_CSI}2t"
+            command echo -n "${S_CSI}2t" 2> /dev/null
             ;;
         raise)
-            command echo -n "${S_CSI}5t"
+            command echo -n "${S_CSI}5t" 2> /dev/null
             ;;
         lower)
-            command echo -n "${S_CSI}6t"
+            command echo -n "${S_CSI}6t" 2> /dev/null
             ;;
         resize)
-            command echo -n "${S_CSI}8;$OPTION;${OPTION2}t"
+            command echo -n "${S_CSI}8;$OPTION;${OPTION2}t" 2> /dev/null
             ;;
         maximize|max)
-            command echo -n "${S_CSI}9;1t"
+            command echo -n "${S_CSI}9;1t" 2> /dev/null
             ;;
         normalize|nor)
-            command echo -n "${S_CSI}9;0t"
+            command echo -n "${S_CSI}9;0t" 2> /dev/null
             ;;
         clear)
             if test "$OPTION" = "line"
             then
                 if test -z "$OPTION2" -o "$OPTION2" = "all"
                 then
-                    command echo -n "${S_CSI}2K"
+                    command echo -n "${S_CSI}2K" 2> /dev/null
                 elif test "$OPTION2" = "right"
                 then
-                    command echo -n "${S_CSI}K"
+                    command echo -n "${S_CSI}K" 2> /dev/null
                 elif test "$OPTION2" = "left"
                 then
-                    command echo -n "${S_CSI}1K"
+                    command echo -n "${S_CSI}1K" 2> /dev/null
                 else
                     echo_error_function "$@" "Unknown argument: $OPTION2" $ERROR_CODE_DEFAULT
                 fi
@@ -3007,24 +3015,72 @@ function terminal
                     TERMINAL_LOOPER_BREAK="no"
                     #test_integer "$OPTION2" || echo_error_function "$@" "Terminal init needs count argument: $OPTION2" $ERROR_CODE_DEFAULT
                     test -n "$OPTION2" && TERMINAL_LOOPER_COUNT=$OPTION2 || TERMINAL_LOOPER_COUNT=-1
-                    terminal noecho
+
+                    if test -z "$TERMINAL_LOOPER_CATCH_INPUT" -o "$TERMINAL_LOOPER_CATCH_INPUT" = "read1"
+                    then
+                        #read 1 char
+                        stty -echo
+                    elif test "$TERMINAL_LOOPER_CATCH_INPUT" = "nonblock"
+                    then
+                        #non blocking read
+                        stty -echo -icanon time 0 min 0
+                    fi
                     event add EXIT terminal_looper_event
                     ;;
                 done)
+                    set_no EVENT_INT_SIG
                     event remove EXIT terminal_looper_event
                     terminal_looper_event
                     ;;
                 line)
                     test $TERMINAL_LOOPER_COUNT -eq -1 && let TERMINAL_LOOPER_CURRENT++
                     test $TERMINAL_LOOPER_COUNT -gt 0 -a $TERMINAL_LOOPER_CURRENT -gt 0 && let TERMINAL_LOOPER_CURRENT--
-                    read -s -n 1 -t 0.01 X && TERMINAL_LOOPER_BREAK="yes" && return 1
+
+                    local X=""
+                    if test -z "$TERMINAL_LOOPER_CATCH_INPUT" -o "$TERMINAL_LOOPER_CATCH_INPUT" = "read1"
+                    then
+                        #read 1 char
+                        read -s -n 1 -t 0.001 X && TERMINAL_LOOPER_BREAK="yes" && return 1
+                    elif test "$TERMINAL_LOOPER_CATCH_INPUT" = "nonblock"
+                    then
+                        #non blocking read
+                        local R
+                        #read -s -d '' -t 0 -n 1 X
+                        read -s X
+                        R=$?
+                        #echo "X=$X $R"
+                        test $R -eq 0 && { read -s -t 0.1 -n 1 X; true; } && TERMINAL_LOOPER_BREAK="yes" && return 1 # <ENTER> keypress
+                        test -n "$X" && { read -s -t 0.1 -n 1 X; true; } && TERMINAL_LOOPER_BREAK="yes" && return 1 # other keypress
+                    fi
+
+                    test_yes EVENT_INT_SIG && TERMINAL_LOOPER_BREAK="yes" && return 1 # Ctrl+C keypress
                     return 0
                     ;;
                 loop)
                     test "$TERMINAL_LOOPER_BREAK" = "yes" && return 1
-                    test -n "$OPTION2" && echo -n -e "$OPTION2\r" || echo -n -e "Press any key to break the loop...\r"
+                    test -n "$OPTION2" && echo -n -e "$OPTION2\r" || echo -n -e "Press any key to break the loop or Ctrl+C to exit...\r"
+
+                    local X=""
+                    #test
                     #read -t 0.01 -rN 1 X && terminal clear line right && return 1
-                    read -s -n 1 -t 0.01 X && terminal clear line right && return 1
+                    if test -z "$TERMINAL_LOOPER_CATCH_INPUT" -o "$TERMINAL_LOOPER_CATCH_INPUT" = "read1"
+                    then
+                        #read 1 char
+                        read -s -n 1 -t 0.001 X && terminal clear line right && return 1
+                    elif test "$TERMINAL_LOOPER_CATCH_INPUT" = "nonblock"
+                    then
+                        #non blocking read
+                        local R
+                        #read -s -d '' -t 0 -n 1 '' X
+                        read -s X
+                        R=$?
+                        #echo "X=$X $R"
+                        test $R -eq 0 && { read -s -t 0.1 -n 1 X; true; } && terminal clear line right && return 1 # <ENTER> keypress
+                        test -n "$Y" && { read -s -t 0.1 -n 1 X; true; } && terminal clear line right && return 1 # other keypress
+                    fi
+
+                    test_yes EVENT_INT_SIG && terminal clear line right && return 1 # Ctrl+C keypress
+
                     test $TERMINAL_LOOPER_COUNT -eq -1 && TERMINAL_LOOPER_COUNT=TERMINAL_LOOPER_CURRENT && TERMINAL_LOOPER_CURRENT=0
                     cursor up $TERMINAL_LOOPER_COUNT
                     let TERMINAL_LOOPER_CURRENT=$TERMINAL_LOOPER_COUNT
@@ -3101,40 +3157,40 @@ function cursor
 
     case "$TASK" in
         return)
-            command echo -n -e "\r"
+            command echo -n -e "\r" 2> /dev/null
             ;;
         save)
-            command echo -n "${S_CSI}s"
+            command echo -n "${S_CSI}s" 2> /dev/null
             ;;
         restore|load)
-            command echo -n "${S_CSI}u"
+            command echo -n "${S_CSI}u" 2> /dev/null
             ;;
         hide)
             #tput civis
-            command echo -n "${S_CSI}?25l"
+            command echo -n "${S_CSI}?25l" 2> /dev/null
             ;;
         show)
             #tput cnorm
-            command echo -n "${S_CSI}?25h"
+            command echo -n "${S_CSI}?25h" 2> /dev/null
             ;;
         column)
-            command echo -n "${S_CSI}${VALUE}G"
+            command echo -n "${S_CSI}${VALUE}G" 2> /dev/null
             ;;
         up)
             test -z "$VALUE" && VALUE=1
-            command echo -n "${S_CSI}${VALUE}A"
+            command echo -n "${S_CSI}${VALUE}A" 2> /dev/null
             ;;
         down)
             test -z "$VALUE" && VALUE=1
-            command echo -n "${S_CSI}${VALUE}B"
+            command echo -n "${S_CSI}${VALUE}B" 2> /dev/null
             ;;
         forward|right)
             test -z "$VALUE" && VALUE=1
-            command echo -n "${S_CSI}${VALUE}C"
+            command echo -n "${S_CSI}${VALUE}C" 2> /dev/null
             ;;
         backward|left)
             test -z "$VALUE" && VALUE=1
-            command echo -n "${S_CSI}${VALUE}D"
+            command echo -n "${S_CSI}${VALUE}D" 2> /dev/null
             ;;
         *)
             echo_error_function "$@" "Unknown task argument: $TASK" $ERROR_CODE_DEFAULT
@@ -3893,7 +3949,7 @@ function echo_step
 
     #log echo "$ECHO_PREFIX$ECHO_UNAME$ECHO_STEP_PREFIX$STEP_NUMBER_STR$@"
 
-    test_integer "$STEP_NUMBER" && let STEP_NUMBER++ && assign "$STEP_VARIABLE" $STEP_NUMBER
+    test_integer "$STEP_NUMBER" && { let STEP_NUMBER++; true; } && assign "$STEP_VARIABLE" $STEP_NUMBER
     test_str "$STEP_NUMBER" "^[a-z]$" && assign $STEP_VARIABLE "$(command echo "$STEP_NUMBER" | tr "a-z" "b-z_")"
     test_str "$STEP_NUMBER" "^[A-Z]$" && assign $STEP_VARIABLE "$(command echo "$STEP_NUMBER" | tr "A-Z" "B-Z_")"
     return 0
@@ -4245,7 +4301,7 @@ function echo_debug_function
         local F
         local I=1
         F="${FUNCNAME[$I]}"
-        test "$F" = "print" && let I++ && F="${FUNCNAME[$I]}"
+        test "$F" = "print" && { let I++; true; } && F="${FUNCNAME[$I]}"
         let I++
         test -n "${FUNCTION_NAMESPACES[$F]}" && F="${FUNCTION_NAMESPACES[$F]}"
         echo_quote "$@" > /dev/null
@@ -4612,12 +4668,6 @@ function arguments_check_tools
     arguments check switch "|no-color" "TOOLS_COLOR|no" "$@" && init_colors
     arguments check switch "|prefix" "TOOLS_PREFIX|yes" "$@"
     arguments check switch "|uname" "TOOLS_UNAME|yes" "$@"
-}
-
-function init_debug
-{
-    debug init
-    return 0
 }
 
 function init_colors
@@ -5071,11 +5121,13 @@ declare -x -f daemon                    # init / done / status
 declare -x -a EVENT_LISTENERS
 declare -x -A EVENT_LISTENERS_SINGLE    # single trap listeners added by "trap x SIG"
 declare -x -f trap                      # redirected call to "event add" function
-declare -x -f event                     # add
-command trap tools_trap_exit EXIT
-command trap tools_trap_int INT
-command trap tools_trap_quit QUIT
-command trap tools_trap_term TERM
+declare -x -f event                     # init / call / add / remove
+declare    EVENT_INT_SIG="no"           # SIG INT was initiated?
+# internal used variables: need to repeated (EVENT_INT_REPEAT_COUNT=1) press Ctrl+C during 2 seconds (EVENT_INT_REPEAT_TIME=2) to do EXIT
+declare -i EVENT_INT_TIME=0             # SIG INT last timestamp call
+declare -i EVENT_INT_COUNTER=0          # SIG INT counter during EVENT_INT_REPEAT_TIME seconds from last SIG INT
+declare -i EVENT_INT_REPEAT_TIME=2      # seconds to increase EVENT_INT_COUNTER or clear the EVENT_INT_COUNTER
+declare -i EVENT_INT_REPEAT_COUNT=1     # needed repeated SIG INT to do exit
 
 declare -x    PERFORMANCE_DETAILS="yes" # show detailed output / show only elapsed time
 declare -x -A PERFORMANCE_DATA          # only internal use
@@ -5108,6 +5160,8 @@ declare -x -f test_opt_i
 declare -x -f test_opt2_i
 
 declare -x -i TERMINAL_COLUMNS=0
+# internal used variables: TERMINAL_LOOPER_CURRENT=current count to shift cursor down, TERMINAL_LOOPER_COUNT=all the lines, TERMINAL_LOOPER_BREAK=break the loop after keypress
+declare -x    TERMINAL_LOOPER_CATCH_INPUT="read1"   # read1=wait 0.001 if keypress nonblock=use before read: stty -icanon time 0 min 0
 declare -x -i TERMINAL_LOOPER_COUNT=0
 declare -x -i TERMINAL_LOOPER_CURRENT=0
 declare -x    TERMINAL_LOOPER_BREAK="no"
@@ -5270,23 +5324,13 @@ declare -x -f history                   # init / restore / store
 
 declare -x    TOOLS_IGNORE_UNKNOWN="yes"
 declare -x -f arguments_check_tools
-declare -x -f init_debug
 declare -x -f init_colors
 declare -x -f init_tools
 
 ### tools init
-init_debug
+debug init
+event init
 init_colors
 init_tools "$@"
-
-### preconfigured events init
-function tools_stty_restore
-{
-    #[[ $- == *i* ]] && test -n "$TOOLS_STTY_BACKUP" && stty "$TOOLS_STTY_BACKUP"
-    test -n "$TOOLS_STTY_BACKUP" && stty "$TOOLS_STTY_BACKUP" > /dev/null 2> /dev/null
-}
-declare -x -f tools_stty_restore
-declare -x    TOOLS_STTY_BACKUP="$(stty --save 2> /dev/null)"
-event add EXIT tools_stty_restore
 
 return 0

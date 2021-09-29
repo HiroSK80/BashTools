@@ -1621,6 +1621,7 @@ function file_prepare
     local -i SIZE_TRUNCATE=0            # truncate before rotate if bigger
     local USER=""
     local GROUP=""
+    local MODE=""
 
     if test $# = 1
     then
@@ -1636,8 +1637,9 @@ function file_prepare
             arguments check value "c|count" "COUNT" "$@"
             arguments check value s"|size" "SIZE|human" "$@"
             arguments check value "t|size-truncate" "SIZE_TRUNCATE|human" "$@"
-            arguments check switch "u|user" "USER|" "$@"
-            arguments check switch "g|group" "GROUP|" "$@"
+            arguments check value "u|user" "USER|" "$@"
+            arguments check value "g|group" "GROUP|" "$@"
+            arguments check value "m|mode" "MODE|" "$@"
             arguments check option "FILE" "$@"
             arguments shift && shift $ARGUMENTS_SHIFT && continue
             echo_error_function "Unknown argument: $1" $ERROR_CODE_DEFAULT
@@ -1679,6 +1681,7 @@ function file_prepare
 
     test -n "$USER" && chgrp "$USER" "$FILE" 2> /dev/null
     test -n "$GROUP" && chown "$GROUP" "$FILE" 2> /dev/null
+    test -n "$MODE" && chmod "$MODE" "$FILE" 2> /dev/null
 
     return 0
 }
@@ -3497,16 +3500,18 @@ function terminal
             if test "$TERM" = "dumb"
             then
                 TERMINAL_COLUMNS=0
+                TERMINAL_ROWS=0
             else
-                test -z "$TERMINAL_COLUMNS" -o "$TERMINAL_COLUMNS" = 0 && TERMINAL_COLUMNS="$(tput cols)"
+                test -z "$TERMINAL_COLUMNS" -o "$TERMINAL_COLUMNS" = 0 -o -z "$TERMINAL_ROWS" -o "$TERMINAL_ROWS" = 0 && terminal get
             fi
             ;;
         get)
             if test "$TERM" = "dumb"
             then
                 TERMINAL_COLUMNS=0
+                TERMINAL_ROWS=0
             else
-                TERMINAL_COLUMNS="$(tput cols)"
+                read -r -s -t 1 TERMINAL_ROWS TERMINAL_COLUMNS < <(stty size)
             fi
             ;;
         restore)
@@ -3697,6 +3702,7 @@ function terminal
             ;;
     esac
 }
+
 
 function cursor
 {
@@ -4335,9 +4341,12 @@ function echo_line
 
             if test_yes PRESERVE
             then
-                local -i TOTAL_CHARS=$ECHO_LINE_MESSAGE_LENGTH
-                let TOTAL_CHARS="$TOTAL_CHARS + ${#MESSAGE_E_NO_COLOR}"
-                test $TOTAL_CHARS -gt $TERMINAL_COLUMNS && command echo -e -n "\n" && ECHO_LINE_MESSAGE_LENGTH=0
+                if test $ECHO_LINE_MESSAGE_LENGTH -ne 0
+                then
+                    local -i TOTAL_CHARS=$ECHO_LINE_MESSAGE_LENGTH
+                    let TOTAL_CHARS="$TOTAL_CHARS + ${#MESSAGE_E_NO_COLOR}"
+                    test $TOTAL_CHARS -gt $TERMINAL_COLUMNS && command echo -e -n "\n" && ECHO_LINE_MESSAGE_LENGTH=0
+                fi
             fi
 
             if test $SHIFT -gt 0
@@ -4350,6 +4359,7 @@ function echo_line
             else
                 command echo -e -n "\r"
                 command echo $ESCAPE_OPTION $NEWLINE_OPTION "$MESSAGE_E"
+                NEWLINE="yes"
             fi
 
             if test_yes NEWLINE
@@ -5486,7 +5496,7 @@ function tools_union
             p=1;
             next;
         }
-        /^#/ || /^$/ {
+        /^[ ]+#/ || /^$/ {
             next;
         }
         p==1 {
@@ -5495,7 +5505,7 @@ function tools_union
         }' > "$OUT_FILE"
 
     cat "$IN_FILE" | awk '
-        /^#/ || /^$/ {
+        /^[ ]+#/ || /^$/ {
             next;
         }
         /^(export )?TOOLS_FILE=/ || /^([.]|source) ("?[$]TOOLS_FILE|tools[.]sh)/ || /^#[!][/]/ {
@@ -5808,6 +5818,7 @@ declare -x -f test_opt_i
 declare -x -f test_opt2_i
 
 declare -x -i TERMINAL_COLUMNS=0
+declare -x -i TERMINAL_ROWS=0
 # internal used variables: TERMINAL_LOOPER_CURRENT=current count to shift cursor down, TERMINAL_LOOPER_COUNT=all the lines, TERMINAL_LOOPER_BREAK=break the loop after keypress
 declare -x    TERMINAL_LOOPER_CATCH_INPUT="read1"   # read1=wait 0.001 if keypress nonblock=use before read: stty -icanon time 0 min 0
 declare -x -i TERMINAL_LOOPER_COUNT=0

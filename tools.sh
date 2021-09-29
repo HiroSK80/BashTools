@@ -3793,18 +3793,22 @@ function cursor
             ;;
         up)
             test -z "$VALUE" && VALUE=1
+            test "$VALUE" -eq 0 && return
             command echo -n "${S_CSI}${VALUE}A" 2> /dev/null
             ;;
         down)
             test -z "$VALUE" && VALUE=1
+            test "$VALUE" -eq 0 && return
             command echo -n "${S_CSI}${VALUE}B" 2> /dev/null
             ;;
         forward|right)
             test -z "$VALUE" && VALUE=1
+            test "$VALUE" -eq 0 && return
             command echo -n "${S_CSI}${VALUE}C" 2> /dev/null
             ;;
         backward|left)
             test -z "$VALUE" && VALUE=1
+            test "$VALUE" -eq 0 && return
             command echo -n "${S_CSI}${VALUE}D" 2> /dev/null
             ;;
         *)

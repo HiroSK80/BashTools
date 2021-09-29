@@ -503,6 +503,12 @@ function str_word
             done
             return $RESULT
             ;;
+        count)
+            #local STR_ARRAY=(${STR})
+            #echo ${#STR_ARRAY[@]}
+            echo $(IFS=' '; set -f; set -- $STR; echo $#)
+            return 0
+            ;;
         *)
             echo_error_function "$TASK" "$@" "Unknown task argument: $TASK" $ERROR_CODE_DEFAULT
             ;;
@@ -1497,8 +1503,8 @@ function file_prepare
     fi
     test -w "$FILE" || echo_error_function "Can't create and prepare file for writting: $(echo_quote "$FILE")" $ERROR_CODE_DEFAULT
 
-    echo "TEST" > "$FILE" || echo_error_function "Can't write to file: $(echo_quote "$FILE")" $ERROR_CODE_DEFAULT
-    test_yes "$EMPTY" && cat /dev/null > "$FILE"
+    echo -n "" > "$FILE" || echo_error_function "Can't write to file: $(echo_quote "$FILE")" $ERROR_CODE_DEFAULT
+    test_yes "$EMPTY" && { echo "TEST" > "$FILE" || echo_error_function "Can't write to file: $(echo_quote "$FILE")" $ERROR_CODE_DEFAULT; cat /dev/null > "$FILE"; }
 
     test -n "$USER" && chgrp "$USER" "$FILE" 2> /dev/null
     test -n "$GROUP" && chown "$GROUP" "$FILE" 2> /dev/null
@@ -2451,7 +2457,7 @@ function daemon
             echo -n "$$" > "$TEST_FILE"
             chmod 644 "$TEST_FILE"
             print debug --custom daemon "$BASHPID: Daemon $DAEMON_NAME started, pidfile: $(print quote "$TEST_FILE")"
-            event add EXIT "daemon done \"$DAEMON_NAME\""
+            event add EXIT --command "daemon done \"$DAEMON_NAME\""
             ;;
         done)
             for TEST_PATH in "${TEST_PATHS[@]}"
@@ -2461,7 +2467,7 @@ function daemon
                     test -f "$TEST_FILE" && rm -f "$TEST_FILE" && print debug --custom daemon "$BASHPID: Daemon $DAEMON_NAME finished, pidfile: $(print quote "$TEST_FILE") removed"
                 done
             done
-            event remove EXIT "daemon done \"$DAEMON_NAME\""
+            event remove EXIT --command "daemon done \"$DAEMON_NAME\""
             ;;
         status)
             for TEST_PATH in "${TEST_PATHS[@]}"
@@ -2526,7 +2532,7 @@ function daemon
 
 function trap
 {
-    event add --single "$2" "$1"
+    event add --single --command "$2" "$1"
 }
 
 function event
@@ -2534,8 +2540,10 @@ function event
     local TASK=""
     local TRAP=""
     local SINGLE="no"
+    local COMMAND="no"
     arguments onestep set error_on_unknown no
     arguments onestep switch s"|single" "SINGLE|yes"
+    arguments onestep switch c"|command" "COMMAND|yes"
     arguments onestep option "TASK|(add remove)"
     arguments onestep option "TRAP|(EXIT INT QUIT TERM)"
     arguments onestep run "$@"
@@ -2543,7 +2551,12 @@ function event
     case "$TASK" in
         add)
             shift $ARGUMENTS_CHECK_SHIFT
-            test_no SINGLE && EVENT_LISTENERS+=("$TRAP|$@") || EVENT_LISTENERS_SINGLE[$TRAP]="$@"
+            if test_no COMMAND
+            then
+                test_no SINGLE && EVENT_LISTENERS+=("$TRAP|$(echo_quote "$@")") || EVENT_LISTENERS_SINGLE[$TRAP]="$(echo_quote "$@")"
+            else
+                test_no SINGLE && EVENT_LISTENERS+=("$TRAP|$*") || EVENT_LISTENERS_SINGLE[$TRAP]="$*"
+            fi
             ;;
         remove)
             shift $ARGUMENTS_CHECK_SHIFT
@@ -2552,7 +2565,12 @@ function event
                 local EVENT_LISTENERS_INDEX
                 for EVENT_LISTENERS_INDEX in "${!EVENT_LISTENERS[@]}"
                 do
-                    test "${EVENT_LISTENERS[$EVENT_LISTENERS_INDEX]}" = "$TRAP|$@" && unset EVENT_LISTENERS[$EVENT_LISTENERS_INDEX]
+                    if test_no COMMAND
+                    then
+                        test "${EVENT_LISTENERS[$EVENT_LISTENERS_INDEX]}" = "$TRAP|$(echo_quote "$@")" && unset EVENT_LISTENERS[$EVENT_LISTENERS_INDEX]
+                    else
+                        test "${EVENT_LISTENERS[$EVENT_LISTENERS_INDEX]}" = "$TRAP|$*" && unset EVENT_LISTENERS[$EVENT_LISTENERS_INDEX]
+                    fi
                 done
             else
                 EVENT_LISTENERS_SINGLE[$TRAP]=""
@@ -2566,7 +2584,7 @@ function event
     return 0
 }
 
-function event_exit
+function tools_trap_exit
 {
     local -i ERROR=$?
     test $# -eq 0 && print debug --custom event "$BASHPID: Terminating via SIG EXIT" || print debug --custom event "$BASHPID: Terminating EXIT (after SIG $@)"
@@ -2575,7 +2593,7 @@ function event_exit
     for INDEX in ${!EVENT_LISTENERS[@]}
     do
         test "${EVENT_LISTENERS[$INDEX]%%|*}" != "EXIT" && continue
-        print debug --custom event "$BASHPID: Calling event on EXIT: ${EVENT_LISTENERS[$INDEX]#*|}"
+        print debug --custom event "$BASHPID: Calling event on EXIT: ${EVENT_LISTENERS[$INDEX]#*|} = ${EVENT_LISTENERS[$INDEX]}"
         eval "${EVENT_LISTENERS[$INDEX]#*|}"
     done
     test -n "${EVENT_LISTENERS_SINGLE[EXIT]}" && print debug --custom event "$BASHPID: Calling single event on EXIT: ${EVENT_LISTENERS_SINGLE[EXIT]}" && eval "${EVENT_LISTENERS_SINGLE[EXIT]}"
@@ -2584,7 +2602,7 @@ function event_exit
     exit $ERROR
 }
 
-function event_int
+function tools_trap_int
 {
     print debug --custom event "$BASHPID: Terminating via SIG INT"
 
@@ -2598,10 +2616,10 @@ function event_int
     test -n "${EVENT_LISTENERS_SINGLE[INT]}" && print debug --custom event "$BASHPID: Calling single event on INT: ${EVENT_LISTENERS_SINGLE[INT]}" && eval "${EVENT_LISTENERS_SINGLE[INT]}"
     
     command trap '' EXIT
-    event_exit INT
+    tools_trap_exit INT
 }
 
-function event_quit
+function tools_trap_quit
 {
     print debug --custom event "$BASHPID: Terminating via SIG QUIT"
 
@@ -2615,10 +2633,10 @@ function event_quit
     test -n "${EVENT_LISTENERS_SINGLE[QUIT]}" && print debug --custom event "$BASHPID: Calling single event on QUIT: ${EVENT_LISTENERS_SINGLE[QUIT]}" && eval "${EVENT_LISTENERS_SINGLE[QUIT]}"
     
     command trap '' EXIT
-    event_exit QUIT
+    tools_trap_exit QUIT
 }
 
-function event_term
+function tools_trap_term
 {
     print debug --custom event "$BASHPID: Terminating via SIG TERM"
 
@@ -2632,7 +2650,7 @@ function event_term
     test -n "${EVENT_LISTENERS_SINGLE[TERM]}" && print debug --custom event "$BASHPID: Calling single event on TERM: ${EVENT_LISTENERS_SINGLE[TERM]}" && eval "${EVENT_LISTENERS_SINGLE[TERM]}"
     
     command trap '' EXIT
-    event_exit TERM
+    tools_trap_exit TERM
 }
 #NAMESPACE/shell/end
 
@@ -2904,6 +2922,13 @@ function test_opt2_i
 }
 #NAMESPACE/test/end
 
+function terminal_looper_event
+{
+    cursor down $TERMINAL_LOOPER_CURRENT
+    cursor return
+    terminal clear line
+}
+
 function terminal
 {
     local TASK="$1"
@@ -2964,6 +2989,38 @@ function terminal
                     echo_error_function "$@" "Unknown argument: $OPTION2" $ERROR_CODE_DEFAULT
                 fi
             fi
+            ;;
+        echo)
+            stty echo
+            ;;
+        noecho)
+            stty -echo
+            ;;
+        looper)
+            case "$OPTION" in
+                init)
+                    test_integer "$OPTION2" || echo_error_function "$@" "Terminal init needs count argument: $OPTION2" $ERROR_CODE_DEFAULT
+                    TERMINAL_LOOPER_COUNT=$OPTION2
+                    terminal noecho
+                    event add EXIT terminal_looper_event
+                    ;;
+                done)
+                    terminal echo
+                    ;;
+                loop)
+                    test $TERMINAL_LOOPER_CURRENT -gt 0 && let TERMINAL_LOOPER_CURRENT--
+                    ;;
+                check)
+                    test -n "$OPTION2" && echo -n -e "$OPTION2\r" || echo -n -e "Press any key to break the loop...\r"
+                    #read -t 0.01 -rN 1 X && terminal clear line right && exit
+                    read -s -n 1 -t 0.1 X && terminal clear line right && exit
+                    cursor up $TERMINAL_LOOPER_COUNT
+                    let TERMINAL_LOOPER_CURRENT+=$TERMINAL_LOOPER_COUNT
+                    ;;
+                *)
+                    echo_error_function "$@" "Unknown looper task argument: $TASK" $ERROR_CODE_DEFAULT
+                    ;;
+            esac
             ;;
         coloring)
             if test "$OPTION" = "color_on_black" -o "$OPTION" = "default" -o -z "$OPTION"
@@ -3030,6 +3087,9 @@ function cursor
     local VALUE="$2"
 
     case "$TASK" in
+        return)
+            command echo -n -e "\r"
+            ;;
         save)
             command echo -n "${S_CSI}s"
             ;;
@@ -4999,10 +5059,10 @@ declare -x -a EVENT_LISTENERS
 declare -x -A EVENT_LISTENERS_SINGLE    # single trap listeners added by "trap x SIG"
 declare -x -f trap                      # redirected call to "event add" function
 declare -x -f event                     # add
-command trap event_exit EXIT
-command trap event_int INT
-command trap event_quit QUIT
-command trap event_term TERM
+command trap tools_trap_exit EXIT
+command trap tools_trap_int INT
+command trap tools_trap_quit QUIT
+command trap tools_trap_term TERM
 
 declare -x    PERFORMANCE_DETAILS="yes" # show detailed output / show only elapsed time
 declare -x -A PERFORMANCE_DATA          # only internal use
@@ -5035,7 +5095,9 @@ declare -x -f test_opt_i
 declare -x -f test_opt2_i
 
 declare -x -i TERMINAL_COLUMNS=0
-declare -x -f terminal # check|info / get / coloring
+declare -x -i TERMINAL_LOOPER_COUNT=0
+declare -x -i TERMINAL_LOOPER_CURRENT=0
+declare -x -f terminal # check|info / get / echo / noecho / looper [init/done/loop/check] / coloring
 declare -x    CURSOR_POSITION="0;0"
 declare -x -i CURSOR_COLUMN=0
 declare -x -i CURSOR_ROW=0
@@ -5202,5 +5264,15 @@ declare -x -f init_tools
 init_debug
 init_colors
 init_tools "$@"
+
+### preconfigured events init
+function tools_stty_restore
+{
+    #[[ $- == *i* ]] && test -n "$TOOLS_STTY_BACKUP" && stty "$TOOLS_STTY_BACKUP"
+    test -n "$TOOLS_STTY_BACKUP" && stty "$TOOLS_STTY_BACKUP" > /dev/null 2> /dev/null
+}
+declare -x -f tools_stty_restore
+declare -x    TOOLS_STTY_BACKUP="$(stty --save 2> /dev/null)"
+event add EXIT tools_stty_restore
 
 return 0

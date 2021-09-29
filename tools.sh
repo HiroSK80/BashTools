@@ -403,7 +403,7 @@ function array_copy_bad
     #eval "echo \"array_copy_bad $2=\${$2[@]}\""
 }
 
-function array_copy
+function array_copy_bad2
 # $1 original array name
 # $2 new array name with the same content
 {
@@ -413,6 +413,19 @@ function array_copy
         #echo "INDEX=$INDEX    $2[\"$INDEX\"]=${$1[$INDEX]}"
         eval "$2[\"$INDEX\"]=\"\${$1[$INDEX]}\""
     done
+}
+
+function array_copy
+# $1 original array name
+# $2 new array name with the same content
+{
+    local INDEX
+    eval "
+        for INDEX in \"\${!$1[@]}\"
+        do
+            $2[\"\$INDEX\"]=\"\${$1[\$INDEX]}\"
+        done
+    "
 }
 
 #NAMESPACE/string/start
@@ -550,18 +563,35 @@ function str_date
     local TIME=""
     while test $# -gt 0
     do
-        test -n "${!1:+exist}" && VAR="$1" && shift && continue
         test_integer "$1" && TIME=$1 && shift && continue
-        test_str "$1" ".*[-% ].*" && FORMAT="$1" && shift && continue
+        test_str "$1" "[-% ]" && FORMAT="$1" && shift && continue
+        test -n "${!1+exist}" && VAR="$1" && shift && continue
         VAR="$1" && shift && continue
     done
-    if test ${BASH_VERSINFO[0]} -ge 5 -o \( ${BASH_VERSINFO[0]} -eq 4 -a ${BASH_VERSINFO[1]} -ge 2 \)
+
+    local CALL_DATE_COMMAND="${DATE_FORMAT_CALL_DATE_COMMAND[$FORMAT]}"
+    if test -z "$CALL_DATE_COMMAND"
     then
-        test -z "$TIME" && TIME=-1
-        printf -v STR '%('"$FORMAT"')T' $TIME
-    else
+        if test ${BASH_VERSINFO[0]} -ge 5
+        then #
+            CALL_DATE_COMMAND="no"
+        elif test ${BASH_VERSINFO[0]} -eq 4 -a ${BASH_VERSINFO[1]} -ge 2
+        then
+            test_str "$FORMAT" "%N" && CALL_DATE_COMMAND="yes" || CALL_DATE_COMMAND="no"
+        else
+            CALL_DATE_COMMAND="yes"
+        fi
+        DATE_FORMAT_CALL_DATE_COMMAND[$FORMAT]="$CALL_DATE_COMMAND"
+    fi
+
+    if test_yes "$CALL_DATE_COMMAND"
+    then
         test -n "$TIME" && TIME="--date=@$TIME"
         STR="$(date $TIME +"$FORMAT")"
+    else
+        test -z "$TIME" && TIME=-1
+        printf -v STR '%('"$FORMAT"')T' $TIME
+        printf -v STR "${STR/\%N/%s}" "${EPOCHREALTIME#*.}"
     fi
     test -n "$VAR" && assign "$VAR" "$STR" || command echo -n "$STR"
 }
@@ -4649,8 +4679,9 @@ function echo_debug_variable
             then
                 local -A VAR_ARRAY
                 test "$VAR_NAME" = "BASH_REMATCH" && array_copy BASH_REMATCH_BACKUP VAR_ARRAY || array_copy "$VAR_NAME" VAR_ARRAY
-                #echo VAR_ARRAY_INDEXES=$VAR_ARRAY_INDEXES
-                #echo \$VAR_ARRAY_INDEXES[@]=${VAR_ARRAY_INDEXES[@]}
+                #echo VAR_NAME=$VAR_NAME
+                #echo VAR_ARRAY[@]=${VAR_ARRAY[@]}
+                #echo VAR_ARRAY[@]=${!VAR_ARRAY[@]}
                 for VAR_ARRAY_INDEX in "${!VAR_ARRAY[@]}"
                 do
                     test -n "$VAR_LIST" && VAR_LIST="$VAR_LIST "
@@ -5471,6 +5502,7 @@ declare -x -f str_trim
 declare -x -f str_count_chars
 declare -x -f str_remove_color
 declare -x -f str_word                  # set / add / delete / check
+declare -x -A DATE_FORMAT_CALL_DATE_COMMAND=()
 declare -x -f str_date
 
 declare -x -a ARRAY_CONVERT=()

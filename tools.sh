@@ -2368,11 +2368,11 @@ function get_pids
     local S1="$$"
     local S2="$BASHPID"
     local EXCLUDE_SHELL_CHILDS="no"
-    test "$1" = "--exclude-shell-childs" -o "$1" = "--shell-childs=no" && EXCLUDE_CHILDS="yes"
+    test "$1" = "--exclude-shell-childs" -o "$1" = "--shell-childs=no" && EXCLUDE_CHILDS="yes" && shift
     ps -e -o pid,ppid,cmd | $AWK $AWK_VAR p="$1" $AWK_VAR s1="$S1" $AWK_VAR s2="$S2" $AWK_VAR c="$EXCLUDE_CHILDS" '
         BEGIN { f=0; }
-        $1==s1||$1==s2||/tools_get_pids_tag/ { next; }
-        c=="yes"&&$2==s1||$2==s2 { next; }
+        $1==s1 || $1==s2 || /tools_get_pids_tag/ { next; }
+        c=="yes" && ( $2==s1 || $2==s2 ) { next; }
         $0~p { print $1; f++; }
         END { if (f==0) exit(1); }';
 }

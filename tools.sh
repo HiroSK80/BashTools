@@ -3959,6 +3959,8 @@ function pipe_prefix
         deduplicate=="yes" && count>1 { lineno_print=lineno_print "-" lineno-1; print_line(line " ("count"x)"); line=current; lineno_print=lineno; count=1; next; }
         deduplicate=="no" { lineno_print=lineno; print_line(current); }
         END { if (deduplicate=="yes") { if (count>1) print_line(line " ("count"x)"); else print_line(line); } }' $FILE
+    ECHO_LINE_MESSAGE_LEFT_LENGTH=0
+    ECHO_LINE_MESSAGE_RIGHT_LENGTH=0
 }
 
 function pipe_replace

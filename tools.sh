@@ -4326,56 +4326,47 @@ function echo_line
     fi
     MESSAGE_E_LENGTH="${#MESSAGE_E_NO_COLOR}"
     #ECHO_LINES_LINE[$ECHO_LINES_INDEX]="$MESSAGE_E_LENGTH ${ECHO_LINES_LINE[$ECHO_LINES_INDEX]}"
-    local -i ECHO_FREE=$TERMINAL_COLUMNS
     #let ECHO_FREEB="$TERMINAL_COLUMNS - $ECHO_LINE_MESSAGE_LEFT_LENGTH - $ECHO_LINE_MESSAGE_CENTER_LENGTH - $ECHO_LINE_MESSAGE_RIGHT_LENGTH"
-    let ECHO_FREE="$TERMINAL_COLUMNS - $ECHO_LINE_MESSAGE_LEFT_LENGTH - $ECHO_LINE_MESSAGE_CENTER_LENGTH - $ECHO_LINE_MESSAGE_RIGHT_LENGTH - $MESSAGE_E_LENGTH"
+    local -i ECHO_FREE=$TERMINAL_COLUMNS
+    test $TERMINAL_COLUMNS -gt 0 && let ECHO_FREE="$TERMINAL_COLUMNS - $ECHO_LINE_MESSAGE_LEFT_LENGTH - $ECHO_LINE_MESSAGE_CENTER_LENGTH - $ECHO_LINE_MESSAGE_RIGHT_LENGTH - $MESSAGE_E_LENGTH" || ECHO_FREE=-1
     #ECHO_LINES_VARS[$ECHO_LINES_INDEX]="$TERMINAL_COLUMNS <$ECHO_LINE_MESSAGE_LEFT_LENGTH $ECHO_LINE_MESSAGE_CENTER_LENGTH $ECHO_LINE_MESSAGE_RIGHT_LENGTH +$MESSAGE_E_LENGTH> $ECHO_FREEB|$ECHO_FREE"
 
+    test $TERMINAL_COLUMNS -le 0 && set_no PRESERVE
+    test \( $ECHO_LINE_MESSAGE_CENTER_LENGTH -eq 0 -a $ECHO_LINE_MESSAGE_CENTER_LENGTH -eq 0 -a $ECHO_LINE_MESSAGE_RIGHT_LENGTH -eq 0 \) set_no PRESERVE
     test -z "$PRESERVE" && str_word check ECHO_LINE_PRESERVE "debug" && test_yes ECHO_LINE_DEBUG_RIGHT_FLAG && set_yes PRESERVE && set_no ECHO_LINE_DEBUG_RIGHT_FLAG
+    if test -z "$PRESERVE"
+    then
+        case "$ALIGN" in
+            "left")
+                str_word check ECHO_LINE_PRESERVE "left" && set_yes PRESERVE || set_no PRESERVE
+                ;;
+            "right")
+                str_word check ECHO_LINE_PRESERVE "right" && set_yes PRESERVE || set_no PRESERVE
+                ;;
+            "center")
+                str_word check ECHO_LINE_PRESERVE "center" && set_yes PRESERVE || set_no PRESERVE
+                ;;
+        esac
+    fi
 
     terminal check
     case "$ALIGN" in
         "left")
-            if test -z "$PRESERVE"
+            local -i ECHO_LINE_MESSAGE_LEFT_LENGTH_P="$ECHO_LINE_MESSAGE_LEFT_LENGTH + $MESSAGE_E_LENGTH"
+            if test_yes $PRESERVE
             then
-                str_word check ECHO_LINE_PRESERVE "left" && set_yes PRESERVE || set_no PRESERVE
+                test $ECHO_FREE -lt 0 && set_yes NEWLINE && command echo
             fi
-
-            if test \( $ECHO_LINE_MESSAGE_CENTER_LENGTH -eq 0 -a $ECHO_LINE_MESSAGE_RIGHT_LENGTH -eq 0 \) -o "$PRESERVE" = "no"
+            if test $TERMINAL_COLUMNS -gt 0
             then
-                test $TERMINAL_COLUMNS -gt 0 && ECHO_FREE=$TERMINAL_COLUMNS || ECHO_FREE=9999999
-            fi
-
-            if test $ECHO_FREE -ge 0
-            then
-                local -i LINE_CHARACTERS="$ECHO_LINE_MESSAGE_LEFT_LENGTH + $MESSAGE_E_LENGTH"
-                test $TERMINAL_COLUMNS -gt 0 && let ECHO_LINE_MESSAGE_LEFT_LENGTH="$LINE_CHARACTERS % $TERMINAL_COLUMNS" || ECHO_LINE_MESSAGE_LEFT_LENGTH=0
-                if test $LINE_CHARACTERS -gt $TERMINAL_COLUMNS
-                then
-                    ECHO_LINE_MESSAGE_CENTER_LENGTH=0
-                    ECHO_LINE_MESSAGE_RIGHT_LENGTH=0
-                fi
+                let ECHO_LINE_MESSAGE_LEFT_LENGTH="$ECHO_LINE_MESSAGE_LEFT_LENGTH_P % $TERMINAL_COLUMNS"
+                test $ECHO_LINE_MESSAGE_LEFT_LENGTH_P -gt $TERMINAL_COLUMNS && ECHO_LINE_MESSAGE_CENTER_LENGTH=0 && ECHO_LINE_MESSAGE_RIGHT_LENGTH=0
             else
-                ECHO_LINE_MESSAGE_LEFT_LENGTH=$MESSAGE_E_LENGTH
-                ECHO_LINE_MESSAGE_CENTER_LENGTH=0
-                ECHO_LINE_MESSAGE_RIGHT_LENGTH=0
-                command echo
+                ECHO_LINE_MESSAGE_LEFT_LENGTH=0
             fi
             command echo $ESCAPE_OPTION $NEWLINE_OPTION "$MESSAGE_E"
-
-            if test_yes NEWLINE
-            then
-                ECHO_LINE_MESSAGE_LEFT_LENGTH=0
-                ECHO_LINE_MESSAGE_CENTER_LENGTH=0
-                ECHO_LINE_MESSAGE_RIGHT_LENGTH=0
-            fi
             ;;
         "right")
-            if test -z "$PRESERVE"
-            then
-                str_word check ECHO_LINE_PRESERVE "right" && set_yes PRESERVE || set_no PRESERVE
-            fi
-
             local ECHO_MODE=""
             if test_yes PRESERVE
             then
@@ -4424,11 +4415,6 @@ function echo_line
 
             ;;
         "center")
-            if test -z "$PRESERVE"
-            then
-                str_word check ECHO_LINE_PRESERVE "center" && set_yes PRESERVE || set_no PRESERVE
-            fi
-
             local -i SHIFT="$TERMINAL_COLUMNS"
             #local MESSAGE_E_NO_COLOR="$(command echo -en "$MESSAGE_E")"
             local MESSAGE_E_NO_COLOR="$MESSAGE_E"
@@ -4459,6 +4445,13 @@ function echo_line
             fi
             ;;
     esac
+
+    if test_yes NEWLINE
+    then
+        ECHO_LINE_MESSAGE_LEFT_LENGTH=0
+        ECHO_LINE_MESSAGE_CENTER_LENGTH=0
+        ECHO_LINE_MESSAGE_RIGHT_LENGTH=0
+    fi
 
     #test_yes TOOLS_COLOR && command echo -e "$COLOR_RESET\c"
 

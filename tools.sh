@@ -507,6 +507,7 @@ function str_word
 # $2 variable or string
 # $3+ word[s]
 {
+    #echo "str_word $@"
     local TASK="$1"
     local STR="$2"
     test -n "${!2+exist}" && STR="${!2}"
@@ -514,7 +515,7 @@ function str_word
 
     case "$TASK" in
         set)
-            STR="$@"
+            STR="${@:3}"
             ;;
         add)
             for W in "${@:3}"
@@ -538,8 +539,17 @@ function str_word
             local -i RESULT=0
             for W in "${@:3}"
             do
-                test_str "$STR" "\b$3\b"
-                let RESULT=$RESULT+$?
+                if test "${W:0:1}" != "!"
+                then
+                    #echo "W=$W"
+                    test_str "$STR" "\b$W\b"
+                    let RESULT="$RESULT + $?"
+                else
+                    W="${W:1}"
+                    #echo "!W=$W"
+                    test_str "$STR" "\b$W\b"
+                    test $? -eq 0 && let RESULT="$RESULT + 1"
+                fi
             done
             return $RESULT
             ;;
@@ -551,6 +561,7 @@ function str_word
             ;;
         *)
             echo_error_function "$TASK" "$@" "Unknown task argument: $TASK" $ERROR_CODE_DEFAULT
+            return 255
             ;;
     esac
 
@@ -672,6 +683,36 @@ function str_convert_to_human
     fi
     
     test -n "$VAR" && assign "$VAR" "$STR" || command echo -n "$STR"
+}
+
+function str_convert_hex
+{
+    local VAR=""
+    local INPUT=""
+    if test $# = 2
+    then
+        local VAR="$1"
+        local INPUT="$2"
+    elif test $# = 1
+    then
+        local VAR=""
+        local INPUT="$1"
+    else
+        echo_error_function "$@" "Wrong arguments count: $#, arguments: $(echo_quote "$@")" $ERROR_CODE_DEFAULT
+    fi
+
+    local STRING=""
+    #echo "INPUT=$INPUT"
+    test "${INPUT:0:2}" = "0x" && INPUT="${INPUT:2}"
+    while test ${#INPUT} -ge 2
+    do
+        local HEX="${INPUT:0:2}"
+        INPUT="${INPUT:2}"
+        #echo -e "HEX=$HEX \u$HEX"
+        STRING="$STRING$(command echo -e -n "\u$HEX")"
+    done
+
+    test -n "$VAR" && assign "$VAR" "$STRING" || command echo -n "$STRING"
 }
 
 function str_array_convert
@@ -4332,7 +4373,7 @@ function echo_line
     #ECHO_LINES_VARS[$ECHO_LINES_INDEX]="$TERMINAL_COLUMNS <$ECHO_LINE_MESSAGE_LEFT_LENGTH $ECHO_LINE_MESSAGE_CENTER_LENGTH $ECHO_LINE_MESSAGE_RIGHT_LENGTH +$MESSAGE_E_LENGTH> $ECHO_FREEB|$ECHO_FREE"
 
     test $TERMINAL_COLUMNS -le 0 && set_no PRESERVE
-    test \( $ECHO_LINE_MESSAGE_CENTER_LENGTH -eq 0 -a $ECHO_LINE_MESSAGE_CENTER_LENGTH -eq 0 -a $ECHO_LINE_MESSAGE_RIGHT_LENGTH -eq 0 \) set_no PRESERVE
+    test \( $ECHO_LINE_MESSAGE_CENTER_LENGTH -eq 0 -a $ECHO_LINE_MESSAGE_CENTER_LENGTH -eq 0 -a $ECHO_LINE_MESSAGE_RIGHT_LENGTH -eq 0 \) && set_no PRESERVE
     test -z "$PRESERVE" && str_word check ECHO_LINE_PRESERVE "debug" && test_yes ECHO_LINE_DEBUG_RIGHT_FLAG && set_yes PRESERVE && set_no ECHO_LINE_DEBUG_RIGHT_FLAG
     if test -z "$PRESERVE"
     then

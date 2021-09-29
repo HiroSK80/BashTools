@@ -2924,9 +2924,10 @@ function test_opt2_i
 
 function terminal_looper_event
 {
-    cursor down $TERMINAL_LOOPER_CURRENT
+    test $TERMINAL_LOOPER_COUNT -gt 0 && cursor down $TERMINAL_LOOPER_CURRENT
     cursor return
     terminal clear line
+    terminal echo
 }
 
 function terminal
@@ -2998,24 +2999,36 @@ function terminal
             ;;
         looper)
             case "$OPTION" in
+                #TERMINAL_LOOPER_COUNT
+                #   -1 lines counting during looper loop on first round
+                #   >0 initialized lines count
                 init)
-                    test_integer "$OPTION2" || echo_error_function "$@" "Terminal init needs count argument: $OPTION2" $ERROR_CODE_DEFAULT
-                    TERMINAL_LOOPER_COUNT=$OPTION2
+                    TERMINAL_LOOPER_CURRENT=0
+                    TERMINAL_LOOPER_BREAK="no"
+                    #test_integer "$OPTION2" || echo_error_function "$@" "Terminal init needs count argument: $OPTION2" $ERROR_CODE_DEFAULT
+                    test -n "$OPTION2" && TERMINAL_LOOPER_COUNT=$OPTION2 || TERMINAL_LOOPER_COUNT=-1
                     terminal noecho
                     event add EXIT terminal_looper_event
                     ;;
                 done)
-                    terminal echo
+                    event remove EXIT terminal_looper_event
+                    terminal_looper_event
+                    ;;
+                line)
+                    test $TERMINAL_LOOPER_COUNT -eq -1 && let TERMINAL_LOOPER_CURRENT++
+                    test $TERMINAL_LOOPER_COUNT -gt 0 -a $TERMINAL_LOOPER_CURRENT -gt 0 && let TERMINAL_LOOPER_CURRENT--
+                    read -s -n 1 -t 0.01 X && TERMINAL_LOOPER_BREAK="yes" && return 1
+                    return 0
                     ;;
                 loop)
-                    test $TERMINAL_LOOPER_CURRENT -gt 0 && let TERMINAL_LOOPER_CURRENT--
-                    ;;
-                check)
+                    test "$TERMINAL_LOOPER_BREAK" = "yes" && return 1
                     test -n "$OPTION2" && echo -n -e "$OPTION2\r" || echo -n -e "Press any key to break the loop...\r"
-                    #read -t 0.01 -rN 1 X && terminal clear line right && exit
-                    read -s -n 1 -t 0.1 X && terminal clear line right && exit
+                    #read -t 0.01 -rN 1 X && terminal clear line right && return 1
+                    read -s -n 1 -t 0.01 X && terminal clear line right && return 1
+                    test $TERMINAL_LOOPER_COUNT -eq -1 && TERMINAL_LOOPER_COUNT=TERMINAL_LOOPER_CURRENT && TERMINAL_LOOPER_CURRENT=0
                     cursor up $TERMINAL_LOOPER_COUNT
-                    let TERMINAL_LOOPER_CURRENT+=$TERMINAL_LOOPER_COUNT
+                    let TERMINAL_LOOPER_CURRENT=$TERMINAL_LOOPER_COUNT
+                    return 0
                     ;;
                 *)
                     echo_error_function "$@" "Unknown looper task argument: $TASK" $ERROR_CODE_DEFAULT
@@ -5097,6 +5110,7 @@ declare -x -f test_opt2_i
 declare -x -i TERMINAL_COLUMNS=0
 declare -x -i TERMINAL_LOOPER_COUNT=0
 declare -x -i TERMINAL_LOOPER_CURRENT=0
+declare -x    TERMINAL_LOOPER_BREAK="no"
 declare -x -f terminal # check|info / get / echo / noecho / looper [init/done/loop/check] / coloring
 declare -x    CURSOR_POSITION="0;0"
 declare -x -i CURSOR_COLUMN=0
@@ -5180,7 +5194,7 @@ declare -x    ECHO_LINE_DEBUG_RIGHT_FLAG    # internal: last debug was right ali
 declare -x -f echo_line
 declare -x -f echo_title
 declare -x -A ECHO_INFO
-ECHO_INFO[CASE]="upper"
+ECHO_INFO[CASE]="nochange"     # upper
 ECHO_INFO[PREFIX_C]=""
 ECHO_INFO[POSTFIX_C]=""
 ECHO_INFO[PREFIX_BW]="| "

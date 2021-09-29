@@ -2482,19 +2482,36 @@ function cronjob
 {
     local TAG="TOOLS_TAG_${SCRIPT_NAME_NOEXT}"
     local TIME="* * * * *"
-    local USER="root"
+    local USER="$CRONJOB_USER"
+    local RELOAD="$CRONJOB_RELOAD"
+    local COMMAND=""
+    local -a COMMANDS=()
     #arguments onestep set error_on_unknown no
     arguments onestep value "|tag" "TAG"
     arguments onestep value "t|time" "TIME"
     arguments onestep value "u|user" "USER"
+    arguments onestep value "r|reload" "RELOAD"
     arguments onestep switch "|5minutes" "TIME|*/5 * * * *"
     arguments onestep switch "|10minutes" "TIME|*/10 * * * *"
     arguments onestep switch "|hourly" "TIME|0 * * * *"
     arguments onestep switch "|daily" "TIME|0 0 * * *"
+    arguments onestep switch "c|command" "COMMAND"
     arguments onestep option "TASK|(set remove)"
     arguments onestep option "TAG"
-    arguments onestep option "COMMAND"
+    arguments onestep option "COMMANDS/array"
     arguments onestep run "$@"
+    if test "${#COMMANDS[@]}" -ne 0
+    then
+        test -n "$COMMAND" && COMMAND="$COMMAND $(print quote "${COMMANDS[@]}")" || COMMAND="$(print quote "${COMMANDS[@]}")"
+    fi
+    if test -n "$ARGUMENTS_CHECK_SHIFT" -a $ARGUMENTS_CHECK_SHIFT -gt 0
+    then    # after "--" argument
+        shift $ARGUMENTS_CHECK_SHIFT
+        if test $# -gt 0
+        then
+            test -n "$COMMAND" && COMMAND="$COMMAND $(print quote "$@")" || COMMAND="$(print quote "$@")"
+        fi
+    fi
     TAG="${TAG#__}"
     TAG="${TAG%__}"
     test -n "$TAG" && TAG="__${TAG}__"
@@ -2504,16 +2521,20 @@ function cronjob
 
             test -n "$TAG" && { echo "$TIME $USER $COMMAND;    # $TAG" >> "/etc/crontab" || exit 1; }
             test -z "$TAG" && { echo "$TIME $USER $COMMAND" >> "/etc/crontab" || exit 1; }
-            type systemctl > /dev/null 2>&1 && systemctl reload crond.service || service crond reload
             ;;
         remove)
             #test -z "$TAG" && echo_error_function "$@" "Can't remove crontab job without specified tag" $ERROR_CODE_DEFAULT
             grep --invert-match "$TAG" "/etc/crontab" > "/etc/crontab.tmp" || exit 1
             cat "/etc/crontab.tmp" > "/etc/crontab" || exit 1
             rm -f "/etc/crontab.tmp"
-            type systemctl > /dev/null 2>&1 && systemctl reload crond.service || service crond reload
             ;;
     esac
+
+    if test_yes CRONJOB_RELOAD
+    then
+        type systemctl > /dev/null 2>&1 && systemctl reload crond.service || service crond reload
+    fi
+
     return 0
 }
 
@@ -5562,6 +5583,10 @@ declare -x -f kill_tree
 
 declare -x -f fd_check
 declare -x -f fd_find_free
+
+declare -x    CRONJOB_USER="root"
+declare -x    CRONJOB_RELOAD="no"
+declare -x -f cronjob                   # set / remove
 
 declare -x    DAEMON_PATH
 declare -x    DAEMON_NAME

@@ -1223,11 +1223,11 @@ function arguments_check
 
     if test_str "$ARG_VAR" "/" # find and cut /append /array
     then
-        ARG_VAR_NAME="${ARG_VAR%/*}"
-        ARG_VAR_MODIFIER="${ARG_VAR#*/}"
+        local ARG_VAR_NAME="${ARG_VAR%/*}"
+        local ARG_VAR_MODIFIER="${ARG_VAR#*/}"
     else
-        ARG_VAR_NAME="$ARG_VAR"
-        ARG_VAR_MODIFIER=""
+        local ARG_VAR_NAME="$ARG_VAR"
+        local ARG_VAR_MODIFIER=""
     fi
     if test -n "$ARG_VAR"
     then
@@ -2572,8 +2572,9 @@ function daemon
             for TEST_PATH in "${TEST_PATHS[@]}"
             do
                 test ! -f "$TEST_PATH/$DAEMON_NAME.pid" && continue
-                DAEMON_PID="$(<"$TEST_PATH/$DAEMON_NAME.pid")"
-                if test -d "/proc/$DAEMON_PID"
+                #DAEMON_PID="$(<"$TEST_PATH/$DAEMON_NAME.pid")"
+                DAEMON_PID="$(cat "$TEST_PATH/$DAEMON_NAME.pid" 2> /dev/null)"
+                if test -n "$DAEMON_PID" -a -d "/proc/$DAEMON_PID"
                 then
                     echo "DAEMON_TASK=\"stop\"" > "$TEST_PATH/$DAEMON_NAME.task"
                 else
@@ -2610,6 +2611,274 @@ function daemon
             ;;
     esac
 
+    return 0
+}
+
+function thread
+{
+    local TASK=""
+    local NAME=""
+    local ALIAS=""
+    local ALIAS_CHANGE="no"
+    local LOCK_WAIT="yes"
+    while test $# -ge 1
+    do
+        case "${1,,}" in
+            "--")
+                shift
+                break
+                ;;
+            "-a"|"--alias")
+                shift
+                ALIAS="$1"
+                ALIAS_CHANGE="yes"
+                shift
+                ;;
+            "--alias="*)
+                ALIAS="${1#*=}"
+                ALIAS_CHANGE="yes"
+                shift
+                ;;
+            "-n"|"--lock-no-wait")
+                shift
+                LOCK_WAIT="no"
+                shift
+                ;;
+            *)
+                test -z "$TASK" && TASK="$1" && shift && continue
+                break
+                ;;
+        esac
+    done
+
+    test $# -ge 1 && NAME="$1"
+    test -z "$NAME" && NAME="${THREAD_INFO[NAME]}"
+
+    test -z "$TASK" && echo_warning_function "Task not specified" && return 1
+    test -z "$ALIAS" && ALIAS="${THREAD_INFO[ALIAS]}"
+    test -z "$ALIAS" -a -n "$NAME" && ALIAS="$NAME"
+    test -z "$ALIAS" -a $# -eq 0 && ALIAS="${FUNCNAME[1]}"
+    local -i PID=0
+
+    local FILE_PREFIX="/tmp/tools_thread_"
+    local FILE_TASK="${FILE_PREFIX}task_$ALIAS.sh"
+    local FILE_LOCK="${FILE_PREFIX}lock_$ALIAS.sh"
+    local FILE_RESPONSE_PREFIX="${FILE_PREFIX}response_"
+    local FILE_RESPONSE="${FILE_RESPONSE_PREFIX}$ALIAS.sh"
+    local FILE_RESPONSE_TMP="${FILE_RESPONSE_PREFIX}$ALIAS.tmp"
+
+    # thread independed tasks and start thread
+    case "$TASK" in
+        init)
+            rm -f "$FILE_PREFIX"*
+            return 0
+            ;;
+        done)
+            rm -f "$FILE_PREFIX"*
+            return 0
+            ;;
+        lock)
+            if (set -C; > "$FILE_LOCK") 2> /dev/null
+            then
+                return 0
+            else
+                if test_yes "$LOCK_WAIT"
+                then
+                    while true
+                    do
+                        (set -C; > "$FILE_LOCK") 2> /dev/null && return 0
+                        sleep 0.1
+                    done
+                else
+                    return 1
+                fi
+            fi
+            ;;
+        unlock)
+            test -n "$FILE_LOCK" && test -e "$FILE_LOCK" && rm -f "$FILE_LOCK"
+            ;;
+        exist)
+            thread checks > /dev/null 2>&1
+            test -n "${THREAD_PID[$ALIAS]}"
+            return $?
+            ;;
+        active)
+            thread checks > /dev/null 2>&1
+            PID="${THREAD_PID[$ALIAS]}"
+            test "${THREAD_STATUS[$PID]}" = "running" && return 0
+            return 1
+            ;;
+        status)
+            thread checks > /dev/null 2>&1
+            PID="${THREAD_PID[$ALIAS]}"
+            test -z "${THREAD_STATUS[$PID]}" && echo "stopped" || echo "${THREAD_STATUS[$PID]}"
+            return 0
+            ;;
+        pid)
+            thread checks > /dev/null 2>&1
+            echo "${THREAD_PID[$ALIAS]}"
+            return 0
+            ;;
+        checks)
+            local RESPONSE
+            for RESPONSE in "${FILE_RESPONSE_PREFIX}"*".sh"
+            do
+                test -r "$RESPONSE" && source "$RESPONSE" 2> /dev/null
+                #rm -f "$RESPONSE"
+            done
+            for PID in "${!THREAD_ALIAS[@]}"
+            do
+                ALIAS="${THREAD_ALIAS[$PID]}"
+                if test ! -d "/proc/$PID"
+                then
+                    test -n "$ALIAS" && unset THREAD_PID["$ALIAS"]
+                    if test $PID -ne 0
+                    then
+                        unset THREAD_ALIAS[$PID]
+                        unset THREAD_NAME[$PID]
+                        unset THREAD_ARGUMENTS[$PID]
+                        unset THREAD_COMMAND[$PID]
+                        unset THREAD_STATUS[$PID]
+                        unset THREAD_DATA[$PID]
+                    fi
+                    FILE_RESPONSE="${FILE_RESPONSE_PREFIX}$ALIAS.sh"
+                    rm -f "$FILE_RESPONSE"
+                fi
+
+            done
+            return 0
+            ;;
+        start|call)
+            thread exist "$ALIAS" && echo_warning_function "Can't create already running thread: $(print quote "$ALIAS")" && return 1
+            touch "$FILE_TASK" || echo_error_function "Can't create thread control file: $FILE_TASK" $ERROR_CODE_DEFAULT
+            rm -f "$FILE_TASK"
+
+            #$ALIAS "TOOLS_THREAD_ALIAS=$ALIAS" &
+            THREAD_INFO[ALIAS]="$ALIAS"
+            THREAD_INFO[NAME]="$NAME"
+            test $# -ge 2 && THREAD_INFO[ARGUMENTS]="$(print quote "${@:2}")" || THREAD_INFO[ARGUMENTS]=""
+            THREAD_INFO[COMMAND]="$(print quote "$@")"
+            "$@" &
+            local PID="$!"
+
+            THREAD_ALIAS[$PID]="$ALIAS"
+            THREAD_NAME[$PID]="$NAME"
+            THREAD_ARGUMENTS[$PID]="${THREAD_INFO[ARGUMENTS]}"
+            THREAD_COMMAND[$PID]="${THREAD_INFO[COMMAND]}"
+            THREAD_PID[$ALIAS]="$PID"
+            THREAD_STATUS[$PID]="starting"
+
+            unset THREAD_INFO[ALIAS]
+            unset THREAD_INFO[NAME]
+            unset THREAD_INFO[ARGUMENTS]
+            unset THREAD_INFO[COMMAND]
+            return 0
+            ;;
+        loop)   # call only from thread
+            local -i RESULT=0
+            local WAIT_FOR_TASK="no"
+            test -f "$FILE_TASK" && source "$FILE_TASK" && rm -f "$FILE_TASK"
+            rm -f "$FILE_RESPONSE_TMP"
+            echo "THREAD_ALIAS[$BASHPID]=\"$ALIAS\"" >> "$FILE_RESPONSE_TMP"
+            echo "THREAD_NAME[$BASHPID]=\"$NAME\"" >> "$FILE_RESPONSE_TMP"
+            echo "THREAD_ARGUMENTS[$BASHPID]=\"${THREAD_INFO[ARGUMENTS]}\"" >> "$FILE_RESPONSE_TMP"
+            echo "THREAD_COMMAND[$BASHPID]=\"${THREAD_INFO[COMMAND]}\"" >> "$FILE_RESPONSE_TMP"
+            echo "THREAD_PID[$ALIAS]=$BASHPID" >> "$FILE_RESPONSE_TMP"
+            if test "$THREAD_TASK" = "pause"
+            then
+                echo "THREAD_STATUS[$BASHPID]=\"paused\"" >> "$FILE_RESPONSE_TMP"
+                WAIT_FOR_TASK="yes"
+            elif test "$THREAD_TASK" = "stop" -o "$THREAD_TASK" = "kill"
+            then
+                echo "THREAD_STATUS[$BASHPID]=\"stopping\"" >> "$FILE_RESPONSE_TMP"
+                RESULT=1
+            else
+                echo "THREAD_STATUS[$BASHPID]=\"running\"" >> "$FILE_RESPONSE_TMP"
+            fi
+            echo "THREAD_DATA[$BASHPID]=$(print quote "${THREAD_INFO[DATA]}")" >> "$FILE_RESPONSE_TMP"
+            mv "$FILE_RESPONSE_TMP" "$FILE_RESPONSE"
+            while test "$WAIT_FOR_TASK" = "yes" -a ! -f "$FILE_TASK"
+            do
+                sleep 0.1
+            done
+            return $RESULT
+            ;;
+        data)   # call only from thread
+            THREAD_INFO[DATA]="$@"
+            return 0
+            ;;
+    esac
+
+    # thread depended tasks
+    if test "$ALIAS" != "ALL"
+    then
+        ! thread exist "$ALIAS" && echo_warning_function "Can't do $TASK task with not existing thread $ALIAS" && return 1
+        PID=$(thread pid "$ALIAS")
+    fi
+
+    case "$TASK" in
+        pause)
+            test "${THREAD_STATUS[$PID]}" = "paused" && return 0
+            THREAD_STATUS[$PID]="pausing"
+            echo "THREAD_TASK=\"pause\"" > "$FILE_TASK"
+            ;;
+        unpause|resume)
+            test "${THREAD_STATUS[$PID]}" != "paused" && return 0
+            THREAD_STATUS[$PID]="resuming"
+            echo "THREAD_TASK=\"resume\"" > "$FILE_TASK"
+            ;;
+        stop)
+            if test "$ALIAS" = "ALL"
+            then
+                for ALIAS in "${THREAD_ALIAS[@]}"
+                do
+                    thread stop "$ALIAS"
+                done
+            else
+                THREAD_STATUS[$PID]="stopping"
+                echo "THREAD_TASK=\"stop\"" > "$FILE_TASK"
+            fi
+            ;;
+        kill)
+            if test "$ALIAS" = "ALL"
+            then
+                for ALIAS in "${THREAD_ALIAS[@]}"
+                do
+                    thread exist "$ALIAS" && thread kill "$ALIAS"
+                done
+            else
+                THREAD_STATUS[$PID]="killing"
+                test -n "$PID" -a $PID -ne 0 && kill "$PID" > /dev/null 2>&1
+            fi
+            ;;
+        wait)
+            if test "$ALIAS" = "ALL"
+            then
+                local -i RESULT=0
+                for ALIAS in "${THREAD_ALIAS[@]}"
+                do
+                    if thread exist "$ALIAS"
+                    then
+                        thread wait "$ALIAS" #|| let RESULT++
+                        thread exist "$ALIAS" && let RESULT++
+                    fi
+                done
+                return $RESULT
+            else
+                local WAIT_TIME=$THREAD_WAIT_MAX
+                let WAIT_TIME="$WAIT_TIME * 10"
+                while thread exist "$ALIAS" && test $WAIT_TIME -ne 0
+                do
+                    sleep 0.1
+                    let WAIT_TIME--
+                done
+                thread exist "$ALIAS" && return 1 || return 0
+            fi
+            ;;
+        *)
+            echo_error_function "Unknown argument: $TASK" $ERROR_CODE_DEFAULT
+            ;;
+    esac
     return 0
 }
 
@@ -4986,6 +5255,7 @@ function init_tools
     SCRIPT_NAME_NOEXT="${SCRIPT_NAME%.sh}"
     SCRIPT_NAME_NOEXT="${SCRIPT_NAME_NOEXT%.}"
     SCRIPT_PATH="$(dirname "$SCRIPT_FILE")"
+    CONFIG_FILE="${SCRIPT_FILE_NOEXT}.config"
     TEMP_PATH="/tmp"
 
     test -z "$TOOLS_FILE" -a -f "$SCRIPT_PATH/tools.sh" && TOOLS_FILE="$SCRIPT_PATH/tools.sh"
@@ -5073,6 +5343,7 @@ declare -x SCRIPT_FILE_NOEXT=""
 declare -x SCRIPT_NAME=""
 declare -x SCRIPT_NAME_NOEXT=""
 declare -x SCRIPT_PATH=""
+declare -x CONFIG_FILE=""
 declare -x TOOLS_NAME=""
 declare -x TOOLS_PATH=""
 declare -x TEMP_PATH="/tmp"
@@ -5296,6 +5567,17 @@ declare -x    DAEMON_PATH
 declare -x    DAEMON_NAME
 declare -x    DAEMON_PID
 declare -x -f daemon                    # init / done / status
+
+declare -x -i THREAD_WAIT_MAX=10
+declare -x -A THREAD_ALIAS
+declare -x -A THREAD_NAME
+declare -x -A THREAD_ARGUMENTS
+declare -x -A THREAD_COMMAND
+declare -x -A THREAD_PID
+declare -x -A THREAD_STATUS
+declare -x -A THREAD_DATA
+declare -x -A THREAD_INFO       # internal: use inside thread
+declare -x -f thread                    # init / done / lock / unlock / exist / active / status / pid / checks / start|call / loop / data / pause / unpause / stop / kill / wait
 
 declare -x -a EVENT_LISTENERS
 declare -x -A EVENT_LISTENERS_SINGLE    # single trap listeners added by "trap x SIG"

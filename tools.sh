@@ -2571,12 +2571,36 @@ function event
     local TRAP=""
     local SINGLE="no"
     local COMMAND="no"
-    arguments onestep set error_on_unknown no
-    arguments onestep switch s"|single" "SINGLE|yes"
-    arguments onestep switch c"|command" "COMMAND|yes"
-    arguments onestep option "TASK|(init call add remove)"
-    arguments onestep option "TRAP|(EXIT INT QUIT TERM)"
-    arguments onestep run "$@"
+    #arguments onestep set error_on_unknown no
+    #arguments onestep switch s"|single" "SINGLE|yes"
+    #arguments onestep switch c"|command" "COMMAND|yes"
+    #arguments onestep option "TASK|(init call add remove)"
+    #arguments onestep option "TRAP|(EXIT INT QUIT TERM)"
+    #arguments onestep run "$@"
+    while test $# -ge 0
+    do
+        case "${1,,}" in
+            #test "$1" = "--" && shift && break
+            "--")
+                shift
+                break
+                ;;
+            "-s"|"--single")
+                SINGLE="yes"
+                shift
+                ;;
+            "-c"|"--command")
+                COMMAND="yes"
+                shift
+                ;;
+            *)
+                test -z "$TASK" && TASK="$1" && shift && continue
+                test -z "$TRAP" && TRAP="$1" && shift && continue
+                break
+                ;;
+        esac
+    done
+    test_str "$TASK" "(init|call|add|remove)" || echo_error_function "$@" "Unsupported task: $TASK. Supported: delete add set" $ERROR_CODE_DEFAULT
 
     case "$TASK" in
         init)
@@ -2599,8 +2623,8 @@ function event
             test -n "${EVENT_LISTENERS_SINGLE[$TRAP]}" && print debug --custom event "$BASHPID: Calling single event on $TRAP: ${EVENT_LISTENERS_SINGLE[$TRAP]}" && eval "${EVENT_LISTENERS_SINGLE[$TRAP]}"
             ;;
         add)
-            test -z "$TRAP" && echo_error_function "$TASK" "$@" "Can't add command to unknown trap signal" $ERROR_CODE_DEFAULT
-            shift $ARGUMENTS_CHECK_SHIFT
+            test -z "$TRAP" && echo_error_function "$TASK" "$TRAP" "$@" "Can't add command to unknown trap signal" $ERROR_CODE_DEFAULT
+            #shift $ARGUMENTS_CHECK_SHIFT
             if test_no COMMAND
             then
                 test_no SINGLE && EVENT_LISTENERS+=("$TRAP|$(echo_quote "$@")") || EVENT_LISTENERS_SINGLE[$TRAP]="$(echo_quote "$@")"
@@ -2609,8 +2633,8 @@ function event
             fi
             ;;
         remove)
-            test -z "$TRAP" && echo_error_function "$TASK" "$@" "Can't remove command from unknown trap signal" $ERROR_CODE_DEFAULT
-            shift $ARGUMENTS_CHECK_SHIFT
+            test -z "$TRAP" && echo_error_function "$TASK" "$TRAP" "$@" "Can't remove command from unknown trap signal" $ERROR_CODE_DEFAULT
+            #shift $ARGUMENTS_CHECK_SHIFT
             if test_no SINGLE
             then
                 local EVENT_LISTENERS_INDEX
@@ -2626,9 +2650,6 @@ function event
             else
                 EVENT_LISTENERS_SINGLE[$TRAP]=""
             fi
-            ;;
-        *)
-            echo_error_function "$TASK" "$@" "Unknown task argument: $TASK" $ERROR_CODE_DEFAULT
             ;;
     esac
 
@@ -4928,8 +4949,55 @@ function init_tools
     test_yes TOOLS_UNAME && ECHO_UNAME="$(uname -n): " || ECHO_UNAME=""
     test -n "$ECHO_UNAME" && ECHO_UNAME_C="$COLOR_UNAME$ECHO_UNAME$COLOR_RESET"
 
-    test -n "$TOOLS_EXECUTE" && bash -c "$TOOLS_EXECUTE"
+    #test -n "$TOOLS_EXECUTE" && bash -c "$TOOLS_EXECUTE"
+    test -n "$TOOLS_EXECUTE" && eval "$TOOLS_EXECUTE"
 }
+
+#EXCLUDE/start
+function tools_union
+{
+    IN_FILE="$1"
+    test ! -f "$IN_FILE" && print error "Input file $(print quote "$IN_FILE") not found" 1
+    OUT_FILE="$2"
+    test -z "$OUT_FILE" && OUT_FILE="${1%.sh}_union.sh"
+
+    cat "$TOOLS_FILE" | awk '
+        BEGIN {
+            print "#!/bin/bash";
+            p=1;
+        }
+        /^#EXCLUDE[/]start/ {
+            p=0;
+            next;
+        }
+        /^#EXCLUDE[/]end/ {
+            p=1;
+            next;
+        }
+        /^#/ || /^$/ {
+            next;
+        }
+        p==1 {
+            gsub(/^ +/, "");
+            print;
+        }' > "$OUT_FILE"
+
+    cat "$IN_FILE" | awk '
+        /^#/ || /^$/ {
+            next;
+        }
+        /^(export )?TOOLS_FILE=/ || /^([.]|source) "?[$]TOOLS_FILE/ || /^#[!][/]/ {
+            next;
+        }
+        {
+            gsub(/^ +/, "");
+            print;
+        }' >> "$OUT_FILE"
+
+    chmod +x "$OUT_FILE"
+}
+declare -x -f tools_union
+#EXCLUDE/end
 
 ### tools exports
 test -z "${TOOLS_FILE+exist}" && declare -x TOOLS_FILE
@@ -5375,4 +5443,6 @@ event init
 init_colors
 init_tools "$@"
 
+#EXCLUDE/start
 [[ "${BASH_SOURCE[0]}" != "$0" ]] && return 0 || exit 0
+#EXCLUDE/end

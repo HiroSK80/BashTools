@@ -3500,21 +3500,24 @@ function terminal
 
     case "$TASK" in
         check|info)
-            if test "$TERM" = "dumb"
+            if test "$TOOLS_TERM" = "dumb"
             then
-                TERMINAL_COLUMNS=0
-                TERMINAL_ROWS=0
+                TERMINAL_COLUMNS=-1
+                TERMINAL_ROWS=-1
             else
-                test -z "$TERMINAL_COLUMNS" -o "$TERMINAL_COLUMNS" = 0 -o -z "$TERMINAL_ROWS" -o "$TERMINAL_ROWS" = 0 && terminal get
+                test -z "$TERMINAL_COLUMNS" -o "$TERMINAL_COLUMNS" = -2 -o -z "$TERMINAL_ROWS" -o "$TERMINAL_ROWS" = -2 && terminal get
             fi
             ;;
         get)
-            if test "$TERM" = "dumb"
+            if test "$TOOLS_TERM" = "dumb"
             then
-                TERMINAL_COLUMNS=0
-                TERMINAL_ROWS=0
+                TERMINAL_COLUMNS=-1
+                TERMINAL_ROWS=-1
             else
-                read -r -s -t 1 TERMINAL_ROWS TERMINAL_COLUMNS < <(stty size)
+                read -r -s -t 1 TERMINAL_ROWS TERMINAL_COLUMNS < <(stty size 2> /dev/null || echo -n "-1 -1")
+                test -z "$TERMINAL_COLUMNS" && TERMINAL_COLUMNS=-1
+                test -z "$TERMINAL_ROWS" && TERMINAL_ROWS=-1
+                test "$TOOLS_TERM$TERMINAL_COLUMNS$TERMINAL_ROWS" = "xterm-1-1" && TERMINAL_COLUMNS=80 && TERMINAL_ROWS=25
             fi
             ;;
         restore)
@@ -3714,6 +3717,7 @@ function cursor
 {
     local TASK="$1"
     local VALUE="$2"
+    local VALUE2="$3"
 
     case "$TASK" in
         return)
@@ -3735,6 +3739,16 @@ function cursor
             ;;
         column)
             command echo -n "${S_CSI}${VALUE}G" 2> /dev/null
+            ;;
+        row)
+            cursor_get_position
+            command echo -n "${S_CSI}${VALUE};${CURSOR_COLUMN}H" 2> /dev/null
+            ;;
+        pos|position)
+            command echo -n "${S_CSI}${VALUE};${VALUE2}H" 2> /dev/null
+            ;;
+        get)
+            cursor_get_position
             ;;
         up)
             test -z "$VALUE" && VALUE=1
@@ -3766,13 +3780,14 @@ function cursor_get_position
         OLD_stty=$(stty -g)
         stty raw -echo min 0
         command echo -n "${S_CSI}6n" > /dev/tty
-        read -r -s -d "R" CURSOR_POSITION
+        read -r -s -d "R" CURSOR_POSITION_FULL
         stty $OLD_stty
-        CURSOR_POSITION="${CURSOR_POSITION#*[}"
+        CURSOR_POSITION="${CURSOR_POSITION_FULL#*[}"
     else
-        CURSOR_POSITION="0;0"
+        CURSOR_POSITION_FULL=""
+        CURSOR_POSITION="-1;-1"
     fi
-    #CURSOR_POSITION="0;0"
+    #CURSOR_POSITION="R;C"
     CURSOR_COLUMN="${CURSOR_POSITION#*;}"
     CURSOR_ROW="${CURSOR_POSITION%;*}"
 }
@@ -4311,9 +4326,9 @@ function echo_line
     fi
     MESSAGE_E_LENGTH="${#MESSAGE_E_NO_COLOR}"
     #ECHO_LINES_LINE[$ECHO_LINES_INDEX]="$MESSAGE_E_LENGTH ${ECHO_LINES_LINE[$ECHO_LINES_INDEX]}"
-    local -i ECHO_FREE=$TERMINAL_COLUMNS
     #let ECHO_FREEB="$TERMINAL_COLUMNS - $ECHO_LINE_MESSAGE_LEFT_LENGTH - $ECHO_LINE_MESSAGE_CENTER_LENGTH - $ECHO_LINE_MESSAGE_RIGHT_LENGTH"
-    let ECHO_FREE="$TERMINAL_COLUMNS - $ECHO_LINE_MESSAGE_LEFT_LENGTH - $ECHO_LINE_MESSAGE_CENTER_LENGTH - $ECHO_LINE_MESSAGE_RIGHT_LENGTH - $MESSAGE_E_LENGTH"
+    local -i ECHO_FREE=$TERMINAL_COLUMNS
+    test $TERMINAL_COLUMNS -gt 0 && let ECHO_FREE="$TERMINAL_COLUMNS - $ECHO_LINE_MESSAGE_LEFT_LENGTH - $ECHO_LINE_MESSAGE_CENTER_LENGTH - $ECHO_LINE_MESSAGE_RIGHT_LENGTH - $MESSAGE_E_LENGTH" || ECHO_FREE=9999999
     #ECHO_LINES_VARS[$ECHO_LINES_INDEX]="$TERMINAL_COLUMNS <$ECHO_LINE_MESSAGE_LEFT_LENGTH $ECHO_LINE_MESSAGE_CENTER_LENGTH $ECHO_LINE_MESSAGE_RIGHT_LENGTH +$MESSAGE_E_LENGTH> $ECHO_FREEB|$ECHO_FREE"
 
     test -z "$PRESERVE" && str_word check ECHO_LINE_PRESERVE "debug" && test_yes ECHO_LINE_DEBUG_RIGHT_FLAG && set_yes PRESERVE && set_no ECHO_LINE_DEBUG_RIGHT_FLAG
@@ -4328,13 +4343,13 @@ function echo_line
 
             if test \( $ECHO_LINE_MESSAGE_CENTER_LENGTH -eq 0 -a $ECHO_LINE_MESSAGE_RIGHT_LENGTH -eq 0 \) -o "$PRESERVE" = "no"
             then
-                let ECHO_FREE="$TERMINAL_COLUMNS"
+                test $TERMINAL_COLUMNS -gt 0 && ECHO_FREE=$TERMINAL_COLUMNS || ECHO_FREE=9999999
             fi
 
             if test $ECHO_FREE -ge 0
             then
                 local -i LINE_CHARACTERS="$ECHO_LINE_MESSAGE_LEFT_LENGTH + $MESSAGE_E_LENGTH"
-                let ECHO_LINE_MESSAGE_LEFT_LENGTH="$LINE_CHARACTERS % $TERMINAL_COLUMNS"
+                test $TERMINAL_COLUMNS -gt 0 && let ECHO_LINE_MESSAGE_LEFT_LENGTH="$LINE_CHARACTERS % $TERMINAL_COLUMNS" || ECHO_LINE_MESSAGE_LEFT_LENGTH=0
                 if test $LINE_CHARACTERS -gt $TERMINAL_COLUMNS
                 then
                     ECHO_LINE_MESSAGE_CENTER_LENGTH=0
@@ -4373,7 +4388,7 @@ function echo_line
                 fi
             else
                 ECHO_MODE="shift"
-                ECHO_FREE=$TERMINAL_COLUMNS
+                test $TERMINAL_COLUMNS -gt 0 && ECHO_FREE=$TERMINAL_COLUMNS || ECHO_FREE=9999999
             fi
 
             if test "$ECHO_MODE" = "newline"
@@ -5272,6 +5287,7 @@ function history
 function arguments_check_tools
 {
     arguments check value "|execute" "TOOLS_EXECUTE" "$@"
+    arguments check switch "|show-config" "TOOLS_EXECUTE|show_config" "$@"
     arguments check switch "|ignore-unknown" "TOOLS_IGNORE_UNKNOWN|yes" "$@"
     arguments check switch "|debug" "" "$@" && debug set debug
     arguments check switch "|debug-variable" "" "$@" && debug set variable
@@ -5279,7 +5295,7 @@ function arguments_check_tools
     arguments check switch "|debug-command" "" "$@" && debug set command
     arguments check switch "|debug-right" "" "$@" && debug set right
     arguments check value "|debug-level" "DEBUG_LEVEL|ALL|" "$@" && debug set_level $DEBUG_LEVEL
-    arguments check value "|term" "TOOLS_TERM|xterm|" "$@"
+    arguments check value "|term" "TOOLS_TERM|$TOOLS_TERM_DEFAULT|" "$@"
     arguments check value "|color" "TOOLS_COLOR|yes|yes_no" "$@" && init_colors
     arguments check switch "|no-color" "TOOLS_COLOR|no" "$@" && init_colors
     arguments check switch "|prefix" "TOOLS_PREFIX|yes" "$@"
@@ -5299,7 +5315,8 @@ function init_colors
 # no dumb???/sun
 
     # set TERM if is not set
-    test -z "$TERM" -a -n "$TOOLS_TERM" && TERM="$TOOLS_TERM"
+    test -z "$TERM" -a -n "$TOOLS_TERM_DEFAULT" && TERM="$TOOLS_TERM_DEFAULT"
+    test -z "$TOOLS_TERM" && TOOLS_TERM="$TERM"
 
     # init color numbers
     test_integer "$TOOLS_COLORS" || TOOLS_COLORS=256
@@ -5559,6 +5576,41 @@ function tools_union
     UNION_FILE="$OUT_FILE"
 }
 declare -x -f tools_union
+
+function show_config
+{
+    print info "Configuration"
+
+    print step "Basic"
+    print substep "SCRIPT_FILE=$(print quote "$SCRIPT_FILE")"
+    print substep "SCRIPT_FILE_NOEXT=$(print quote "$SCRIPT_FILE_NOEXT")"
+    print substep "SCRIPT_NAME=$(print quote "$SCRIPT_NAME")"
+    print substep "SCRIPT_NAME_NOEXT=$(print quote "$SCRIPT_NAME_NOEXT")"
+    print substep "SCRIPT_PATH=$(print quote "$SCRIPT_PATH")"
+    local C=""
+    local R=""
+    test -f "$CONFIG_FILE" || C="$COLOR_LIGHT_RED" && R="$COLOR_RESET"
+    print substep "CONFIG_FILE=$C$(print quote "$CONFIG_FILE")$R"
+    print substep "TOOLS_NAME=$(print quote "$TOOLS_NAME")"
+    print substep "TOOLS_PATH=$(print quote "$TOOLS_PATH")"
+    print substep "TEMP_PATH=$(print quote "$TEMP_PATH")"
+
+    print step "Redirects"
+    print substep "REDIRECT_DEBUG=$(print quote "$REDIRECT_DEBUG")"
+    print substep "REDIRECT_ERROR=$(print quote "$REDIRECT_ERROR")"
+    print substep "REDIRECT_WARNING=$(print quote "$REDIRECT_WARNING")"
+
+    print step "Terminal"
+    print substep "TOOLS_TERM=$(print quote "$TOOLS_TERM")"
+    print substep "TOOLS_COLOR=$(print quote "$TOOLS_COLOR")"
+    print substep "TOOLS_COLORS=$(print quote "$TOOLS_COLORS")"
+    print substep "TOOLS_PREFIX=$(print quote "$TOOLS_PREFIX")"
+    print substep "TOOLS_UNAME=$(print quote "$TOOLS_UNAME")"
+    print substep "ECHO_PREFIX=$(print quote "$ECHO_PREFIX")"
+    print substep "ECHO_UNAME=$(print quote "$ECHO_UNAME")"
+    print substep "TERMINAL_COLUMNS=$(print quote "$TERMINAL_COLUMNS")"
+    print substep "TERMINAL_ROWS=$(print quote "$TERMINAL_ROWS")"
+}
 #EXCLUDE/end
 
 ### tools exports
@@ -5578,7 +5630,8 @@ declare -x REDIRECT_DEBUG="/dev/stderr"
 declare -x REDIRECT_ERROR="" #/dev/stdout
 declare -x REDIRECT_WARNING="" #/dev/stdout
 
-declare -x    TOOLS_TERM="xterm" # default value if TERM is not set
+declare -x    TOOLS_TERM_DEFAULT="xterm" # default value if TERM is not set
+declare -x    TOOLS_TERM=""
 declare -x    TOOLS_COLOR="unknown"
 declare -x -i TOOLS_COLORS=-1
 declare -x    TOOLS_PREFIX="no"
@@ -5857,15 +5910,16 @@ declare -x -f test_opt2_z
 declare -x -f test_opt_i
 declare -x -f test_opt2_i
 
-declare -x -i TERMINAL_COLUMNS=0
-declare -x -i TERMINAL_ROWS=0
+declare -x -i TERMINAL_COLUMNS=-2
+declare -x -i TERMINAL_ROWS=-2
 # internal used variables: TERMINAL_LOOPER_CURRENT=current count to shift cursor down, TERMINAL_LOOPER_COUNT=all the lines, TERMINAL_LOOPER_BREAK=break the loop after keypress
 declare -x    TERMINAL_LOOPER_CATCH_INPUT="read1"   # read1=wait 0.001 if keypress nonblock=use before read: stty -icanon time 0 min 0
 declare -x -i TERMINAL_LOOPER_COUNT=0
 declare -x -i TERMINAL_LOOPER_CURRENT=0
 declare -x    TERMINAL_LOOPER_BREAK="no"
 declare -x -f terminal # check|info / get / echo / noecho / looper [init/done/loop/check] / coloring
-declare -x    CURSOR_POSITION="0;0"
+declare -x    CURSOR_POSITION_FULL=""
+declare -x    CURSOR_POSITION="-2;-2"
 declare -x -i CURSOR_COLUMN=0
 declare -x -i CURSOR_ROW=0
 declare -x -f cursor # save / restore / column / up / down / forward / right / backward / left

@@ -472,15 +472,19 @@ function str_remove_color
 
     #echo "STR=$STR"
 
-    # search and replace with +(...) and *(...) is extremly slow
+    # search and replace with +(...) and *(...) are extreeeeeeeeeeeeeeemly slow
     #STR="${STR//$S_ESC[[]+([0-9])*(;+([0-9]))m/}"
     #STR="${STR//\\033[[]+([0-9])*(;+([0-9]))m/}"
     #STR="${STR//$S_ESC[[][0-9]m/}"
-
     #STR="${STR//$S_ESC[[]+([0-9])m/}"
     #STR="${STR//$S_ESC[[]+([0-9]);+([0-9])m/}"
     #STR="${STR//$S_ESC[[]+([0-9]);+([0-9]);+([0-9])m/}"
 
+    # but we will try
+    #STR="${STR//$S_ESC\[+([0-9])*(;+([0-9]))m/}"
+    #STR="${STR//$S_ESC\[38;5;+([0-9])m/}"
+
+    # old regular color replace
     STR="${STR//$S_ESC\[[0-9]m/}"
     STR="${STR//$S_ESC\[[0-9][0-9]m/}"
     STR="${STR//$S_ESC\[[0-9][0-9][0-9]m/}"
@@ -488,7 +492,6 @@ function str_remove_color
     STR="${STR//$S_ESC\[[0-9];[0-9][0-9]m/}"
     STR="${STR//$S_ESC\[[0-9][0-9];[0-9]m/}"
     STR="${STR//$S_ESC\[[0-9][0-9];[0-9][0-9]m/}"
-
     STR="${STR//$S_ESC\[38;5;[0-9]m/}"
     STR="${STR//$S_ESC\[38;5;[0-9][0-9]m/}"
     STR="${STR//$S_ESC\[38;5;[0-9][0-9][0-9]m/}"
@@ -3655,6 +3658,7 @@ function terminal
                 COLOR_SUBSTEP="$COLOR_LIGHT_GREY"
                 COLOR_WAITER="$COLOR_DARK_GRAY"
                 test $TOOLS_COLORS -gt 8 && COLOR_DEBUG="$COLOR_CHARCOAL" || COLOR_DEBUG="$COLOR_BLUE"
+                test $TOOLS_COLORS -gt 8 && COLOR_DEBUG_HEADER="$COLOR_DARK_GRAY" || COLOR_DEBUG="$COLOR_LIGHT_BLUE"
                 COLOR_ERROR="$COLOR_LIGHT_RED"
                 COLOR_WARNING="$COLOR_CYAN"
                 COLOR_UNAME="$COLOR_GREEN"
@@ -3671,6 +3675,7 @@ function terminal
                 COLOR_SUBSTEP="$COLOR_LIGHT_BLUE"
                 COLOR_WAITER="$COLOR_LIGHT_GRAY"
                 COLOR_DEBUG="$COLOR_LIGHT_GRAY"
+                COLOR_DEBUG_HEADER="$COLOR_DARK_GRAY"
                 COLOR_ERROR="$COLOR_RED"
                 COLOR_WARNING="$COLOR_CYAN"
                 COLOR_UNAME="$COLOR_GREEN"
@@ -3687,6 +3692,7 @@ function terminal
                 COLOR_SUBSTEP="$COLOR_BLACK"
                 COLOR_WAITER="$COLOR_LIGHT_GRAY"
                 COLOR_DEBUG="$COLOR_LIGHT_GRAY"
+                COLOR_DEBUG_HEADER="$COLOR_DARK_GRAY"
                 COLOR_ERROR="$COLOR_BLACK"
                 COLOR_WARNING="$COLOR_BLACK"
                 COLOR_UNAME="$COLOR_LIGHT_GRAY"
@@ -4172,10 +4178,16 @@ function echo_quote
     echo "$ECHO_QUOTE"
 }
 
+#declare -x -A ECHO_LINES_LINE=()
+#declare -x -A ECHO_LINES_VARS=()
+#declare -x -i ECHO_LINES_INDEX=0
+
 function echo_line
 # usage as standard echo
 # echoes arguments to standard output and log to the file
 {
+    #ECHO_LINES_LINE[$ECHO_LINES_INDEX]="@=$@"
+
     local ESCAPE="$ECHO_LINE_ESCAPE"
     local NEWLINE="yes"
     local PRESERVE=""
@@ -4290,13 +4302,23 @@ function echo_line
     if test_yes TOOLS_COLOR
     then
         local MESSAGE_E="$ECHO_PREFIX_C$ECHO_UNAME_C$PREFIX$MESSAGE$POSTFIX"
+        local MESSAGE_E_NO_COLOR="$MESSAGE_E"
+        str_remove_color MESSAGE_E_NO_COLOR
     else
         local MESSAGE_E="$ECHO_PREFIX$ECHO_UNAME$PREFIX$MESSAGE$POSTFIX"
         str_remove_color MESSAGE_E
+        local MESSAGE_E_NO_COLOR="$MESSAGE_E"
     fi
+    MESSAGE_E_LENGTH="${#MESSAGE_E_NO_COLOR}"
+    #ECHO_LINES_LINE[$ECHO_LINES_INDEX]="$MESSAGE_E_LENGTH ${ECHO_LINES_LINE[$ECHO_LINES_INDEX]}"
+    local -i ECHO_FREE=$TERMINAL_COLUMNS
+    #let ECHO_FREEB="$TERMINAL_COLUMNS - $ECHO_LINE_MESSAGE_LEFT_LENGTH - $ECHO_LINE_MESSAGE_CENTER_LENGTH - $ECHO_LINE_MESSAGE_RIGHT_LENGTH"
+    let ECHO_FREE="$TERMINAL_COLUMNS - $ECHO_LINE_MESSAGE_LEFT_LENGTH - $ECHO_LINE_MESSAGE_CENTER_LENGTH - $ECHO_LINE_MESSAGE_RIGHT_LENGTH - $MESSAGE_E_LENGTH"
+    #ECHO_LINES_VARS[$ECHO_LINES_INDEX]="$TERMINAL_COLUMNS <$ECHO_LINE_MESSAGE_LEFT_LENGTH $ECHO_LINE_MESSAGE_CENTER_LENGTH $ECHO_LINE_MESSAGE_RIGHT_LENGTH +$MESSAGE_E_LENGTH> $ECHO_FREEB|$ECHO_FREE"
 
     test -z "$PRESERVE" && str_word check ECHO_LINE_PRESERVE "debug" && test_yes ECHO_LINE_DEBUG_RIGHT_FLAG && set_yes PRESERVE && set_no ECHO_LINE_DEBUG_RIGHT_FLAG
 
+    terminal check
     case "$ALIGN" in
         "left")
             if test -z "$PRESERVE"
@@ -4304,26 +4326,33 @@ function echo_line
                 str_word check ECHO_LINE_PRESERVE "left" && set_yes PRESERVE || set_no PRESERVE
             fi
 
-            if test $ECHO_LINE_MESSAGE_LENGTH = 0 -o "$PRESERVE" = "no"
+            if test \( $ECHO_LINE_MESSAGE_CENTER_LENGTH -eq 0 -a $ECHO_LINE_MESSAGE_RIGHT_LENGTH -eq 0 \) -o "$PRESERVE" = "no"
             then
-                command echo $ESCAPE_OPTION $NEWLINE_OPTION "$MESSAGE_E"
-            else
-                local MESSAGE_E_NO_COLOR="$MESSAGE_E"
-                str_remove_color MESSAGE_E_NO_COLOR
-                terminal check
-                local -i LINE_CHARACTERS
-                let LINE_CHARACTERS="${#MESSAGE_E_NO_COLOR} + $ECHO_LINE_MESSAGE_LENGTH"
-                test $LINE_CHARACTERS -gt $TERMINAL_COLUMNS && command echo -e -n "\n" && ECHO_LINE_MESSAGE_LENGTH=0
-                command echo $ESCAPE_OPTION $NEWLINE_OPTION "$MESSAGE_E"
+                let ECHO_FREE="$TERMINAL_COLUMNS"
             fi
+
+            if test $ECHO_FREE -ge 0
+            then
+                local -i LINE_CHARACTERS="$ECHO_LINE_MESSAGE_LEFT_LENGTH + $MESSAGE_E_LENGTH"
+                let ECHO_LINE_MESSAGE_LEFT_LENGTH="$LINE_CHARACTERS % $TERMINAL_COLUMNS"
+                if test $LINE_CHARACTERS -gt $TERMINAL_COLUMNS
+                then
+                    ECHO_LINE_MESSAGE_CENTER_LENGTH=0
+                    ECHO_LINE_MESSAGE_RIGHT_LENGTH=0
+                fi
+            else
+                ECHO_LINE_MESSAGE_LEFT_LENGTH=$MESSAGE_E_LENGTH
+                ECHO_LINE_MESSAGE_CENTER_LENGTH=0
+                ECHO_LINE_MESSAGE_RIGHT_LENGTH=0
+                command echo
+            fi
+            command echo $ESCAPE_OPTION $NEWLINE_OPTION "$MESSAGE_E"
 
             if test_yes NEWLINE
             then
-                ECHO_LINE_MESSAGE_LENGTH=0
-            else
-                local MESSAGE_E_NO_COLOR="$MESSAGE_E"
-                str_remove_color MESSAGE_E_NO_COLOR
-                let ECHO_LINE_MESSAGE_LENGTH="$ECHO_LINE_MESSAGE_LENGTH + ${#MESSAGE_E_NO_COLOR}"
+                ECHO_LINE_MESSAGE_LEFT_LENGTH=0
+                ECHO_LINE_MESSAGE_CENTER_LENGTH=0
+                ECHO_LINE_MESSAGE_RIGHT_LENGTH=0
             fi
             ;;
         "right")
@@ -4332,43 +4361,52 @@ function echo_line
                 str_word check ECHO_LINE_PRESERVE "right" && set_yes PRESERVE || set_no PRESERVE
             fi
 
-            terminal check
-            local -i SHIFT="$TERMINAL_COLUMNS"
-            #local MESSAGE_E_NO_COLOR="$(command echo -en "$MESSAGE_E")"
-            local MESSAGE_E_NO_COLOR="$MESSAGE_E"
-            str_remove_color MESSAGE_E_NO_COLOR
-            let SHIFT="$SHIFT - ${#MESSAGE_E_NO_COLOR}"
-
+            local ECHO_MODE=""
             if test_yes PRESERVE
             then
-                if test $ECHO_LINE_MESSAGE_LENGTH -ne 0
+                if test $MESSAGE_E_LENGTH -gt $TERMINAL_COLUMNS
                 then
-                    local -i TOTAL_CHARS=$ECHO_LINE_MESSAGE_LENGTH
-                    let TOTAL_CHARS="$TOTAL_CHARS + ${#MESSAGE_E_NO_COLOR}"
-                    test $TOTAL_CHARS -gt $TERMINAL_COLUMNS && command echo -e -n "\n" && ECHO_LINE_MESSAGE_LENGTH=0
+                    ECHO_MODE="newline"
+                    ECHO_FREE=$TERMINAL_COLUMNS
+                else
+                    ECHO_MODE="shift"
                 fi
+            else
+                ECHO_MODE="shift"
+                ECHO_FREE=$TERMINAL_COLUMNS
             fi
 
-            if test $SHIFT -gt 0
+            if test "$ECHO_MODE" = "newline"
             then
-                let SHIFT++
+                 test "$ECHO_LINE_MESSAGE_LEFT_LENGTH$ECHO_LINE_MESSAGE_CENTER_LENGTH" != "00" && command echo 
+
+                 command echo $ESCAPE_OPTION "$MESSAGE_E"
+                 ECHO_LINE_MESSAGE_LEFT_LENGTH=0
+                 ECHO_LINE_MESSAGE_RIGHT_LENGTH=0
+            elif test "$ECHO_MODE" = "shift"
+                test $ECHO_FREE -lt 0 && ECHO_LINE_MESSAGE_LEFT_LENGTH=0 && ECHO_LINE_MESSAGE_CENTER_LENGTH=0 && ECHO_LINE_MESSAGE_RIGHT_LENGTH=0 && command echo
+
+                local -i ECHO_SHIFT="$TERMINAL_COLUMNS"
+                let ECHO_SHIFT="$ECHO_SHIFT - $ECHO_LINE_MESSAGE_RIGHT_LENGTH - $MESSAGE_E_LENGTH"
+                let ECHO_SHIFT++
                 cursor save
-                cursor column $SHIFT
+                cursor column $ECHO_SHIFT
                 command echo $ESCAPE_OPTION -n "$MESSAGE_E"
                 cursor load
-            else
-                command echo -e -n "\r"
-                command echo $ESCAPE_OPTION $NEWLINE_OPTION "$MESSAGE_E"
-                NEWLINE="yes"
+
+                if test_yes NEWLINE 
+                then
+                    ECHO_LINE_MESSAGE_LEFT_LENGTH=0
+                    ECHO_LINE_MESSAGE_CENTER_LENGTH=0
+                    ECHO_LINE_MESSAGE_RIGHT_LENGTH=0
+                    command echo
+                else
+                    let ECHO_LINE_MESSAGE_RIGHT_LENGTH="$ECHO_LINE_MESSAGE_RIGHT_LENGTH + $MESSAGE_E_LENGTH"
+                fi
+            then
+                true
             fi
 
-            if test_yes NEWLINE
-            then
-                command echo -e -n "\n"
-                ECHO_LINE_MESSAGE_LENGTH=0
-            else
-                let ECHO_LINE_MESSAGE_LENGTH="$ECHO_LINE_MESSAGE_LENGTH + ${#MESSAGE_E_NO_COLOR}"
-            fi
             ;;
         "center")
             if test -z "$PRESERVE"
@@ -4376,13 +4414,12 @@ function echo_line
                 str_word check ECHO_LINE_PRESERVE "center" && set_yes PRESERVE || set_no PRESERVE
             fi
 
-            terminal check
             local -i SHIFT="$TERMINAL_COLUMNS"
             #local MESSAGE_E_NO_COLOR="$(command echo -en "$MESSAGE_E")"
             local MESSAGE_E_NO_COLOR="$MESSAGE_E"
             test_yes TOOLS_COLOR && str_remove_color MESSAGE_E_NO_COLOR
             let SHIFT="($SHIFT - ${#MESSAGE_E_NO_COLOR}) / 2"
-            ECHO_LINE_MESSAGE_LENGTH=${#MESSAGE_E_NO_COLOR}
+            ECHO_LINE_MESSAGE_LEFT_LENGTH=${#MESSAGE_E_NO_COLOR}
 
             if test $SHIFT -gt 0
             then
@@ -4401,9 +4438,9 @@ function echo_line
             if test_yes NEWLINE
             then
                 command echo -e -n "\n"
-                ECHO_LINE_MESSAGE_LENGTH=0
+                ECHO_LINE_MESSAGE_LEFT_LENGTH=0
             else
-                let ECHO_LINE_MESSAGE_LENGTH="$ECHO_LINE_MESSAGE_LENGTH + $SHIFT + ${#MESSAGE_E_NO_COLOR}"
+                let ECHO_LINE_MESSAGE_LEFT_LENGTH="$ECHO_LINE_MESSAGE_LEFT_LENGTH + $SHIFT + ${#MESSAGE_E_NO_COLOR}"
             fi
             ;;
     esac
@@ -4416,6 +4453,8 @@ function echo_line
         str_remove_color MESSAGE_L
         log echo "$MESSAGE_L"
     fi
+
+    #let ECHO_LINES_INDEX++
 }
 
 function echo_title
@@ -4717,11 +4756,11 @@ function echo_debug_custom
 
         local ECHO_DEBUG_TYPE=""
         debug parse_type "$TYPE"
-        test -n "$DEBUG_PARSE_TYPE" && ECHO_DEBUG_TYPE="[$DEBUG_PARSE_TYPE] "
+        test -n "$DEBUG_PARSE_TYPE" && ECHO_DEBUG_TYPE="[${COLOR_DEBUG_HEADER}$DEBUG_PARSE_TYPE${COLOR_DEBUG}] "
 
         local ECHO_DEBUG_LEVEL=""
         local LEVEL=$DEBUG_LEVEL_DEFAULT
-        test -n "$DEBUG_LEVEL_DEFAULT_STR" && ECHO_DEBUG_LEVEL="[$DEBUG_LEVEL_DEFAULT_STR] "
+        test -n "$DEBUG_LEVEL_DEFAULT_STR" && ECHO_DEBUG_LEVEL="[${COLOR_DEBUG_HEADER}$DEBUG_LEVEL_DEFAULT_STR${COLOR_DEBUG}] "
 
         while test $# -ge 2
         do
@@ -4731,7 +4770,7 @@ function echo_debug_custom
 
             debug parse_level "$1"
             LEVEL=$DEBUG_PARSE_LEVEL
-            test -n "$DEBUG_PARSE_LEVEL_STR" && ECHO_DEBUG_LEVEL="[$DEBUG_PARSE_LEVEL_STR] "
+            test -n "$DEBUG_PARSE_LEVEL_STR" && ECHO_DEBUG_LEVEL="[${COLOR_DEBUG_HEADER}$DEBUG_PARSE_LEVEL_STR${COLOR_DEBUG}] "
             shift
         done
 
@@ -4825,18 +4864,18 @@ function echo_debug_variable
             elif test -z "${!VAR_NAME+exist}" > /dev/null 2>&1
             then
                 test -n "$VAR_LIST" && VAR_LIST="$VAR_LIST "
-                VAR_LIST="${VAR_LIST}${VAR_NAME}=<not exist>"
+                VAR_LIST="${VAR_LIST}${COLOR_DEBUG_HEADER}${VAR_NAME}${COLOR_DEBUG}=<not exist>"
             elif test -n "$VAR_NAME_PART" -a "$VAR_NAME" != "$VAR_NAME_PART" > /dev/null 2>&1
             then
                 test -n "$VAR_LIST" && VAR_LIST="$VAR_LIST "
-                VAR_LIST="${VAR_LIST}${VAR_NAME}=\"${!VAR_NAME}\""
+                VAR_LIST="${VAR_LIST}${COLOR_DEBUG_HEADER}${VAR_NAME}${COLOR_DEBUG}=\"${!VAR_NAME}\""
             elif ! declare -p "$VAR_NAME" > /dev/null 2>&1
             then
                 test -n "$VAR_LIST" && VAR_LIST="$VAR_LIST "
-                VAR_LIST="${VAR_LIST}${VAR_NAME}=<not found>"
+                VAR_LIST="${VAR_LIST}${COLOR_DEBUG_HEADER}${VAR_NAME}${COLOR_DEBUG}=<not found>"
             else
                 test -n "$VAR_LIST" && VAR_LIST="$VAR_LIST "
-                VAR_LIST="${VAR_LIST}${VAR_NAME}=\"${!VAR_NAME}\""
+                VAR_LIST="${VAR_LIST}${COLOR_DEBUG_HEADER}${VAR_NAME}${COLOR_DEBUG}=\"${!VAR_NAME}\""
             fi
         done
 
@@ -4881,7 +4920,7 @@ function echo_debug_function
         let I++
         test -n "${FUNCTION_NAMESPACES[$F]}" && F="${FUNCTION_NAMESPACES[$F]}"
         echo_quote "$@" > /dev/null
-        FUNCTION_INFO="$F($ECHO_QUOTE)"
+        FUNCTION_INFO="${COLOR_DEBUG_HEADER}$F${COLOR_DEBUG}($ECHO_QUOTE)"
         for F in "${FUNCNAME[@]:$I}"
         do
             test -n "${FUNCTION_NAMESPACES[$F]}" && F="${FUNCTION_NAMESPACES[$F]}"
@@ -5581,6 +5620,7 @@ declare -x COLOR_STEP
 declare -x COLOR_SUBSTEP
 declare -x COLOR_WAITER
 declare -x COLOR_DEBUG
+declare -x COLOR_DEBUG_HEADER
 declare -x COLOR_ERROR
 declare -x COLOR_WARNING
 declare -x COLOR_UNAME
@@ -5902,7 +5942,9 @@ declare -x -f echo_quote
 declare -x    ECHO_LINE_ESCAPE="yes"        # default to escape string
 declare -x    ECHO_LINE_PRESERVE="debug"    # default preserve for previous output - aligned left right center or debug messages
 # full settings: ECHO_LINE_PRESERVE="left right center debug"
-declare -x -i ECHO_LINE_MESSAGE_LENGTH=0    # last line message length
+declare -x -i ECHO_LINE_MESSAGE_LEFT_LENGTH=0    # current line left aligned message length
+declare -x -i ECHO_LINE_MESSAGE_RIGHT_LENGTH=0    # current line right aligned message length
+declare -x -i ECHO_LINE_MESSAGE_CENTER_LENGTH=0    # current line center message length
 declare -x    ECHO_LINE_DEBUG_RIGHT_FLAG    # internal: last debug was right aligned
 declare -x -f echo_line
 declare -x -f echo_title

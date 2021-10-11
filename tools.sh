@@ -4555,6 +4555,19 @@ let ECHO_LINES_INDEX++
 
 function echo_title
 {
+    while test $# -ge 2
+    do
+        test "$1" = "--" && shift && break
+
+        test_str "$1" "^(-l|--left|--align-left|--align=left)$" && ALIGN="left" && shift && continue
+        test_str "$1" "^(-c|--center|--align-center|--align=center)$" && ALIGN="center" && shift && continue
+        test_str "$1" "^(-r|--right|--align-right|--align=right)$" && ALIGN="right" && shift && continue
+        shift
+    done
+
+    test -z "$ALIGN" && local ALIGN_OPTION="" || local ALIGN_OPTION="--align=$ALIGN"
+    test "$ALIGN" = "right" && local NEWLINE_OPTION="-n"
+
     #TITLE_STYLE="01234567"
     local TITLE_MSG="$TITLE_MSG_SPACES${COLOR_TITLE}$@${COLOR_RESET}$TITLE_MSG_SPACES"
     local TITLE_MSG_NO_COLOR="$TITLE_MSG_SPACES$@$TITLE_MSG_SPACES"
@@ -4587,9 +4600,9 @@ function echo_title
     local TITLE_TAIL="$COLOR_TITLE_BORDER$TITLE_STYLE5$TITLE_STYLE6SEQ$TITLE_STYLE7$COLOR_RESET"
     test -z "$TITLE_STYLE5$TITLE_STYLE6SEQ$TITLE_STYLE7" && TITLE_TAIL=""
 
-    test -n "$TITLE_HEAD" && echo_line --prefix "$TITLE_HEAD" --no-message $@
-    echo_line $ALIGN_OPTION --prefix "$TITLE_MSG" --no-message $@
-    test -n "$TITLE_TAIL" && echo_line --prefix "$TITLE_TAIL" --no-message $@
+    test -n "$TITLE_HEAD" && echo_line $ALIGN_OPTION $NEWLINE_OPTION --prefix "$TITLE_HEAD" --no-message $@
+    echo_line $ALIGN_OPTION $NEWLINE_OPTION --prefix "$TITLE_MSG" --no-message $@
+    test -n "$TITLE_TAIL" && echo_line $ALIGN_OPTION $NEWLINE_OPTION --prefix "$TITLE_TAIL" --no-message $@
 
     return 0
 }
